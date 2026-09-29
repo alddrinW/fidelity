@@ -1,10 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import '../../../core/providers/supabase_provider.dart';
-import '../../profile/data/profile_repository.dart';
+import '../../auth/data/auth_repository.dart';
+import '../../profile/providers/user_profile_provider.dart';
 import '../data/business_repository.dart';
 
-// Estado para la creación
 class CreateBusinessState {
   final bool isLoading;
   final String? error;
@@ -49,9 +48,9 @@ class CreateBusinessNotifier extends Notifier<CreateBusinessState> {
     String? rewardLongDescription,
     required int pointsRequired,
   }) async {
-    final userId = ref.read(supabaseClientProvider).auth.currentUser?.id;
+    final authUser = ref.read(authRepositoryProvider).currentUser;
 
-    if (userId == null) {
+    if (authUser == null) {
       state = state.copyWith(error: 'Usuario no autenticado', isLoading: false);
       return;
     }
@@ -59,35 +58,21 @@ class CreateBusinessNotifier extends Notifier<CreateBusinessState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final profileRepo = ref.read(profileRepositoryProvider);
+      final profileRepo = ref.read(userProfileRepositoryProvider);
       final businessRepo = ref.read(businessRepositoryProvider);
 
       // 1. Actualizar Perfil
       await profileRepo.updateProfile(
-        userId: userId,
+        userId: authUser.id,
         fullName: fullName.trim(),
         phone: phone.trim(),
       );
 
-      // 2. Subir Logo si existe
-      String? logoUrl;
-      if (logoFile != null) {
-        final fileBytes = await logoFile.readAsBytes();
-        final fileExt = logoFile.name.split('.').last.toLowerCase();
-        
-        logoUrl = await businessRepo.uploadLogo(
-          userId: userId,
-          fileBytes: fileBytes,
-          fileExt: fileExt,
-        );
-      }
-
-      // 3. Crear el negocio
+      // 2. Crear el negocio
       final businessId = await businessRepo.createBusiness(
-        userId: userId,
+        userId: authUser.id,
         name: businessName.trim(),
         description: businessDescription?.trim().isEmpty ?? true ? null : businessDescription!.trim(),
-        logoUrl: logoUrl,
         address: address.trim().isEmpty ? null : address.trim(),
         latitude: latitude,
         longitude: longitude,
@@ -98,11 +83,11 @@ class CreateBusinessNotifier extends Notifier<CreateBusinessState> {
         pointsRequired: pointsRequired,
       );
 
-      // 4. Crear QR inicial
+      // 3. Crear QR inicial
       await businessRepo.generateInitialQrCode(businessId);
 
-      // 5. Actualizar Metadata de Auth
-      await businessRepo.updateBusinessRoleInAuth(businessId);
+      // 4. Refrescar el perfil de autenticación
+      await ref.read(authRepositoryProvider).refreshProfile();
 
       state = state.copyWith(isLoading: false, isSuccess: true);
     } catch (e) {

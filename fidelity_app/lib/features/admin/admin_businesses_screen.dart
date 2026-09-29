@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:google_fonts/google_fonts.dart';
+import '../../core/services/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/services/export_service.dart';
@@ -28,7 +28,7 @@ enum DateRangeFilter {
 }
 
 class _AdminBusinessesScreenState extends State<AdminBusinessesScreen> {
-  final supabase = Supabase.instance.client;
+  final ApiClient _apiClient = ApiClient();
   bool _isLoading = true;
   List<Map<String, dynamic>> _businesses = [];
   final TextEditingController _searchController = TextEditingController();
@@ -98,40 +98,26 @@ class _AdminBusinessesScreenState extends State<AdminBusinessesScreen> {
       _businesses = [];
     });
     try {
-      var query = supabase
-          .from('businesses')
-          .select('''
-            id,
-            name,
-            category_id,
-            business_categories(name),
-            logo_url,
-            is_active,
-            is_demo,
-            created_at,
-            owner_id,
-            reward_description,
-            points_required,
-            profiles:owner_id (full_name, email, phone, is_demo),
-            loyalty_cards (
-              profiles:user_id (full_name, email, phone, is_demo)
-            )
-          ''');
+      final response = await _apiClient.get('businesses', queryParams: {'all': 'true'});
+      var list = response is List ? List<Map<String, dynamic>>.from(response) : <Map<String, dynamic>>[];
 
       final dateRange = _getDateRange();
       if (dateRange != null) {
-        query = query.gte('created_at', dateRange.$1.toIso8601String())
-                     .lte('created_at', dateRange.$2.toIso8601String());
+        list = list.where((b) {
+          final createdAtStr = b['createdAt'] ?? b['created_at'];
+          if (createdAtStr == null) return false;
+          final d = DateTime.tryParse(createdAtStr);
+          if (d == null) return false;
+          return d.isAfter(dateRange.$1) && d.isBefore(dateRange.$2);
+        }).toList();
       }
 
-      final response = await query
-          .order('created_at', ascending: false)
-          .range(0, _pageSize - 1);
+      final normalized = _normalizeBusinesses(list);
 
       if (mounted) {
         setState(() {
-          _businesses = List<Map<String, dynamic>>.from(response);
-          _hasMore = _businesses.length == _pageSize;
+          _businesses = normalized;
+          _hasMore = false;
           _isLoading = false;
         });
       }
@@ -149,58 +135,49 @@ class _AdminBusinessesScreenState extends State<AdminBusinessesScreen> {
     }
   }
 
+  List<Map<String, dynamic>> _normalizeBusinesses(List<Map<String, dynamic>> raw) {
+    return raw.map((b) {
+      final category = b['categoryRef'] ?? b['business_categories'] ?? {};
+      final owner = b['owner'] ?? b['profiles'] ?? {};
+      final rawCards = (b['loyaltyCards'] ?? b['loyalty_cards'] ?? []) as List;
+      final loyaltyCards = rawCards.map((card) {
+        final u = card['user'] ?? card['profiles'] ?? {};
+        return {
+          'profiles': {
+            'full_name': u['fullName'] ?? u['full_name'],
+            'email': u['email'],
+            'phone': u['phone'],
+            'is_demo': u['isDemo'] ?? u['is_demo'] ?? false,
+          },
+        };
+      }).toList();
+
+      return {
+        ...b,
+        'id': b['id'],
+        'name': b['name'],
+        'logo_url': b['logoUrl'] ?? b['logo_url'],
+        'is_active': b['isActive'] ?? b['is_active'] ?? false,
+        'is_demo': b['isDemo'] ?? b['is_demo'] ?? false,
+        'created_at': b['createdAt'] ?? b['created_at'],
+        'reward_description': b['rewardDescription'] ?? b['reward_description'],
+        'points_required': b['pointsRequired'] ?? b['points_required'],
+        'business_categories': {
+          'name': category['name'] ?? b['category'] ?? 'Otra',
+        },
+        'profiles': {
+          'full_name': owner['fullName'] ?? owner['full_name'] ?? 'Desconocido',
+          'email': owner['email'] ?? 'Sin correo',
+          'phone': owner['phone'] ?? 'Sin celular',
+          'is_demo': owner['isDemo'] ?? owner['is_demo'] ?? false,
+        },
+        'loyalty_cards': loyaltyCards,
+      };
+    }).toList();
+  }
+
   Future<void> _fetchMoreBusinesses() async {
-    setState(() => _isFetchingMore = true);
-    try {
-      _currentPage++;
-      final startIndex = _currentPage * _pageSize;
-      final endIndex = startIndex + _pageSize - 1;
-
-      var query = supabase
-          .from('businesses')
-          .select('''
-            id,
-            name,
-            category_id,
-            business_categories(name),
-            logo_url,
-            is_active,
-            is_demo,
-            created_at,
-            owner_id,
-            reward_description,
-            points_required,
-            profiles:owner_id (full_name, email, phone, is_demo),
-            loyalty_cards (
-              profiles:user_id (full_name, email, phone, is_demo)
-            )
-          ''');
-
-      final dateRange = _getDateRange();
-      if (dateRange != null) {
-        query = query.gte('created_at', dateRange.$1.toIso8601String())
-                     .lte('created_at', dateRange.$2.toIso8601String());
-      }
-
-      final response = await query
-          .order('created_at', ascending: false)
-          .range(startIndex, endIndex);
-
-      final newItems = List<Map<String, dynamic>>.from(response);
-
-      if (mounted) {
-        setState(() {
-          _businesses.addAll(newItems);
-          _hasMore = newItems.length == _pageSize;
-          _isFetchingMore = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading more businesses: $e');
-      if (mounted) {
-        setState(() => _isFetchingMore = false);
-      }
-    }
+    // Already fetched all in getBusinesses('all=true')
   }
 
   List<Map<String, dynamic>> get _filteredBusinesses {
@@ -215,7 +192,7 @@ class _AdminBusinessesScreenState extends State<AdminBusinessesScreen> {
   }
 
   Future<void> _toggleBusinessStatus(String id, bool currentStatus) async {
-    // 1. Optimistic UI Update: Cambiar visualmente de inmediato
+    // 1. Optimistic UI Update
     setState(() {
       final index = _businesses.indexWhere((b) => b['id'] == id);
       if (index != -1) {
@@ -224,14 +201,10 @@ class _AdminBusinessesScreenState extends State<AdminBusinessesScreen> {
     });
 
     try {
-      // 2. Ejecutar en Supabase (RPC para saltar RLS)
-      await supabase.rpc(
-        'admin_toggle_business_status',
-        params: {
-          'target_business_id': id,
-          'new_status': !currentStatus,
-        },
-      );
+      // 2. Ejecutar vía API NestJS
+      await _apiClient.patch('businesses/$id/status', body: {
+        'isActive': !currentStatus,
+      });
     } catch (e) {
       debugPrint('Error toggling status: $e');
       if (mounted) {
@@ -259,7 +232,7 @@ class _AdminBusinessesScreenState extends State<AdminBusinessesScreen> {
       builder: (context) => ExportPreviewDialog(
         data: _filteredBusinesses,
         entity: ExportEntity.businesses,
-        exportService: SupabaseExportService(),
+        exportService: AppExportService(),
       ),
     );
   }

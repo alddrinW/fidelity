@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:qr_flutter/qr_flutter.dart';
 import 'package:uuid/uuid.dart';
 import 'dart:io';
@@ -15,6 +14,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:gal/gal.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/date_utils.dart';
+import '../../../core/services/api_client.dart';
 import '../../../core/services/realtime_sync_service.dart';
 import 'dart:async';
 
@@ -27,7 +27,6 @@ class QRManagementScreen extends StatefulWidget {
 }
 
 class _QRManagementScreenState extends State<QRManagementScreen> {
-  final supabase = Supabase.instance.client;
   List<Map<String, dynamic>> _qrCodes = [];
   bool _isLoading = true;
 
@@ -52,15 +51,24 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      final response = await supabase
-          .from('qr_codes')
-          .select()
-          .eq('business_id', widget.businessId)
-          .order('created_at', ascending: false);
+      final response = await ApiClient().get('qr-codes/business/${widget.businessId}');
 
       if (mounted) {
         setState(() {
-          _qrCodes = List<Map<String, dynamic>>.from(response);
+          if (response is List) {
+            _qrCodes = response
+                .map((q) => {
+                      'id': q['id'],
+                      'business_id': q['businessId'] ?? q['business_id'],
+                      'qr_code': q['qrCode'] ?? q['qr_code'],
+                      'label': q['label'] ?? 'Código QR',
+                      'is_active': q['isActive'] ?? q['is_active'] ?? true,
+                      'created_at': q['createdAt'] ?? q['created_at'],
+                    })
+                .toList();
+          } else {
+            _qrCodes = [];
+          }
           _isLoading = false;
         });
       }
@@ -76,9 +84,9 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
     setState(() => _isLoading = true);
     try {
       final newCode = const Uuid().v4();
-      await supabase.from('qr_codes').insert({
-        'business_id': widget.businessId,
-        'qr_code': newCode,
+      await ApiClient().post('qr-codes', body: {
+        'businessId': widget.businessId,
+        'qrCode': newCode,
         'label': 'Código QR Único',
       });
       await _loadQRCodes();
@@ -463,10 +471,7 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
       if (qrId == null) throw Exception('ID de QR no encontrado');
 
       // Update DB
-      await supabase
-          .from('qr_codes')
-          .update({'qr_code': newCode})
-          .eq('id', qrId);
+      await ApiClient().patch('qr-codes/$qrId', body: {'qrCode': newCode});
 
       // Update Local State transparently
       setState(() {

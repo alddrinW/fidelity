@@ -4,7 +4,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/utils/date_utils.dart';
-import '../../../../../core/providers/supabase_provider.dart';
+import '../../../../../core/services/api_client.dart';
 import '../../providers/dashboard_provider.dart';
 import '../dashboard_stat_card.dart';
 
@@ -249,14 +249,13 @@ class _TabStatisticsState extends ConsumerState<TabStatistics> {
                   if (newDesc.isEmpty || newPoints < 1) return;
                   
                   try {
-                    await ref.read(supabaseClientProvider)
-                        .from('businesses')
-                        .update({
-                          'reward_description': newDesc,
-                          'reward_long_description': newLongDesc,
-                          'points_required': newPoints,
-                        })
-                        .eq('id', business['id']);
+                    await ApiClient().put(
+                      'businesses/${business['id']}',
+                      body: {
+                        'rewardDescription': newDesc,
+                        'pointsRequired': newPoints,
+                      },
+                    );
                         
                     if (mounted) {
                       Navigator.pop(context);

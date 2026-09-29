@@ -1,8 +1,7 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 import '../data/user_profile_repository.dart';
-import '../../../core/services/push_notification_service.dart';
+import '../../auth/data/auth_repository.dart';
 
 final userProfileRepositoryProvider = Provider<UserProfileRepository>((ref) {
   return UserProfileRepository();
@@ -38,7 +37,7 @@ class UserProfileState {
       fullName: fullName ?? this.fullName,
       phone: phone ?? this.phone,
       avatarUrl: avatarUrl ?? this.avatarUrl,
-      error: error, // Clear error if not provided
+      error: error,
       email: email ?? this.email,
     );
   }
@@ -50,19 +49,28 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
   @override
   UserProfileState build() {
     _repository = ref.watch(userProfileRepositoryProvider);
+    final user = ref.watch(authRepositoryProvider).currentUser;
     Future.microtask(() => _loadProfile());
-    return UserProfileState(email: Supabase.instance.client.auth.currentUser?.email);
+    return UserProfileState(
+      email: user?.email,
+      fullName: user?.fullName ?? '',
+      phone: user?.phone ?? '',
+      avatarUrl: user?.avatarUrl,
+    );
   }
 
   Future<void> _loadProfile() async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      final user = Supabase.instance.client.auth.currentUser; if (user == null) throw Exception('No user'); final profile = await _repository.getProfile(user.id) ?? {};
+      final user = ref.read(authRepositoryProvider).currentUser;
+      if (user == null) return;
+      final profile = await _repository.getProfile(user.id) ?? {};
       state = state.copyWith(
         isLoading: false,
         fullName: profile['full_name'] ?? '',
         phone: profile['phone'] ?? '',
         avatarUrl: profile['avatar_url'],
+        email: profile['email'] ?? user.email,
       );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -76,14 +84,14 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
   }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
+      final user = ref.read(authRepositoryProvider).currentUser;
+      if (user == null) return false;
       await _repository.updateProfile(
-        userId: Supabase.instance.client.auth.currentUser!.id,
+        userId: user.id,
         fullName: fullName,
         phone: phone,
-        
         avatarFile: newAvatarFile,
       );
-      // Reload profile to get new avatar URL if changed
       await _loadProfile();
       return true;
     } catch (e) {
@@ -107,26 +115,10 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
   Future<bool> deleteAccount() async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      await _repository.deleteAccount(Supabase.instance.client.auth.currentUser!.id);
+      final user = ref.read(authRepositoryProvider).currentUser;
+      if (user == null) return false;
+      await _repository.deleteAccount(user.id);
       state = state.copyWith(isLoading: false);
-      return true;
-    } catch (e) {
-      state = state.copyWith(isLoading: false, error: e.toString());
-      return false;
-    }
-  }
-
-  Future<bool> logout() async {
-    state = state.copyWith(isLoading: true, error: null);
-    try {
-      // Instead of calling signout directly, we tell the auth state provider to do it.
-      // Wait, UserProfileNotifier doesn't have direct access to authStateProvider since they are separate notifiers,
-      // but it can read other providers via 'ref.read'.
-      // Actually, it's better to just call it.
-      // But wait! If we import auth_provider.dart, it might cause circular dependency if auth_provider imports user_profile_provider!
-      // auth_provider DOES import user_profile_provider to invalidate it.
-      // So we shouldn't import auth_provider here.
-      // Instead, UserProfileScreen should call ref.read(authStateProvider.notifier).logout() directly!
       return true;
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -138,5 +130,3 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
 final userProfileProvider = NotifierProvider<UserProfileNotifier, UserProfileState>(() {
   return UserProfileNotifier();
 });
-
-

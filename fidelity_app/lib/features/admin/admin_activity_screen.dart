@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../core/services/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_utils.dart';
 
@@ -11,7 +11,7 @@ class AdminActivityScreen extends StatefulWidget {
 }
 
 class _AdminActivityScreenState extends State<AdminActivityScreen> {
-  final supabase = Supabase.instance.client;
+  final ApiClient _apiClient = ApiClient();
   bool _isLoading = true;
   List<Map<String, dynamic>> _activities = [];
   List<Map<String, dynamic>> _businessesList = [];
@@ -45,8 +45,8 @@ class _AdminActivityScreenState extends State<AdminActivityScreen> {
 
   Future<void> _loadBusinesses() async {
     try {
-      final response = await supabase.from('businesses').select('id, name').order('name');
-      if (mounted) {
+      final response = await _apiClient.get('businesses', queryParams: {'all': 'true'});
+      if (mounted && response is List) {
         setState(() {
           _businessesList = List<Map<String, dynamic>>.from(response);
         });
@@ -54,6 +54,20 @@ class _AdminActivityScreenState extends State<AdminActivityScreen> {
     } catch (e) {
       debugPrint('Error loading businesses: $e');
     }
+  }
+
+  (String?, String?) _getDateFilterRange() {
+    final startOfDayUtc = EcuadorDateUtils.getStartOfDayEcuadorUtc();
+    if (_selectedFilter == 'today') {
+      return (startOfDayUtc.toIso8601String(), null);
+    } else if (_selectedFilter == 'week') {
+      final startOfWeek = startOfDayUtc.subtract(const Duration(days: 7));
+      return (startOfWeek.toIso8601String(), null);
+    } else if (_selectedFilter == 'month') {
+      final startOfMonth = startOfDayUtc.subtract(const Duration(days: 30));
+      return (startOfMonth.toIso8601String(), null);
+    }
+    return (null, null);
   }
 
   Future<void> _loadActivity() async {
@@ -64,39 +78,29 @@ class _AdminActivityScreenState extends State<AdminActivityScreen> {
       _activities = [];
     });
     try {
-      var scansQuery = supabase.from('scans').select('''
-            id, scanned_at, status, is_demo, qr_code_id,
-            profiles:user_id (full_name, email),
-            businesses:business_id (name)
-          ''');
+      final (startDate, endDate) = _getDateFilterRange();
+      final queryParams = <String, String>{
+        'limit': '$_pageSize',
+      };
+      if (startDate != null) queryParams['startDate'] = startDate;
+      if (endDate != null) queryParams['endDate'] = endDate;
+      if (_selectedBusinessId != 'all') queryParams['businessId'] = _selectedBusinessId;
 
-      final startOfDayUtc = EcuadorDateUtils.getStartOfDayEcuadorUtc();
-      
-      if (_selectedFilter == 'today') {
-        scansQuery = scansQuery.gte('scanned_at', startOfDayUtc.toIso8601String());
-      } else if (_selectedFilter == 'week') {
-        final startOfWeek = startOfDayUtc.subtract(const Duration(days: 7));
-        scansQuery = scansQuery.gte('scanned_at', startOfWeek.toIso8601String());
-      } else if (_selectedFilter == 'month') {
-        final startOfMonth = startOfDayUtc.subtract(const Duration(days: 30));
-        scansQuery = scansQuery.gte('scanned_at', startOfMonth.toIso8601String());
-      }
-
-      if (_selectedBusinessId != 'all') {
-        scansQuery = scansQuery.eq('business_id', _selectedBusinessId);
-      }
-
-      final scansResponse = await scansQuery
-          .order('scanned_at', ascending: false)
-          .range(0, _pageSize - 1);
+      final response = await _apiClient.get('admin/activity', queryParams: queryParams);
+      final list = response is List ? List<Map<String, dynamic>>.from(response) : <Map<String, dynamic>>[];
 
       List<Map<String, dynamic>> combined = [];
-      for (var s in scansResponse) {
-         combined.add({
-            'type': 'scan',
-            'date': s['scanned_at'],
-            ...s
-         });
+      for (var s in list) {
+        combined.add({
+          'type': 'scan',
+          'date': s['scannedAt'] ?? s['scanned_at'],
+          'profiles': s['user'] ?? s['profiles'] ?? {},
+          'businesses': s['business'] ?? s['businesses'] ?? {},
+          'status': s['status'],
+          'is_demo': s['isDemo'] ?? s['is_demo'] ?? false,
+          'qr_code_id': s['qrCodeId'] ?? s['qr_code_id'],
+          ...s,
+        });
       }
 
       if (mounted) {
@@ -118,48 +122,37 @@ class _AdminActivityScreenState extends State<AdminActivityScreen> {
     setState(() => _isFetchingMore = true);
     try {
       _currentPage++;
-      final startIndex = _currentPage * _pageSize;
-      final endIndex = startIndex + _pageSize - 1;
+      final totalToFetch = (_currentPage + 1) * _pageSize;
 
-      var scansQuery = supabase.from('scans').select('''
-            id, scanned_at, status, is_demo, qr_code_id,
-            profiles:user_id (full_name, email),
-            businesses:business_id (name)
-          ''');
+      final (startDate, endDate) = _getDateFilterRange();
+      final queryParams = <String, String>{
+        'limit': '$totalToFetch',
+      };
+      if (startDate != null) queryParams['startDate'] = startDate;
+      if (endDate != null) queryParams['endDate'] = endDate;
+      if (_selectedBusinessId != 'all') queryParams['businessId'] = _selectedBusinessId;
 
-      final startOfDayUtc = EcuadorDateUtils.getStartOfDayEcuadorUtc();
-      
-      if (_selectedFilter == 'today') {
-        scansQuery = scansQuery.gte('scanned_at', startOfDayUtc.toIso8601String());
-      } else if (_selectedFilter == 'week') {
-        final startOfWeek = startOfDayUtc.subtract(const Duration(days: 7));
-        scansQuery = scansQuery.gte('scanned_at', startOfWeek.toIso8601String());
-      } else if (_selectedFilter == 'month') {
-        final startOfMonth = startOfDayUtc.subtract(const Duration(days: 30));
-        scansQuery = scansQuery.gte('scanned_at', startOfMonth.toIso8601String());
-      }
+      final response = await _apiClient.get('admin/activity', queryParams: queryParams);
+      final list = response is List ? List<Map<String, dynamic>>.from(response) : <Map<String, dynamic>>[];
 
-      if (_selectedBusinessId != 'all') {
-        scansQuery = scansQuery.eq('business_id', _selectedBusinessId);
-      }
-
-      final scansResponse = await scansQuery
-          .order('scanned_at', ascending: false)
-          .range(startIndex, endIndex);
-
-      List<Map<String, dynamic>> newItems = [];
-      for (var s in scansResponse) {
-         newItems.add({
-            'type': 'scan',
-            'date': s['scanned_at'],
-            ...s
-         });
+      List<Map<String, dynamic>> allItems = [];
+      for (var s in list) {
+        allItems.add({
+          'type': 'scan',
+          'date': s['scannedAt'] ?? s['scanned_at'],
+          'profiles': s['user'] ?? s['profiles'] ?? {},
+          'businesses': s['business'] ?? s['businesses'] ?? {},
+          'status': s['status'],
+          'is_demo': s['isDemo'] ?? s['is_demo'] ?? false,
+          'qr_code_id': s['qrCodeId'] ?? s['qr_code_id'],
+          ...s,
+        });
       }
 
       if (mounted) {
         setState(() {
-          _activities.addAll(newItems);
-          _hasMore = newItems.length == _pageSize;
+          _activities = allItems;
+          _hasMore = list.length == totalToFetch;
           _isFetchingMore = false;
         });
       }

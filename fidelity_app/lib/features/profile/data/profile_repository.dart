@@ -1,23 +1,29 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../core/providers/supabase_provider.dart';
+import '../../../core/services/api_client.dart';
 
 final profileRepositoryProvider = Provider<ProfileRepository>((ref) {
-  return ProfileRepository(ref.watch(supabaseClientProvider));
+  return ProfileRepository();
 });
 
 class ProfileRepository {
-  final SupabaseClient _supabase;
+  final ApiClient _api = ApiClient();
 
-  ProfileRepository(this._supabase);
+  ProfileRepository();
 
   Future<Map<String, dynamic>?> getProfile(String userId) async {
     try {
-      return await _supabase
-          .from('profiles')
-          .select()
-          .eq('id', userId)
-          .single();
+      final response = await _api.get('users/profile/$userId');
+      if (response is Map<String, dynamic>) {
+        return {
+          'id': response['id'],
+          'full_name': response['fullName'] ?? response['full_name'],
+          'email': response['email'],
+          'phone': response['phone'],
+          'avatar_url': response['avatarUrl'] ?? response['avatar_url'],
+          'role': response['role'] ?? 'client',
+        };
+      }
+      return null;
     } catch (e) {
       return null;
     }
@@ -28,9 +34,9 @@ class ProfileRepository {
     required String fullName,
     required String phone,
   }) async {
-    await _supabase.from('profiles').update({
-      'full_name': fullName,
-      'phone': phone,
-    }).eq('id', userId);
+    await _api.put('users/profile', body: {
+      'fullName': fullName.trim(),
+      'phone': phone.trim(),
+    });
   }
 }

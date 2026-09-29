@@ -3,10 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:confetti/confetti.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../scanner/scanner_screen.dart';
 import 'card_history_screen.dart';
 import '../profile/user_profile_screen.dart';
+import '../auth/data/auth_repository.dart';
+import '../../core/services/api_client.dart';
 import '../../core/theme/app_theme.dart';
 import 'providers/my_cards_provider.dart';
 import 'dart:async';
@@ -92,18 +93,19 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
 
   void _checkWelcomeMessage() async {
     if (_welcomeShown) return;
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = ref.read(authRepositoryProvider).currentUser;
     if (user != null) {
-      final hasSeen = user.userMetadata?['has_seen_welcome'] == true;
+      final hasSeen = user.raw['has_seen_welcome'] == true ||
+          user.userMetadata?['has_seen_welcome'] == true;
       if (!hasSeen) {
         _welcomeShown = true;
         if (mounted) {
           _showWelcomeDialog();
         }
         try {
-          await Supabase.instance.client.auth.updateUser(
-            UserAttributes(data: {'has_seen_welcome': true}),
-          );
+          final current = Map<String, dynamic>.from(user.raw);
+          current['has_seen_welcome'] = true;
+          await ApiClient().updateUser(current);
         } catch (_) {}
       }
     }

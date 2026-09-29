@@ -1,104 +1,62 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../core/services/api_client.dart';
 
 class MyCardsRepository {
-  final SupabaseClient _supabase;
+  final ApiClient _api = ApiClient();
 
-  MyCardsRepository({SupabaseClient? supabase})
-      : _supabase = supabase ?? Supabase.instance.client;
+  MyCardsRepository();
 
-  String get currentUserId => _supabase.auth.currentUser!.id;
+  String get currentUserId => _api.currentUser?['id']?.toString() ?? '';
 
   Future<Map<String, dynamic>?> getUserProfile() async {
-    final userId = currentUserId;
-    return await _supabase
-        .from('profiles')
-        .select('full_name, avatar_url')
-        .eq('id', userId)
-        .maybeSingle();
+    try {
+      final response = await _api.get('users/profile');
+      if (response is Map<String, dynamic>) {
+        return {
+          'full_name': response['fullName'] ?? response['full_name'] ?? '',
+          'avatar_url': response['avatarUrl'] ?? response['avatar_url'],
+          'email': response['email'],
+          'phone': response['phone'],
+        };
+      }
+    } catch (_) {}
+    return null;
   }
 
   Future<List<Map<String, dynamic>>> getLoyaltyCards() async {
-    final userId = currentUserId;
-    final response = await _supabase
-        .from('loyalty_cards')
-        .select('''
-          *,
-          businesses!inner(
-            id,
-            name,
-            category_id,
-            business_categories(name),
-            reward_description,
-            reward_long_description,
-            points_required,
-            logo_url
-          ),
-          rewards(id, status, earned_at)
-        ''')
-        .eq('user_id', userId)
-        .order('last_scan_at', ascending: false, nullsFirst: false)
-        .order('updated_at', ascending: false);
+    final response = await _api.get('loyalty-cards/my-cards');
+    if (response is! List) return [];
 
-    final all = List<Map<String, dynamic>>.from(response);
+    final cards = response.map((item) {
+      final raw = Map<String, dynamic>.from(item as Map);
+      final business = raw['business'] as Map<String, dynamic>? ?? {};
+      final category = business['categoryRef'] as Map<String, dynamic>? ?? {};
 
-    // Tarjetas con un escaneo PENDIENTE de aprobación (recién escaneado).
-    // El escaneo no actualiza last_scan_at, así que sin esto la tarjeta
-    // recién escaneada cae al fondo. La subimos al tope.
-    final pendingScansResp = await _supabase
-        .from('scans')
-        .select('loyalty_card_id')
-        .eq('user_id', userId)
-        .eq('status', 'pending');
-    final pendingScanCardIds = <String>{};
-    for (final s in (pendingScansResp as List)) {
-      final id = s['loyalty_card_id'];
-      if (id != null) pendingScanCardIds.add(id as String);
-    }
-    bool hasPendingScan(Map<String, dynamic> c) =>
-        pendingScanCardIds.contains(c['id']);
-
-    // Orden por prioridad (partición estable, preserva el orden dentro del grupo):
-    //   1) escaneo pendiente de aprobación (recién escaneado)
-    //   2) premio ganado sin entregar
-    //   3) resto (por last_scan_at)
-    final group1 = all.where(hasPendingScan).toList();
-    final group2 = all
-        .where((c) => !hasPendingScan(c) && _hasUnclaimedReward(c))
-        .toList();
-    final group3 = all
-        .where((c) => !hasPendingScan(c) && !_hasUnclaimedReward(c))
-        .toList();
-    return [...group1, ...group2, ...group3];
-  }
-
-  bool _hasUnclaimedReward(Map<String, dynamic> card) {
-    final rewards = (card['rewards'] as List?) ?? const [];
-    // Solo 'pending': el premio fue ganado pero el local todavía no lo entregó.
-    // 'approved' significa ENTREGADO, así que ya no es un premio por reclamar.
-    return rewards.any((r) => (r as Map)['status'] == 'pending');
-  }
-
-  RealtimeChannel setupRealtimeSubscription({
-    required void Function(Map<String, dynamic> newData, Map<String, dynamic> oldData) onCardUpdated,
-  }) {
-    final userId = currentUserId;
-    return _supabase
-        .channel('public:loyalty_cards_client')
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'loyalty_cards',
-          filter: PostgresChangeFilter(
-            type: PostgresChangeFilterType.eq,
-            column: 'user_id',
-            value: userId,
-          ),
-          callback: (payload) {
-            final newData = payload.newRecord;
-            final oldData = payload.oldRecord;
-            onCardUpdated(newData, oldData);
+      return {
+        'id': raw['id'],
+        'user_id': raw['userId'] ?? raw['user_id'],
+        'business_id': raw['businessId'] ?? raw['business_id'],
+        'current_points': raw['currentPoints'] ?? raw['current_points'] ?? 0,
+        'total_points_lifetime': raw['totalPointsLifetime'] ?? raw['total_points_lifetime'] ?? 0,
+        'rewards_claimed': raw['rewardsClaimed'] ?? raw['rewards_claimed'] ?? 0,
+        'last_scan_at': raw['lastScanAt'] ?? raw['last_scan_at'],
+        'created_at': raw['createdAt'] ?? raw['created_at'],
+        'updated_at': raw['updatedAt'] ?? raw['updated_at'],
+        'businesses': {
+          'id': business['id'],
+          'name': business['name'],
+          'category_id': business['categoryId'] ?? business['category_id'],
+          'business_categories': {
+            'name': category['name'] ?? '',
           },
-        )
-        .subscribe();
+          'reward_description': business['rewardDescription'] ?? business['reward_description'] ?? '',
+          'reward_long_description': business['rewardLongDescription'] ?? business['reward_long_description'] ?? '',
+          'points_required': business['pointsRequired'] ?? business['points_required'] ?? 10,
+          'logo_url': business['logoUrl'] ?? business['logo_url'],
+        },
+        'rewards': raw['rewards'] ?? [],
+      };
+    }).toList();
+
+    return cards;
   }
 }

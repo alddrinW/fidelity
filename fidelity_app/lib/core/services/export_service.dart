@@ -13,7 +13,7 @@ abstract class ExportService {
   Future<void> shareCsv(String csvContent, String filename);
 }
 
-class SupabaseExportService implements ExportService {
+class AppExportService implements ExportService {
   static const int _maxRows = 5000;
 
   @override

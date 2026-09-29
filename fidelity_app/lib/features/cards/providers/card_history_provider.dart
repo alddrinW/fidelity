@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/providers/supabase_provider.dart';
 import '../../../core/services/reward_transfer_service.dart';
 import '../data/card_history_repository.dart';
 
@@ -111,8 +110,7 @@ class CardHistoryNotifier extends Notifier<CardHistoryState> {
     );
 
     try {
-      final supabase = ref.read(supabaseClientProvider);
-      final transferService = RewardTransferService(supabase);
+      final transferService = RewardTransferService();
 
       final user = await transferService.findUserByEmail(email);
 

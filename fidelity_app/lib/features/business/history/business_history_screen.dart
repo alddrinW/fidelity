@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/utils/date_utils.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../core/services/api_client.dart';
 
 class BusinessHistoryScreen extends StatefulWidget {
   final String businessId;
@@ -13,7 +13,6 @@ class BusinessHistoryScreen extends StatefulWidget {
 }
 
 class _BusinessHistoryScreenState extends State<BusinessHistoryScreen> {
-  final supabase = Supabase.instance.client;
   List<Map<String, dynamic>> _scans = [];
   List<Map<String, dynamic>> _rewards = [];
   List<Map<String, dynamic>> _transfers = [];
@@ -30,65 +29,54 @@ class _BusinessHistoryScreenState extends State<BusinessHistoryScreen> {
     setState(() => _isLoading = true);
 
     try {
-      var scansQuery = supabase
-          .from('scans')
-          .select('*, profiles!inner(full_name)')
-          .eq('business_id', widget.businessId)
-          .eq('status', 'approved');
+      final results = await Future.wait([
+        ApiClient().get('scans/business/${widget.businessId}', queryParams: {'status': 'approved'}),
+        ApiClient().get('rewards/business/${widget.businessId}'),
+        ApiClient().get('rewards/transfers', queryParams: {'businessId': widget.businessId}),
+      ]);
 
-      var rewardsQuery = supabase
-          .from('rewards')
-          .select('*, description, profiles!inner(full_name)')
-          .eq('business_id', widget.businessId);
-
-      var transfersQuery = supabase
-          .from('reward_transfer_history')
-          .select('*, from_user:from_user_id(full_name), to_user:to_user_id(full_name), rewards(points_used)')
-          .eq('business_id', widget.businessId);
+      var rawScans = results[0] is List ? List<Map<String, dynamic>>.from(results[0] as List) : <Map<String, dynamic>>[];
+      var rawRewards = results[1] is List ? List<Map<String, dynamic>>.from(results[1] as List) : <Map<String, dynamic>>[];
+      var rawTransfers = results[2] is List ? List<Map<String, dynamic>>.from(results[2] as List) : <Map<String, dynamic>>[];
 
       if (_dateRange != null) {
-        final start = _dateRange!.start.toUtc().toIso8601String();
-        final end = _dateRange!.end.add(const Duration(days: 1)).toUtc().toIso8601String();
+        final start = _dateRange!.start;
+        final end = _dateRange!.end.add(const Duration(days: 1));
 
-        final sQ = scansQuery.gte('scanned_at', start).lt('scanned_at', end);
-        final rQ = rewardsQuery.gte('earned_at', start).lt('earned_at', end);
-        final tQ = transfersQuery.gte('created_at', start).lt('created_at', end);
+        rawScans = rawScans.where((s) {
+          final dtStr = s['scannedAt'] ?? s['scanned_at'];
+          if (dtStr == null) return false;
+          final dt = DateTime.tryParse(dtStr.toString())?.toLocal();
+          return dt != null && dt.isAfter(start) && dt.isBefore(end);
+        }).toList();
 
-        final scansResponse = await sQ.order('scanned_at', ascending: false);
-        final rewardsResponse = await rQ.order('earned_at', ascending: false);
-        final transfersResponse = await tQ.order('created_at', ascending: false);
+        rawRewards = rawRewards.where((r) {
+          final dtStr = r['earnedAt'] ?? r['earned_at'];
+          if (dtStr == null) return false;
+          final dt = DateTime.tryParse(dtStr.toString())?.toLocal();
+          return dt != null && dt.isAfter(start) && dt.isBefore(end);
+        }).toList();
 
-        if (mounted) {
-          setState(() {
-            _scans = List<Map<String, dynamic>>.from(scansResponse);
-            _rewards = List<Map<String, dynamic>>.from(rewardsResponse);
-            _transfers = List<Map<String, dynamic>>.from(transfersResponse);
-            _isLoading = false;
-          });
-        }
-      } else {
-        final scansResponse = await scansQuery.order('scanned_at', ascending: false);
-        final rewardsResponse = await rewardsQuery.order('earned_at', ascending: false);
-        final transfersResponse = await transfersQuery.order('created_at', ascending: false);
+        rawTransfers = rawTransfers.where((t) {
+          final dtStr = t['transferredAt'] ?? t['created_at'];
+          if (dtStr == null) return false;
+          final dt = DateTime.tryParse(dtStr.toString())?.toLocal();
+          return dt != null && dt.isAfter(start) && dt.isBefore(end);
+        }).toList();
+      }
 
-        if (mounted) {
-          setState(() {
-            _scans = List<Map<String, dynamic>>.from(scansResponse);
-            _rewards = List<Map<String, dynamic>>.from(rewardsResponse);
-            _transfers = List<Map<String, dynamic>>.from(transfersResponse);
-            _isLoading = false;
-          });
-        }
+      if (mounted) {
+        setState(() {
+          _scans = rawScans;
+          _rewards = rawRewards;
+          _transfers = rawTransfers;
+          _isLoading = false;
+        });
       }
     } catch (e) {
       if (mounted) {
         setState(() => _isLoading = false);
-        // Silenciar error de tabla no existente temporalmente si el admin no ha pusheado la migracion
-        if (e.toString().contains('relation "public.reward_transfers" does not exist')) {
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Aviso: La tabla de transferencias aún no está disponible.')));
-        } else {
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: ')));
-        }
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error al cargar historial: $e')));
       }
     }
   }
@@ -162,11 +150,12 @@ class _BusinessHistoryScreenState extends State<BusinessHistoryScreen> {
       itemCount: _scans.length,
       itemBuilder: (context, index) {
         final scan = _scans[index];
-        final profileName = scan['profiles']['full_name'] ?? 'Usuario';
+        final profileName = scan['user']?['fullName'] ?? scan['profiles']?['full_name'] ?? 'Usuario';
+        final dateStr = scan['scannedAt'] ?? scan['scanned_at'] ?? '';
         return ListTile(
           leading: const Icon(Icons.check_circle, color: Colors.green),
           title: Text(profileName, style: const TextStyle(fontWeight: FontWeight.bold)),
-          subtitle: Text(EcuadorDateUtils.formatEcuadorTime(scan['scanned_at'])),
+          subtitle: Text(EcuadorDateUtils.formatEcuadorTime(dateStr)),
           trailing: const Text('+1 Punto', style: TextStyle(color: Colors.green, fontWeight: FontWeight.bold)),
         );
       },
@@ -179,7 +168,8 @@ class _BusinessHistoryScreenState extends State<BusinessHistoryScreen> {
       itemCount: _rewards.length,
       itemBuilder: (context, index) {
         final reward = _rewards[index];
-        final profileName = reward['profiles']['full_name'] ?? 'Usuario';
+        final profileName = reward['user']?['fullName'] ?? reward['profiles']?['full_name'] ?? 'Usuario';
+        final dateStr = reward['earnedAt'] ?? reward['earned_at'] ?? '';
         return ListTile(
           leading: const Icon(Icons.card_giftcard, color: AppTheme.accentPurple),
           title: Text(profileName, style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -187,10 +177,10 @@ class _BusinessHistoryScreenState extends State<BusinessHistoryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(reward['description'] ?? 'Premio', style: const TextStyle(color: AppTheme.accentPurple, fontWeight: FontWeight.w600)),
-              Text(EcuadorDateUtils.formatEcuadorTime(reward['earned_at'])),
+              Text(EcuadorDateUtils.formatEcuadorTime(dateStr)),
             ],
           ),
-          trailing: Text('-\ Pts', style: const TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+          trailing: const Text('- Pts', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
         );
       },
     );
@@ -202,9 +192,10 @@ class _BusinessHistoryScreenState extends State<BusinessHistoryScreen> {
       itemCount: _transfers.length,
       itemBuilder: (context, index) {
         final transfer = _transfers[index];
-        final fromName = transfer['from_user']?['full_name'] ?? 'Alguien';
-        final toName = transfer['to_user']?['full_name'] ?? 'Alguien';
-        final pts = transfer['rewards']?['points_used'] ?? '?';
+        final fromName = transfer['fromUser']?['fullName'] ?? transfer['from_user']?['full_name'] ?? 'Alguien';
+        final toName = transfer['toUser']?['fullName'] ?? transfer['to_user']?['full_name'] ?? 'Alguien';
+        final pts = transfer['reward']?['pointsRequired'] ?? transfer['rewards']?['points_used'] ?? '';
+        final dateStr = transfer['transferredAt'] ?? transfer['created_at'] ?? '';
         return ListTile(
           leading: const Icon(Icons.swap_horiz_rounded, color: Colors.blue),
           title: Text('$fromName -> $toName', style: const TextStyle(fontWeight: FontWeight.bold)),
@@ -212,7 +203,7 @@ class _BusinessHistoryScreenState extends State<BusinessHistoryScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('Premio transferido', style: TextStyle(color: Colors.blue, fontWeight: FontWeight.w600)),
-              Text(EcuadorDateUtils.formatEcuadorTime(transfer['created_at'])),
+              Text(EcuadorDateUtils.formatEcuadorTime(dateStr)),
             ],
           ),
           trailing: Text('$pts Pts', style: const TextStyle(color: Colors.black54, fontWeight: FontWeight.bold)),

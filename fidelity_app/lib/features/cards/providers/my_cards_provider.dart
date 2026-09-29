@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../data/my_cards_repository.dart';
+import '../../../core/services/realtime_sync_service.dart';
 
 final myCardsRepositoryProvider = Provider<MyCardsRepository>((ref) {
   return MyCardsRepository();
@@ -38,7 +38,7 @@ class MyCardsState {
       cards: cards ?? this.cards,
       userName: userName ?? this.userName,
       avatarUrl: avatarUrl ?? this.avatarUrl,
-      error: error, // Clear error if not provided
+      error: error,
       sessionLastViewedAt: sessionLastViewedAt ?? this.sessionLastViewedAt,
     );
   }
@@ -46,14 +46,12 @@ class MyCardsState {
 
 class MyCardsNotifier extends Notifier<MyCardsState> {
   late MyCardsRepository _repository;
-  RealtimeChannel? _cardsChannel;
+  StreamSubscription? _cardsSub;
+  StreamSubscription? _scansSub;
 
-  // We use events to notify the UI of celebrations or points
   void Function()? onCardCompleted;
   void Function()? onPointEarned;
 
-  // Debounce: varios eventos realtime (loyalty_cards + rewards + scans) por una
-  // misma acción se agrupan en un solo refresco.
   Timer? _refreshDebounce;
 
   @override
@@ -63,13 +61,13 @@ class MyCardsNotifier extends Notifier<MyCardsState> {
 
     ref.onDispose(() {
       _refreshDebounce?.cancel();
-      _cardsChannel?.unsubscribe();
+      _cardsSub?.cancel();
+      _scansSub?.cancel();
     });
 
     return MyCardsState();
   }
 
-  /// Agrupa múltiples pedidos de refresco en uno solo (trailing debounce).
   void scheduleRefresh() {
     _refreshDebounce?.cancel();
     _refreshDebounce = Timer(const Duration(milliseconds: 350), () {
@@ -103,7 +101,6 @@ class MyCardsNotifier extends Notifier<MyCardsState> {
 
       _setupRealtimeSubscription();
       
-      // Update shared preferences for the NEXT time they open the app
       await prefs.setString('cards_last_viewed_at', DateTime.now().toUtc().toIso8601String());
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
@@ -116,8 +113,6 @@ class MyCardsNotifier extends Notifier<MyCardsState> {
     }
     try {
       final cards = await _repository.getLoyaltyCards();
-      
-      // Also refresh profile silently
       final profile = await _repository.getUserProfile();
       final String userName = profile?['full_name'] ?? state.userName;
       final String? avatarUrl = profile?['avatar_url'] ?? state.avatarUrl;
@@ -136,36 +131,21 @@ class MyCardsNotifier extends Notifier<MyCardsState> {
   }
 
   void _setupRealtimeSubscription() {
-    if (_cardsChannel != null) return;
+    _cardsSub?.cancel();
+    _scansSub?.cancel();
 
-    _cardsChannel = _repository.setupRealtimeSubscription(
-      onCardUpdated: (newData, oldData) {
-        final newClaimed = (newData['rewards_claimed'] as int?) ?? 0;
-        final oldClaimed = (oldData['rewards_claimed'] as int?) ?? 0;
-        
-        final newPoints = (newData['current_points'] as int?) ?? 0;
-        final oldPoints = (oldData['current_points'] as int?) ?? 0;
+    _cardsSub = RealtimeSyncService().onLoyaltyCardsChanged.listen((newData) {
+      if (newData == null) return;
+      scheduleRefresh();
+    });
 
-        final cardId = newData['id'];
-        final existingCard = state.cards.firstWhere((c) => c['id'] == cardId, orElse: () => <String, dynamic>{});
-        final business = existingCard['businesses'] as Map<String, dynamic>?;
-        final requiredPoints = business?['points_required'] as int? ?? 0;
-
-        if (newPoints > oldPoints && newPoints >= requiredPoints && requiredPoints > 0) {
-          onCardCompleted?.call();
-        } else if (newPoints > oldPoints) {
-          onPointEarned?.call();
-        } else if (newClaimed > oldClaimed) {
-          // You could optionally add an onRewardClaimed callback here if needed later
-        }
-
-        scheduleRefresh();
-      },
-    );
+    _scansSub = RealtimeSyncService().onScansChanged.listen((newData) {
+      if (newData == null) return;
+      scheduleRefresh();
+    });
   }
 }
 
 final myCardsProvider = NotifierProvider<MyCardsNotifier, MyCardsState>(() {
   return MyCardsNotifier();
 });
-

@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'dart:async';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/services/api_client.dart';
 import '../../core/services/realtime_sync_service.dart';
 import 'admin_user_rewards_detail_screen.dart';
 
@@ -16,7 +15,6 @@ class AdminRewardsScreen extends StatefulWidget {
 }
 
 class _AdminRewardsScreenState extends State<AdminRewardsScreen> {
-  final supabase = Supabase.instance.client;
   bool _isLoading = true;
   List<Map<String, dynamic>> _rewards = [];
   List<Map<String, dynamic>> _businessesList = [];
@@ -53,11 +51,8 @@ class _AdminRewardsScreenState extends State<AdminRewardsScreen> {
 
   Future<void> _loadBusinesses() async {
     try {
-      final response = await supabase
-          .from('businesses')
-          .select('id, name')
-          .order('name');
-      if (mounted) {
+      final response = await ApiClient().get('businesses', queryParams: {'all': 'true'});
+      if (mounted && response is List) {
         setState(() {
           _businessesList = List<Map<String, dynamic>>.from(response);
         });
@@ -72,83 +67,62 @@ class _AdminRewardsScreenState extends State<AdminRewardsScreen> {
   Future<void> _loadRewards() async {
     setState(() => _isLoading = true);
     try {
-      var query = supabase.from('rewards').select('''
-            id,
-            points_used,
-            earned_at,
-            user_id,
-            businesses (name, reward_description, points_required),
-            loyalty_cards (
-              profiles (id, full_name, email)
-            )
-          ''');
-
-      // Filter logic
       final startOfDayUtc = EcuadorDateUtils.getStartOfDayEcuadorUtc();
+      String? startDate;
       
       if (_selectedFilter == 'today') {
-        query = query.gte('earned_at', startOfDayUtc.toIso8601String());
+        startDate = startOfDayUtc.toIso8601String();
       } else if (_selectedFilter == 'week') {
-        final startOfWeek = startOfDayUtc.subtract(const Duration(days: 7));
-        query = query.gte('earned_at', startOfWeek.toIso8601String());
+        startDate = startOfDayUtc.subtract(const Duration(days: 7)).toIso8601String();
       } else if (_selectedFilter == 'month') {
-        final startOfMonth = startOfDayUtc.subtract(const Duration(days: 30));
-        query = query.gte('earned_at', startOfMonth.toIso8601String());
+        startDate = startOfDayUtc.subtract(const Duration(days: 30)).toIso8601String();
       }
 
-      if (_selectedBusinessId != 'all') {
-        query = query.eq('business_id', _selectedBusinessId);
-      }
+      final rewardsRaw = await ApiClient().get('admin/rewards', queryParams: {
+        if (_selectedBusinessId != 'all') 'businessId': _selectedBusinessId,
+        if (startDate != null) 'startDate': startDate,
+      });
 
-      final response = await query
-          .order('earned_at', ascending: false)
-          .limit(500); // Expanded limit for grouping
+      final transfersRaw = await ApiClient().get('rewards/transfers');
 
-      final transfersResponse = await supabase.from('reward_transfer_history').select('''
-        *,
-        from_user:from_user_id(full_name, email),
-        to_user:to_user_id(full_name, email),
-        businesses(name),
-        rewards(points_used)
-      ''').order('transferred_at', ascending: false);
-
-      final transfers = List<Map<String, dynamic>>.from(transfersResponse);
+      final response = rewardsRaw is List ? List<Map<String, dynamic>>.from(rewardsRaw) : <Map<String, dynamic>>[];
+      final transfers = transfersRaw is List ? List<Map<String, dynamic>>.from(transfersRaw) : <Map<String, dynamic>>[];
 
       // Agrupar por usuario original (el que ganó el premio)
       Map<String, Map<String, dynamic>> userGroups = {};
 
       for (var reward in response) {
         final rewardId = reward['id'];
-        final business = reward['businesses'] ?? {};
+        final business = (reward['business'] ?? reward['businesses']) as Map<String, dynamic>? ?? {};
         
         // Buscar si este premio fue transferido
-        final transferInfo = transfers.where((t) => t['reward_id'] == rewardId).toList();
+        final transferInfo = transfers.where((t) => (t['rewardId'] ?? t['reward_id']) == rewardId).toList();
         
         bool isTransferred = transferInfo.isNotEmpty;
-        String originalUserId = reward['user_id'];
-        Map<String, dynamic> originalProfile = reward['loyalty_cards']?['profiles'] ?? {};
+        String originalUserId = (reward['userId'] ?? reward['user_id'])?.toString() ?? '';
+        final userObj = (reward['user'] ?? reward['profiles']) as Map<String, dynamic>? ?? {};
+        Map<String, dynamic> originalProfile = {
+          'id': userObj['id'] ?? originalUserId,
+          'full_name': userObj['fullName'] ?? userObj['full_name'],
+          'email': userObj['email'],
+        };
 
         String? transferredToId;
         String? transferredAt;
         
         if (isTransferred) {
-          // Si fue transferido, el dueño actual en 'rewards' es el destinatario.
-          // El remitente original es el 'from_user_id' del primer transfer (asumiendo 1 transfer)
           final firstTransfer = transferInfo.first;
-          originalUserId = firstTransfer['from_user_id'];
-          transferredToId = firstTransfer['to_user_id'];
-          transferredAt = firstTransfer['transferred_at'];
+          originalUserId = (firstTransfer['fromUserId'] ?? firstTransfer['from_user_id'])?.toString() ?? originalUserId;
+          transferredToId = (firstTransfer['toUserId'] ?? firstTransfer['to_user_id'])?.toString();
+          transferredAt = (firstTransfer['transferredAt'] ?? firstTransfer['transferred_at'])?.toString();
           
-          // No tenemos el profile del remitente original en esta query si miramos 'loyalty_cards',
-          // porque loyalty_cards apunta al destinatario. 
-          // Para simplificar y no hacer N queries, usaremos "Usuario Transferidor" si no lo tenemos.
-          // Nota: lo ideal sería buscar el perfil original, pero por ahora mostramos ID si falta.
-          if (originalProfile['id'] != originalUserId) {
-             originalProfile = {
-               'id': originalUserId,
-               'full_name': 'Usuario (Remitente)',
-               'email': 'Transferencia'
-             };
+          final fromUser = firstTransfer['fromUser'] as Map<String, dynamic>?;
+          if (fromUser != null) {
+            originalProfile = {
+              'id': originalUserId,
+              'full_name': fromUser['fullName'] ?? fromUser['full_name'] ?? 'Usuario (Remitente)',
+              'email': fromUser['email'] ?? 'Transferencia',
+            };
           }
         }
 
@@ -163,20 +137,20 @@ class _AdminRewardsScreenState extends State<AdminRewardsScreen> {
 
         userGroups[originalUserId]!['rewards'].add({
           'reward_id': rewardId,
-          'reward_description': business['reward_description'],
+          'reward_description': business['rewardDescription'] ?? business['reward_description'],
           'business_name': business['name'],
-          'points_used': reward['points_used'],
-          'points_required': business['points_required'],
-          'earned_at': reward['earned_at'],
+          'points_used': reward['pointsRequired'] ?? reward['points_used'] ?? business['pointsRequired'] ?? business['points_required'],
+          'points_required': business['pointsRequired'] ?? business['points_required'],
+          'earned_at': reward['earnedAt'] ?? reward['earned_at'],
           'transferred': isTransferred,
-          'transferred_to_name': transferredToId, // ID por ahora para no sobrecargar
+          'transferred_to_name': transferredToId,
           'transferred_at': transferredAt,
         });
       }
 
       if (mounted) {
         setState(() {
-          _rewards = List<Map<String, dynamic>>.from(response);
+          _rewards = response;
           _allTransfers = transfers;
           _userSummaries = userGroups.values.toList();
           // Sort by user name
@@ -191,11 +165,11 @@ class _AdminRewardsScreenState extends State<AdminRewardsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              'Error Supabase: $e',
+              'Error al cargar premios: $e',
               style: const TextStyle(fontSize: 12),
             ),
             backgroundColor: Colors.red,
-            duration: const Duration(seconds: 10),
+            duration: const Duration(seconds: 5),
           ),
         );
       }

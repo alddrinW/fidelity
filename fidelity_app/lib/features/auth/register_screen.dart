@@ -1,23 +1,23 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'login_screen.dart';
-import '../business/create_business_screen.dart';
 import '../../core/validators/app_validators.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/auth_error_translator.dart';
+import 'data/auth_repository.dart';
 
-class RegisterScreen extends StatefulWidget {
+class RegisterScreen extends ConsumerStatefulWidget {
   const RegisterScreen({super.key});
 
   @override
-  State<RegisterScreen> createState() => _RegisterScreenState();
+  ConsumerState<RegisterScreen> createState() => _RegisterScreenState();
 }
 
-class _RegisterScreenState extends State<RegisterScreen> {
+class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _isPasswordVisible = false;
@@ -30,8 +30,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _fullNameController = TextEditingController();
   final _phoneController = TextEditingController();
   XFile? _avatarFile;
-
-  final supabase = Supabase.instance.client;
 
   @override
   void dispose() {
@@ -49,67 +47,27 @@ class _RegisterScreenState extends State<RegisterScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final metadata = {
-        'role': _selectedRole,
-        'full_name': _fullNameController.text.trim(),
-      };
-      final authResponse = await supabase.auth.signUp(
+      final authRepo = ref.read(authRepositoryProvider);
+      await authRepo.signUp(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
-        data: metadata,
+        fullName: _fullNameController.text.trim(),
+        role: _selectedRole,
+        phone: _phoneController.text.trim(),
       );
-
-      if (authResponse.user == null) throw Exception('Error al crear usuario');
-
-      final userId = authResponse.user!.id;
-
-      // Subir Avatar si existe
-      String? avatarUrl;
-      if (_avatarFile != null) {
-        try {
-          final fileBytes = await _avatarFile!.readAsBytes();
-          final fileExt = _avatarFile!.name.split('.').last.toLowerCase();
-          final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-          final imagePath = '$userId/$fileName';
-
-          await supabase.storage.from('avatars').uploadBinary(
-            imagePath,
-            fileBytes,
-            fileOptions: const FileOptions(cacheControl: '3600', upsert: true),
-          );
-          avatarUrl = supabase.storage.from('avatars').getPublicUrl(imagePath);
-        } catch (e) {
-          debugPrint('Error uploading avatar: $e');
-        }
-      }
-
-      await supabase.from('profiles').upsert({
-        'id': userId,
-        'full_name': _fullNameController.text.trim(),
-        'email': _emailController.text.trim(),
-        'phone': _phoneController.text.trim(),
-        'avatar_url': avatarUrl,
-        'role': _selectedRole,
-        'updated_at': DateTime.now().toUtc().toIso8601String(),
-      });
 
       if (mounted) {
         _showSuccessToast();
-        if (authResponse.session == null) {
-          _showVerificationDialog();
-        } else {
-          // Si es cliente, cerramos la sesión para obligarlo a loguearse (como pidió el usuario)
-          // y evitar que MyCardsScreen lance el diálogo de bienvenida en el fondo.
-          if (_selectedRole == 'client') {
-            await supabase.auth.signOut();
-          }
-          
-          Future.delayed(1500.ms, () {
-            if (mounted) {
-              Navigator.of(context).popUntil((route) => route.isFirst);
-            }
-          });
+        // Si es cliente, cerramos la sesión para obligarlo a loguearse
+        if (_selectedRole == 'client') {
+          await authRepo.signOut();
         }
+        
+        Future.delayed(1500.ms, () {
+          if (mounted) {
+            Navigator.of(context).popUntil((route) => route.isFirst);
+          }
+        });
       }
     } catch (e) {
       if (mounted) {
@@ -144,11 +102,11 @@ class _RegisterScreenState extends State<RegisterScreen> {
               ),
             ],
           ),
-          child: Row(
+          child: const Row(
             children: [
-              const Icon(Icons.check_circle_outline, color: Colors.white),
-              const SizedBox(width: 12),
-              const Expanded(
+              Icon(Icons.check_circle_outline, color: Colors.white),
+              SizedBox(width: 12),
+              Expanded(
                 child: Text(
                   '¡CUENTA CREADA CON ÉXITO!',
                   style: TextStyle(
@@ -165,34 +123,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
         .animate()
         .fadeIn(duration: 400.ms)
         .slideY(begin: 0.5, end: 0, curve: Curves.easeOutBack),
-      ),
-    );
-  }
-
-  void _showVerificationDialog() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
-        title: const Text('¡Casi listo!', textAlign: TextAlign.center),
-        content: const Text(
-          'Te hemos enviado un correo de verificación. Por favor, confirma tu cuenta para continuar.',
-          textAlign: TextAlign.center,
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              },
-              child: const Text('Entendido'),
-            ),
-          ),
-        ],
       ),
     );
   }
@@ -214,7 +144,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Selector de Rol (Profesional)
+                // Selector de Rol
                 Row(
                   children: [
                     Expanded(
@@ -241,7 +171,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
                 const SizedBox(height: 32),
 
-                // Selector de Imagen (Solo para Clientes)
+                // Selector de Imagen
                 if (_selectedRole == 'client')
                   Center(
                     child: GestureDetector(

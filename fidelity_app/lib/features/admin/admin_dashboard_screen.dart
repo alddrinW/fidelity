@@ -1,11 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import 'package:url_launcher/url_launcher.dart';
-import '../../core/services/push_notification_service.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/theme/app_theme.dart';
-import '../auth/login_screen.dart';
+import '../../core/services/realtime_sync_service.dart';
 import 'admin_businesses_screen.dart';
 import 'admin_users_screen.dart';
 import 'admin_activity_screen.dart';
@@ -14,6 +11,8 @@ import 'admin_qr_stats_screen.dart';
 import 'admin_categories_screen.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/providers/auth_provider.dart';
+import 'data/admin_repository.dart';
+import 'dart:async';
 
 class AdminDashboardScreen extends ConsumerStatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -23,7 +22,7 @@ class AdminDashboardScreen extends ConsumerStatefulWidget {
 }
 
 class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
-  final supabase = Supabase.instance.client;
+  final _adminRepo = AdminRepository();
   bool _isLoading = true;
 
   // Metrics
@@ -35,7 +34,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   int _rejectedRewards = 0;
   int _pendingBusinessesCount = 0;
 
-  RealtimeChannel? _adminChannel;
+  StreamSubscription? _scansSub;
+  StreamSubscription? _rewardsSub;
 
   @override
   void initState() {
@@ -45,38 +45,12 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
   }
 
   void _setupRealtimeNotifications() {
-    _adminChannel = supabase.channel('public:admin_notifications')
-      ..onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'businesses',
-          callback: (payload) {
-            if (mounted) {
-              final newBusiness = payload.newRecord;
-              if (newBusiness['is_demo'] == false && newBusiness['is_active'] == false) {
-                _showNotification(
-                  'NUEVO NEGOCIO POR APROBAR',
-                  'El negocio "${newBusiness['name']}" se acaba de registrar y requiere activación.',
-                  logoUrl: newBusiness['logo_url'],
-                );
-                _loadMetrics();
-              }
-            }
-          })
-      ..onPostgresChanges(
-          event: PostgresChangeEvent.insert,
-          schema: 'public',
-          table: 'profiles',
-          callback: (payload) {
-            if (mounted) {
-              final newProfile = payload.newRecord;
-              if (newProfile['is_demo'] == false) {
-                _showNotification('NUEVO USUARIO REGISTRADO', 'El usuario "${newProfile['full_name'] ?? 'Sin nombre'}" se ha unido.');
-                _loadMetrics();
-              }
-            }
-          })
-      ..subscribe();
+    _scansSub = RealtimeSyncService().onScansChanged.listen((_) {
+      if (mounted) _loadMetrics();
+    });
+    _rewardsSub = RealtimeSyncService().onRewardsChanged.listen((_) {
+      if (mounted) _loadMetrics();
+    });
   }
 
   void _showNotification(String title, String message, {String? logoUrl}) {
@@ -146,89 +120,29 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
   @override
   void dispose() {
-    _adminChannel?.unsubscribe();
+    _scansSub?.cancel();
+    _rewardsSub?.cancel();
     super.dispose();
   }
 
   Future<void> _loadMetrics() async {
     setState(() => _isLoading = true);
     try {
-      // Load businesses count
-      final businessesResponse = await supabase
-          .from('businesses')
-          .select('id')
-          .eq('is_demo', false)
-          .count();
-
-      final pendingBusinessesResponse = await supabase
-          .from('businesses')
-          .select('id')
-          .eq('is_demo', false)
-          .eq('is_active', false)
-          .count();
-
-      // Load users count (Only clients)
-      final usersResponse = await supabase
-          .from('profiles')
-          .select('id')
-          .eq('role', 'client')
-          .eq('is_demo', false)
-          .count();
-
-      // Load scans count
-      final scansResponse = await supabase
-          .from('scans')
-          .select('id')
-          .eq('is_demo', false)
-          .count();
-      
-      // Load rewards counts
-      final rewardsResponse = await supabase
-          .from('rewards')
-          .select('id')
-          .eq('is_demo', false)
-          .count();
-      
-      final approvedRewardsResponse = await supabase
-          .from('rewards')
-          .select('id')
-          .eq('status', 'approved')
-          .eq('is_demo', false)
-          .count();
-          
-      final rejectedRewardsResponse = await supabase
-          .from('rewards')
-          .select('id')
-          .eq('status', 'rejected')
-          .eq('is_demo', false)
-          .count();
-
+      final stats = await _adminRepo.getDashboardStats();
       if (mounted) {
         setState(() {
-          _totalBusinesses = businessesResponse.count;
-          _pendingBusinessesCount = pendingBusinessesResponse.count;
-          _totalUsers = usersResponse.count;
-          _totalScans = scansResponse.count;
-          _totalRewards = rewardsResponse.count;
-          _approvedRewards = approvedRewardsResponse.count;
-          _rejectedRewards = rejectedRewardsResponse.count;
+          _totalBusinesses = (stats['totalBusinesses'] as num?)?.toInt() ?? 0;
+          _pendingBusinessesCount = (stats['pendingBusinesses'] as num?)?.toInt() ?? 0;
+          _totalUsers = (stats['totalUsers'] as num?)?.toInt() ?? 0;
+          _totalScans = (stats['totalScans'] as num?)?.toInt() ?? 0;
+          _totalRewards = (stats['totalRewards'] as num?)?.toInt() ?? 0;
+          _approvedRewards = (stats['claimedRewards'] as num?)?.toInt() ?? 0;
+          _rejectedRewards = 0;
           _isLoading = false;
         });
       }
     } catch (e) {
-      // If status column doesn't exist, we fall back to just total
-      debugPrint('Error loading metrics (status might not exist): $e');
-      try {
-         final rewardsResponse = await supabase.from('rewards').select('id').count();
-         if (mounted) {
-           setState(() {
-             _totalRewards = rewardsResponse.count;
-             _isLoading = false;
-           });
-         }
-      } catch (innerE) {
-         if (mounted) setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 

@@ -1,6 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../../core/providers/supabase_provider.dart';
+import '../../../core/services/api_client.dart';
+import '../../auth/data/auth_repository.dart';
 import '../data/scanner_repository.dart';
 
 class ScannerState {
@@ -61,7 +61,7 @@ class ScannerNotifier extends Notifier<ScannerState> {
     state = state.copyWith(isProcessing: true).clearMessages();
 
     try {
-      final userId = ref.read(supabaseClientProvider).auth.currentUser?.id;
+      final userId = ref.read(authRepositoryProvider).currentUser?.id;
       if (userId == null) throw Exception('Usuario no autenticado');
 
       final businessName = await ref.read(scannerRepositoryProvider).validateScan(qrCode, userId);
@@ -70,36 +70,29 @@ class ScannerNotifier extends Notifier<ScannerState> {
         isProcessing: false,
         successBusinessName: businessName,
       );
-    } on PostgrestException catch (e) {
-      if (e.message.contains('COOLDOWN_ACTIVE')) {
-        final parts = e.message.split(':');
-        final hours = parts.length > 1 ? parts[1] : '4';
+    } on ApiException catch (e) {
+      if (e.statusCode == 429 || e.message.toLowerCase().contains('cooldown') || e.message.toLowerCase().contains('espera')) {
         state = state.copyWith(
           isProcessing: false,
-          cooldownHours: hours,
+          error: e.message,
+          cooldownHours: '4',
         );
-      } else {
-        state = state.copyWith(
-          isProcessing: false,
-          error: 'Error de base de datos: ${e.message}',
-        );
-      }
-    } catch (e) {
-      if (e.toString().contains('PENDING_REWARD')) {
+      } else if (e.message.contains('PENDING_REWARD') || e.message.toLowerCase().contains('premio pendiente')) {
         state = state.copyWith(
           isProcessing: false,
           hasPendingReward: true,
         );
       } else {
-        String msg = 'Error inesperado: $e';
-        if (e.toString().contains('single row') || e.toString().contains('no encontrado')) {
-          msg = 'QR no válido';
-        }
         state = state.copyWith(
           isProcessing: false,
-          error: msg,
+          error: e.message,
         );
       }
+    } catch (e) {
+      state = state.copyWith(
+        isProcessing: false,
+        error: e.toString(),
+      );
     }
   }
 }

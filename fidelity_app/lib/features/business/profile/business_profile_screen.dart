@@ -1,13 +1,12 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import '../../../core/services/push_notification_service.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/models/business_category.dart';
-import '../../auth/login_screen.dart';
+import '../../../core/services/api_client.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../help/business_faqs_screen.dart';
 import '../widgets/location_picker_map.dart';
@@ -27,7 +26,6 @@ class BusinessProfileScreen extends StatefulWidget {
 }
 
 class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
-  final supabase = Supabase.instance.client;
   bool _isLoading = false;
   final _formKey = GlobalKey<FormState>();
 
@@ -55,7 +53,7 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
   @override
   void initState() {
     super.initState();
-    _logoUrl = widget.business['logo_url'];
+    _logoUrl = widget.business['logo_url'] ?? widget.business['logoUrl'];
     _fullNameController = TextEditingController(text: widget.ownerName);
     _phoneController = TextEditingController(text: ''); // We'll fetch this
 
@@ -66,13 +64,13 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       text: widget.business['description'] ?? '',
     );
     _rewardDescriptionController = TextEditingController(
-      text: widget.business['reward_description'] ?? '',
+      text: widget.business['reward_description'] ?? widget.business['rewardDescription'] ?? '',
     );
     _rewardLongDescriptionController = TextEditingController(
-      text: widget.business['reward_long_description'] ?? '',
+      text: widget.business['reward_long_description'] ?? widget.business['rewardLongDescription'] ?? '',
     );
     _pointsRequiredController = TextEditingController(
-      text: widget.business['points_required']?.toString() ?? '10',
+      text: (widget.business['points_required'] ?? widget.business['pointsRequired'])?.toString() ?? '10',
     );
 
     _latitude = widget.business['latitude'];
@@ -85,14 +83,8 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   Future<void> _loadProfileData() async {
     try {
-      final userId = supabase.auth.currentUser!.id;
-      final profile = await supabase
-          .from('profiles')
-          .select('phone')
-          .eq('id', userId)
-          .single();
-
-      if (mounted) {
+      final profile = await ApiClient().get('users/profile');
+      if (mounted && profile is Map<String, dynamic>) {
         setState(() {
           _phoneController.text = profile['phone'] ?? '';
         });
@@ -104,22 +96,18 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
   Future<void> _loadCategories() async {
     try {
-      final response = await supabase
-          .from('business_categories')
-          .select()
-          .order('name');
-
-      if (mounted) {
+      final response = await ApiClient().get('businesses/categories');
+      if (mounted && response is List) {
         setState(() {
-          _categories = (response as List)
-              .map((c) => BusinessCategory.fromJson(c))
+          _categories = response
+              .map((c) => BusinessCategory.fromJson(Map<String, dynamic>.from(c as Map)))
               .toList();
 
-          final categoryId = widget.business['category_id'];
+          final categoryId = widget.business['category_id'] ?? widget.business['categoryId'];
           if (categoryId != null) {
             try {
               _selectedCategory = _categories.firstWhere(
-                (c) => c.id == categoryId,
+                (c) => c.id.toString() == categoryId.toString(),
               );
             } catch (_) {}
           }
@@ -158,7 +146,6 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
     setState(() => _isLoading = true);
     try {
-      final userId = supabase.auth.currentUser!.id;
       final businessId = widget.business['id'];
 
       // 1. Upload Logo if changed
@@ -166,52 +153,33 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
       if (_newLogoFile != null) {
         final fileBytes = await _newLogoFile!.readAsBytes();
         final fileExt = _newLogoFile!.name.split('.').last.toLowerCase();
-        final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-        final imagePath = '$userId/$fileName';
-
-        await supabase.storage
-            .from('business-logos')
-            .uploadBinary(
-              imagePath,
-              fileBytes,
-              fileOptions: const FileOptions(
-                cacheControl: '3600',
-                upsert: true,
-              ),
-            );
-        final rawUrl = supabase.storage
-            .from('business-logos')
-            .getPublicUrl(imagePath);
-        finalLogoUrl = '$rawUrl?v=${DateTime.now().millisecondsSinceEpoch}';
+        String mimeType = 'image/jpeg';
+        if (fileExt == 'png') { mimeType = 'image/png'; }
+        else if (fileExt == 'webp') { mimeType = 'image/webp'; }
+        else if (fileExt == 'gif') { mimeType = 'image/gif'; }
+        final base64 = base64Encode(fileBytes);
+        finalLogoUrl = 'data:$mimeType;base64,$base64';
       }
 
       // 2. Update Profile
-      await supabase
-          .from('profiles')
-          .update({
-            'full_name': _fullNameController.text.trim(),
-            'phone': _phoneController.text.trim(),
-          })
-          .eq('id', userId);
+      await ApiClient().put('users/profile', body: {
+        'fullName': _fullNameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+      });
 
       // 3. Update Business
-      await supabase
-          .from('businesses')
-          .update({
-            'name': _businessNameController.text.trim(),
-            'description': _businessDescriptionController.text.trim(),
-            'logo_url': finalLogoUrl,
-            'category_id': _selectedCategory?.id,
-            'address': _address,
-            'latitude': _latitude,
-            'longitude': _longitude,
-            'reward_description': _rewardDescriptionController.text.trim(),
-            'reward_long_description': _rewardLongDescriptionController.text
-                .trim(),
-            'points_required': int.parse(_pointsRequiredController.text),
-            'updated_at': DateTime.now().toUtc().toIso8601String(),
-          })
-          .eq('id', businessId);
+      await ApiClient().put('businesses/$businessId', body: {
+        'name': _businessNameController.text.trim(),
+        'description': _businessDescriptionController.text.trim(),
+        if (finalLogoUrl != null) 'logoUrl': finalLogoUrl,
+        if (_selectedCategory != null) 'categoryId': _selectedCategory!.id,
+        'address': _address,
+        'latitude': _latitude,
+        'longitude': _longitude,
+        'rewardDescription': _rewardDescriptionController.text.trim(),
+        'rewardLongDescription': _rewardLongDescriptionController.text.trim(),
+        'pointsRequired': int.parse(_pointsRequiredController.text),
+      });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -309,27 +277,11 @@ class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
 
     setState(() => _isLoading = true);
     try {
-      final userId = supabase.auth.currentUser!.id;
+      await ApiClient().delete('users/account');
 
-      // Intentamos llamar a la Edge Function (recomendado para GDPR completo)
-      try {
-        await supabase.functions.invoke(
-          'hyper-action',
-          headers: {
-            'Authorization':
-                'Bearer ${supabase.auth.currentSession?.accessToken}',
-          },
-        );
-      } catch (e) {
-        debugPrint('Edge Function failed, using RPC fallback: $e');
-        // Fallback: Si no has desplegado la Edge Function, al menos limpiamos los datos públicos
-        await supabase.rpc(
-          'delete_user_data',
-          params: {'user_id_param': userId},
-        );
+      if (mounted) {
+        await ProviderScope.containerOf(context).read(authStateProvider.notifier).logout();
       }
-
-      await ProviderScope.containerOf(context).read(authStateProvider.notifier).logout();
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

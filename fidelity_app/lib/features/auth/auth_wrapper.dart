@@ -12,10 +12,10 @@ import '../../core/theme/app_theme.dart';
 import '../../core/services/push_notification_service.dart';
 import '../../core/services/realtime_sync_service.dart';
 import '../../core/widgets/global_celebration_dialog.dart';
-import '../../core/providers/supabase_provider.dart';
 import '../../core/utils/whatsapp_launcher.dart';
 import 'dart:async';
 import 'providers/auth_provider.dart';
+import 'data/auth_repository.dart';
 
 class AuthWrapper extends ConsumerStatefulWidget {
   const AuthWrapper({super.key});
@@ -37,7 +37,7 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
 
     _transferSub = RealtimeSyncService().onRewardTransfersChanged.listen((payload) {
       if (!mounted || payload == null) return;
-      final currentUserId = ref.read(supabaseClientProvider).auth.currentUser?.id;
+      final currentUserId = ref.read(authRepositoryProvider).currentUser?.id;
       if (payload['to_user_id'] == currentUserId && currentUserId != null) {
         GlobalCelebrationDialog.show(
           context,

@@ -1,6 +1,5 @@
 import 'dart:async';
-import 'package:supabase_flutter/supabase_flutter.dart';
-
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../business/dashboard/providers/dashboard_provider.dart';
 import '../../business/providers/create_business_provider.dart';
@@ -12,8 +11,6 @@ import '../../scanner/providers/scanner_provider.dart';
 import '../data/auth_repository.dart';
 import '../../../main.dart';
 import '../../../core/services/push_notification_service.dart';
-import '../login_screen.dart';
-import 'package:flutter/material.dart';
 
 // Definición de estados posibles para la sesión
 abstract class AuthStateStatus {}
@@ -50,15 +47,12 @@ class AuthNotifier extends Notifier<AuthStateStatus> {
   }
 
   Future<void> _init() async {
-    // Escuchar cambios de sesión
-    _authSubscription = ref.read(authRepositoryProvider).authStateChanges.listen((data) {
-      if (data.event == AuthChangeEvent.signedOut || data.session == null) {
+    _authSubscription = ref.read(authRepositoryProvider).authStateChanges.listen((user) {
+      if (user == null) {
         _clearSessionScopedState();
         state = AuthUnauthenticated();
-      } else if (data.event == AuthChangeEvent.signedIn) {
-        _clearSessionScopedState(); // Ensure completely fresh state on login
-        checkAuth();
       } else {
+        _clearSessionScopedState();
         checkAuth();
       }
     });
@@ -68,8 +62,7 @@ class AuthNotifier extends Notifier<AuthStateStatus> {
 
   Future<void> checkAuth() async {
     final repository = ref.read(authRepositoryProvider);
-    final session = repository.currentSession;
-    if (session == null) {
+    if (!repository.isAuthenticated) {
       state = AuthUnauthenticated();
       return;
     }
@@ -80,13 +73,13 @@ class AuthNotifier extends Notifier<AuthStateStatus> {
         state = AuthUnauthenticated();
         return;
       }
-      final userRole = user.userMetadata?['role'];
+      final userRole = user.role;
 
       if (userRole == 'admin') {
         state = AuthAdmin();
       } else if (userRole == 'business') {
-        final businessId = user.userMetadata?['business_id'];
-        if (businessId == null) {
+        final businessId = user.businessId;
+        if (businessId == null || businessId.isEmpty) {
           state = AuthBusinessPendingCreate();
         } else {
           final isActive = await repository.isBusinessActive(businessId);

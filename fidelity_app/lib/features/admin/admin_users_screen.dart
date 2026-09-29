@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/services/api_client.dart';
 import '../../core/services/export_service.dart';
 import 'widgets/export_preview_dialog.dart';
 
@@ -28,7 +28,6 @@ enum DateRangeFilter {
 }
 
 class _AdminUsersScreenState extends State<AdminUsersScreen> {
-  final supabase = Supabase.instance.client;
   bool _isLoading = true;
   List<Map<String, dynamic>> _users = [];
   String _selectedRoleFilter = 'all';
@@ -99,37 +98,28 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       _users = [];
     });
     try {
-      var query = supabase.from('profiles').select('''
-            id,
-            full_name,
-            email,
-            phone,
-            role,
-            is_demo,
-            created_at,
-            businesses!owner_id(name)
-          ''');
-
-      final dateRange = _getDateRange();
-      if (dateRange != null) {
-        query = query.gte('created_at', dateRange.$1.toIso8601String())
-                     .lte('created_at', dateRange.$2.toIso8601String());
-      }
-
-      if (_selectedRoleFilter != 'all') {
-        query = query.eq('role', _selectedRoleFilter);
-      } else {
-        query = query.neq('role', 'admin');
-      }
-
-      final response = await query
-          .order('created_at', ascending: false)
-          .range(0, _pageSize - 1);
+      final response = await ApiClient().get('admin/users', queryParams: {
+        if (_selectedRoleFilter != 'all') 'role': _selectedRoleFilter,
+        if (_searchQuery.isNotEmpty) 'search': _searchQuery,
+      });
 
       if (mounted) {
         setState(() {
-          _users = List<Map<String, dynamic>>.from(response);
-          _hasMore = _users.length == _pageSize;
+          if (response is List) {
+            _users = response.map((u) => {
+              'id': u['id'],
+              'full_name': u['fullName'] ?? u['full_name'],
+              'email': u['email'],
+              'phone': u['phone'],
+              'role': u['role'],
+              'is_demo': u['isDemo'] ?? u['is_demo'] ?? false,
+              'created_at': u['createdAt'] ?? u['created_at'],
+              'businesses': u['businesses'] ?? [],
+            }).toList();
+          } else {
+            _users = [];
+          }
+          _hasMore = false;
           _isLoading = false;
         });
       }
@@ -142,54 +132,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
   }
 
   Future<void> _fetchMoreUsers() async {
-    setState(() => _isFetchingMore = true);
-    try {
-      _currentPage++;
-      final startIndex = _currentPage * _pageSize;
-      final endIndex = startIndex + _pageSize - 1;
-
-      var query = supabase.from('profiles').select('''
-            id,
-            full_name,
-            email,
-            phone,
-            role,
-            is_demo,
-            created_at,
-            businesses!owner_id(name)
-          ''');
-
-      final dateRange = _getDateRange();
-      if (dateRange != null) {
-        query = query.gte('created_at', dateRange.$1.toIso8601String())
-                     .lte('created_at', dateRange.$2.toIso8601String());
-      }
-
-      if (_selectedRoleFilter != 'all') {
-        query = query.eq('role', _selectedRoleFilter);
-      } else {
-        query = query.neq('role', 'admin');
-      }
-
-      final response = await query
-          .order('created_at', ascending: false)
-          .range(startIndex, endIndex);
-
-      final newItems = List<Map<String, dynamic>>.from(response);
-
-      if (mounted) {
-        setState(() {
-          _users.addAll(newItems);
-          _hasMore = newItems.length == _pageSize;
-          _isFetchingMore = false;
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading more users: $e');
-      if (mounted) {
-        setState(() => _isFetchingMore = false);
-      }
-    }
+    // Already fetched all in get
   }
 
   List<Map<String, dynamic>> get _filteredUsers {
@@ -220,7 +163,7 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       builder: (context) => ExportPreviewDialog(
         data: _filteredUsers,
         entity: ExportEntity.users,
-        exportService: SupabaseExportService(),
+        exportService: AppExportService(),
       ),
     );
   }

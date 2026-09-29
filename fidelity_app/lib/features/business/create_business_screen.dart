@@ -12,12 +12,12 @@ import 'widgets/business_creation/step_campaign_data.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/whatsapp_launcher.dart';
 import '../../core/models/business_category.dart';
-import '../../core/providers/supabase_provider.dart';
 import '../auth/providers/auth_provider.dart';
+import '../auth/data/auth_repository.dart';
 
 import 'providers/create_business_provider.dart';
 import 'data/business_repository.dart';
-import '../profile/data/profile_repository.dart';
+import '../profile/providers/user_profile_provider.dart';
 
 class CreateBusinessScreen extends ConsumerStatefulWidget {
   const CreateBusinessScreen({super.key});
@@ -78,10 +78,10 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
   }
 
   Future<void> _loadExistingProfileData() async {
-    final user = ref.read(supabaseClientProvider).auth.currentUser;
+    final user = ref.read(authRepositoryProvider).currentUser;
     if (user != null) {
       try {
-        final repo = ref.read(profileRepositoryProvider);
+        final repo = ref.read(userProfileRepositoryProvider);
         final profile = await repo.getProfile(user.id);
         if (profile != null && mounted) {
           setState(() {

@@ -1,16 +1,16 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../qr_management/qr_management_screen.dart';
 import '../rewards/rewards_management_screen.dart';
 import '../profile/business_profile_screen.dart';
 import '../create_business_screen.dart';
 import '../../../core/theme/app_theme.dart';
-import '../../../core/providers/supabase_provider.dart';
+import '../../../core/services/api_client.dart';
 
 import 'providers/dashboard_provider.dart';
 import 'widgets/dashboard_animated_toast.dart';
@@ -18,6 +18,7 @@ import 'widgets/tabs/tab_customers.dart';
 import 'widgets/tabs/tab_pending_scans.dart';
 import 'widgets/tabs/tab_statistics.dart';
 import '../../auth/providers/auth_provider.dart';
+import '../../auth/data/auth_repository.dart';
 
 class BusinessDashboardScreen extends ConsumerStatefulWidget {
   final int initialIndex;
@@ -87,18 +88,19 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
 
   void _checkWelcomeMessage() async {
     if (_welcomeShown) return;
-    final user = Supabase.instance.client.auth.currentUser;
+    final user = ref.read(authRepositoryProvider).currentUser;
     if (user != null) {
-      final hasSeen = user.userMetadata?['has_seen_welcome'] == true;
+      final hasSeen = user.raw['has_seen_welcome'] == true ||
+          user.userMetadata?['has_seen_welcome'] == true;
       if (!hasSeen) {
         _welcomeShown = true;
         if (mounted) {
           _showWelcomeDialog();
         }
         try {
-          await Supabase.instance.client.auth.updateUser(
-            UserAttributes(data: {'has_seen_welcome': true}),
-          );
+          final current = Map<String, dynamic>.from(user.raw);
+          current['has_seen_welcome'] = true;
+          await ApiClient().updateUser(current);
         } catch (_) {}
       }
     }
@@ -213,22 +215,11 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
 
     if (source == null) return;
 
-    final supabase = ref.read(supabaseClientProvider);
+    final businessId = business['id'];
 
     if (source == 'delete') {
       try {
-        final userId = supabase.auth.currentUser!.id;
-        final logoUrl = business['logo_url'] as String;
-
-        final uri = Uri.parse(logoUrl);
-        final pathSegments = uri.pathSegments;
-        final folderIndex = pathSegments.indexOf('business-logos');
-        if (folderIndex != -1 && folderIndex + 1 < pathSegments.length) {
-          final objectPath = pathSegments.sublist(folderIndex + 1).join('/');
-          await supabase.storage.from('business-logos').remove([objectPath]);
-        }
-
-        await supabase.from('businesses').update({'logo_url': null}).eq('owner_id', userId);
+        await ApiClient().put('businesses/$businessId', body: {'logoUrl': ''});
 
         if (mounted) {
           ref.read(dashboardProvider.notifier).loadData(silent: true);
@@ -262,23 +253,15 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
 
       final fileBytes = await pickedFile.readAsBytes();
       final fileExt = pickedFile.name.split('.').last.toLowerCase();
-      final fileName = '${DateTime.now().millisecondsSinceEpoch}.$fileExt';
-      final userId = supabase.auth.currentUser!.id;
-      final imagePath = '$userId/$fileName';
-
       String mimeType = 'image/jpeg';
       if (fileExt == 'png') { mimeType = 'image/png'; }
       else if (fileExt == 'webp') { mimeType = 'image/webp'; }
       else if (fileExt == 'gif') { mimeType = 'image/gif'; }
 
-      await supabase.storage.from('business-logos').uploadBinary(
-            imagePath,
-            fileBytes,
-            fileOptions: FileOptions(cacheControl: '3600', upsert: true, contentType: mimeType),
-          );
-      
-      final newLogoUrl = supabase.storage.from('business-logos').getPublicUrl(imagePath);
-      await supabase.from('businesses').update({'logo_url': newLogoUrl}).eq('owner_id', userId);
+      final base64Image = base64Encode(fileBytes);
+      final newLogoUrl = 'data:$mimeType;base64,$base64Image';
+
+      await ApiClient().put('businesses/$businessId', body: {'logoUrl': newLogoUrl});
 
       if (mounted) {
         Navigator.pop(context); // close dialog

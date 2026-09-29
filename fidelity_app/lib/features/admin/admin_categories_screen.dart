@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/services/api_client.dart';
 
 class AdminCategoriesScreen extends StatefulWidget {
   const AdminCategoriesScreen({super.key});
@@ -10,7 +10,6 @@ class AdminCategoriesScreen extends StatefulWidget {
 }
 
 class _AdminCategoriesScreenState extends State<AdminCategoriesScreen> {
-  final supabase = Supabase.instance.client;
   bool _isLoading = true;
   List<Map<String, dynamic>> _categories = [];
 
@@ -23,11 +22,8 @@ class _AdminCategoriesScreenState extends State<AdminCategoriesScreen> {
   Future<void> _loadCategories() async {
     setState(() => _isLoading = true);
     try {
-      final response = await supabase
-          .from('business_categories')
-          .select()
-          .order('name');
-      if (mounted) {
+      final response = await ApiClient().get('businesses/categories');
+      if (mounted && response is List) {
         setState(() {
           _categories = List<Map<String, dynamic>>.from(response);
           _isLoading = false;
@@ -48,7 +44,7 @@ class _AdminCategoriesScreenState extends State<AdminCategoriesScreen> {
 
   Future<void> _addCategory(String name) async {
     try {
-      await supabase.from('business_categories').insert({'name': name});
+      await ApiClient().post('businesses/categories', body: {'name': name});
       _loadCategories();
     } catch (e) {
       if (mounted) {
@@ -85,7 +81,7 @@ class _AdminCategoriesScreenState extends State<AdminCategoriesScreen> {
     if (confirm != true) return;
 
     try {
-      await supabase.from('business_categories').delete().eq('id', id);
+      await ApiClient().delete('businesses/categories/$id');
       _loadCategories();
     } catch (e) {
       if (mounted) {

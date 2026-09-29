@@ -1,74 +1,51 @@
-import 'package:supabase_flutter/supabase_flutter.dart';
+import '../../../../core/services/api_client.dart';
 
 class RewardsManagementRepository {
-  final SupabaseClient _supabase;
+  final ApiClient _api = ApiClient();
 
-  RewardsManagementRepository({SupabaseClient? supabase})
-      : _supabase = supabase ?? Supabase.instance.client;
+  RewardsManagementRepository();
 
   Future<List<Map<String, dynamic>>> getRewards(String businessId) async {
-    final rewardsResponse = await _supabase
-        .from('rewards')
-        .select('*, reward_transfer_history(from_user_id)')
-        .eq('business_id', businessId)
-        .order('earned_at', ascending: false);
+    final response = await _api.get('rewards/business/$businessId');
+    if (response is! List) return [];
 
-    final List<Map<String, dynamic>> rewards =
-        List<Map<String, dynamic>>.from(rewardsResponse);
+    final rewards = response.map((item) {
+      final raw = Map<String, dynamic>.from(item as Map);
+      final user = raw['user'] as Map<String, dynamic>? ?? {};
 
-    if (rewards.isEmpty) {
-      return [];
-    }
-
-    final Set<String> userIds = {};
-    for (var r in rewards) {
-      userIds.add(r['user_id'] as String);
-      if (r['reward_transfer_history'] != null && (r['reward_transfer_history'] as List).isNotEmpty) {
-        var transfers = r['reward_transfer_history'] as List;
-        userIds.add(transfers.first['from_user_id'] as String);
-      }
-    }
-
-    final profilesResponse = await _supabase
-        .from('profiles')
-        .select('id, full_name, avatar_url')
-        .inFilter('id', userIds.toList());
-
-    final Map<String, Map<String, dynamic>> profileMap = {
-      for (var p in profilesResponse)
-        p['id'] as String: p,
-    };
-
-    final mergedRewards = rewards.map((reward) {
-      final userId = reward['user_id'] as String;
-      final currentOwnerProfile = profileMap[userId];
-      
-      bool isTransferred = false;
-      String fromName = '';
-      if (reward['reward_transfer_history'] != null && (reward['reward_transfer_history'] as List).isNotEmpty) {
-        var transfers = reward['reward_transfer_history'] as List;
-        final fromUserId = transfers.first['from_user_id'] as String;
-        final fromProfile = profileMap[fromUserId];
-        fromName = fromProfile?['full_name'] ?? 'Un usuario';
-        isTransferred = true;
-      }
+      final isTransferred = raw['isTransferred'] == true || raw['is_transferred'] == true;
+      final fromName = raw['fromName'] ?? raw['from_name'] ?? '';
 
       return {
-        ...reward,
+        'id': raw['id'],
+        'user_id': raw['userId'] ?? raw['user_id'],
+        'business_id': raw['businessId'] ?? raw['business_id'],
+        'loyalty_card_id': raw['loyaltyCardId'] ?? raw['loyalty_card_id'],
+        'description': raw['description'] ?? raw['rewardDescription'] ?? raw['reward_description'] ?? 'Premio',
+        'status': raw['status'],
+        'points_used': raw['pointsUsed'] ?? raw['points_used'] ?? 10,
+        'earned_at': raw['earnedAt'] ?? raw['earned_at'] ?? raw['createdAt'] ?? raw['created_at'],
+        'claimed_at': raw['claimedAt'] ?? raw['claimed_at'],
         'is_transferred': isTransferred,
         'from_name': fromName,
-        'display_name': currentOwnerProfile?['full_name'] ?? 'USUARIO',
-        'avatar_url': currentOwnerProfile?['avatar_url']
+        'display_name': user['fullName'] ?? user['full_name'] ?? 'USUARIO',
+        'avatar_url': user['avatarUrl'] ?? user['avatar_url'],
       };
     }).toList();
 
-    return mergedRewards;
+    return rewards;
   }
 
   Future<void> updateRewardStatus(String rewardId, String status) async {
-    await _supabase
-        .from('rewards')
-        .update({'status': status})
-        .eq('id', rewardId);
+    await _api.patch('rewards/$rewardId/status', body: {
+      'status': status,
+    });
+  }
+
+  Future<void> transferReward(String rewardId, String toIdentifier) async {
+    await _api.post('rewards/transfer', body: {
+      'rewardId': rewardId,
+      'toIdentifier': toIdentifier.trim(),
+    });
   }
 }

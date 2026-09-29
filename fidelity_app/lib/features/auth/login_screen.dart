@@ -1,27 +1,24 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'register_screen.dart';
-import 'auth_wrapper.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/auth_error_translator.dart';
+import 'data/auth_repository.dart';
 
-class LoginScreen extends StatefulWidget {
+class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
 
   @override
-  State<LoginScreen> createState() => _LoginScreenState();
+  ConsumerState<LoginScreen> createState() => _LoginScreenState();
 }
 
-class _LoginScreenState extends State<LoginScreen> {
+class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
   bool _isPasswordVisible = false;
-
-  final supabase = Supabase.instance.client;
 
   @override
   void dispose() {
@@ -36,15 +33,13 @@ class _LoginScreenState extends State<LoginScreen> {
     setState(() => _isLoading = true);
 
     try {
-      final response = await supabase.auth.signInWithPassword(
+      final authRepo = ref.read(authRepositoryProvider);
+      await authRepo.signIn(
         email: _emailController.text.trim(),
         password: _passwordController.text.trim(),
       );
 
-      if (response.user != null && mounted) {
-        // AuthWrapper automáticamente detectará el inicio de sesión y cambiará de pantalla.
-        // No hacemos pushReplacement para no recargar el sistema.
-      }
+      // AuthWrapper detecta automáticamente el cambio de sesión a través del notifier
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -59,7 +54,7 @@ class _LoginScreenState extends State<LoginScreen> {
         );
       }
     } finally {
-      if (mounted && supabase.auth.currentUser == null) {
+      if (mounted) {
         setState(() => _isLoading = false);
       }
     }
@@ -67,7 +62,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _resetPassword(String email) async {
     try {
-      await Supabase.instance.client.auth.resetPasswordForEmail(email);
+      final authRepo = ref.read(authRepositoryProvider);
+      await authRepo.resetPassword(email);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -138,24 +134,21 @@ class _LoginScreenState extends State<LoginScreen> {
       body: SafeArea(
         child: Center(
           child: SingleChildScrollView(
-            // Sin rebote: el contenido entra en pantalla, pero seguimos
-            // permitiendo scroll si el teclado achica el espacio.
             physics: const ClampingScrollPhysics(),
             padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
             child: Form(
               key: _formKey,
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    // Logo principal de la app (fondo blanco según requerido)
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 8),
-                      child: Image.asset(
-                        'assets/images/logo_texto.png',
-                        height: 150,
-                        fit: BoxFit.contain,
-                      ),
-                    ).animate().scale(duration: AppTheme.animDurationSlow, curve: AppTheme.animCurveElastic).fadeIn(),
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 8),
+                    child: Image.asset(
+                      'assets/images/logo_texto.png',
+                      height: 150,
+                      fit: BoxFit.contain,
+                    ),
+                  ).animate().scale(duration: AppTheme.animDurationSlow, curve: AppTheme.animCurveElastic).fadeIn(),
 
                   const SizedBox(height: 24),
 
@@ -205,7 +198,7 @@ class _LoginScreenState extends State<LoginScreen> {
 
                   const SizedBox(height: 32),
 
-                  // Botón Login (Estilo Emote)
+                  // Botón Login
                   SizedBox(
                     width: double.infinity,
                     child: ElevatedButton(

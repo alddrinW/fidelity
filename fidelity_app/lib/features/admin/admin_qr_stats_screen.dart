@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/services/api_client.dart';
 
 /// Enum for date range filter options
 enum DateRangeFilter {
@@ -54,7 +54,6 @@ class AdminQrStatsScreen extends StatefulWidget {
 }
 
 class _AdminQrStatsScreenState extends State<AdminQrStatsScreen> {
-  final supabase = Supabase.instance.client;
   bool _isLoading = true;
   String? _errorMessage;
 
@@ -106,7 +105,7 @@ class _AdminQrStatsScreenState extends State<AdminQrStatsScreen> {
     }
   }
 
-  /// Load scan data from Supabase
+  /// Load scan data from Backend API
   Future<void> _loadScanData() async {
     setState(() {
       _isLoading = true;
@@ -117,14 +116,12 @@ class _AdminQrStatsScreenState extends State<AdminQrStatsScreen> {
       final (startDate, endDate) = _getDateRange();
 
       // Query approved scans within date range
-      final response = await supabase
-          .from('scans')
-          .select('id, scanned_at, business_id, businesses(name)')
-          .eq('status', 'approved')
-          .eq('is_demo', false)
-          .gte('scanned_at', startDate.toUtc().toIso8601String())
-          .lte('scanned_at', endDate.toUtc().toIso8601String())
-          .order('scanned_at', ascending: true);
+      final dynamic rawResponse = await ApiClient().get('admin/qr-stats', queryParams: {
+        'startDate': startDate.toUtc().toIso8601String(),
+        'endDate': endDate.toUtc().toIso8601String(),
+      });
+
+      final response = rawResponse is List ? List<Map<String, dynamic>>.from(rawResponse) : <Map<String, dynamic>>[];
 
       if (response.isEmpty) {
         setState(() {
@@ -149,11 +146,10 @@ class _AdminQrStatsScreenState extends State<AdminQrStatsScreen> {
         totalCount++;
 
         // Business aggregation
-        final businessId = row['business_id'] as String?;
-        final businessName =
-            (row['businesses'] as Map<String, dynamic>?)?['name'] as String? ??
-            'Sin nombre';
-        final scannedAt = row['scanned_at'] as String?;
+        final businessId = (row['businessId'] ?? row['business_id'])?.toString();
+        final businessObj = row['business'] as Map<String, dynamic>? ?? row['businesses'] as Map<String, dynamic>?;
+        final businessName = businessObj?['name'] as String? ?? 'Sin nombre';
+        final scannedAt = (row['scannedAt'] ?? row['scanned_at'])?.toString();
 
         if (businessId != null) {
           if (businessScanMap.containsKey(businessId)) {

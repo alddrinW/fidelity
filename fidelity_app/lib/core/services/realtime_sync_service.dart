@@ -1,24 +1,22 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-import 'package:supabase_flutter/supabase_flutter.dart';
+import 'package:socket_io_client/socket_io_client.dart' as io;
+import '../config/api_config.dart';
+import 'api_client.dart';
 
 class RealtimeSyncService {
   static final RealtimeSyncService _instance = RealtimeSyncService._internal();
   factory RealtimeSyncService() => _instance;
   RealtimeSyncService._internal();
 
-  final _supabase = Supabase.instance.client;
-  RealtimeChannel? _channel;
+  io.Socket? _socket;
 
-  // StreamControllers para cada tipo de entidad que queremos escuchar.
-  // Usamos broadcast para que múltiples pantallas puedan suscribirse simultáneamente.
   final _scansController = StreamController<Map<String, dynamic>?>.broadcast();
   final _rewardsController = StreamController<Map<String, dynamic>?>.broadcast();
   final _loyaltyCardsController = StreamController<Map<String, dynamic>?>.broadcast();
   final _rewardTransfersController = StreamController<Map<String, dynamic>?>.broadcast();
   final _qrCodesController = StreamController<Map<String, dynamic>?>.broadcast();
 
-  // Exponemos los streams
   Stream<Map<String, dynamic>?> get onScansChanged => _scansController.stream;
   Stream<Map<String, dynamic>?> get onRewardsChanged => _rewardsController.stream;
   Stream<Map<String, dynamic>?> get onLoyaltyCardsChanged => _loyaltyCardsController.stream;
@@ -28,95 +26,117 @@ class RealtimeSyncService {
   bool _isInitialized = false;
 
   void initialize() {
-    if (_isInitialized) return;
+    if (_isInitialized && _socket != null && _socket!.connected) return;
 
     try {
-      _channel = _supabase.channel('public:all_tables');
+      final token = ApiClient().token;
+      final websocketUrl = ApiConfig.websocketUrl;
 
-      _channel!
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'scans',
-          callback: (payload) {
-            debugPrint('🔄 Realtime Sync: changes in scans');
-            _scansController.add(payload.newRecord);
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'rewards',
-          callback: (payload) {
-            debugPrint('🔄 Realtime Sync: changes in rewards');
-            _rewardsController.add(payload.newRecord);
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'loyalty_cards',
-          callback: (payload) {
-            debugPrint('🔄 Realtime Sync: changes in loyalty_cards');
-            _loyaltyCardsController.add(payload.newRecord);
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'reward_transfer_history',
-          callback: (payload) {
-            debugPrint('🔄 Realtime Sync: changes in reward_transfer_history');
-            _rewardTransfersController.add(payload.newRecord);
-          },
-        )
-        .onPostgresChanges(
-          event: PostgresChangeEvent.all,
-          schema: 'public',
-          table: 'qr_codes',
-          callback: (payload) {
-            debugPrint('🔄 Realtime Sync: changes in qr_codes');
-            _qrCodesController.add(payload.newRecord);
-          },
-        )
-        .subscribe((status, [error]) {
-          debugPrint('🛰️ Realtime Sync Status: $status');
-          if (error != null) {
-            debugPrint('❌ Realtime Sync Error: $error');
-          }
-        });
+      _socket = io.io(
+        websocketUrl,
+        io.OptionBuilder()
+            .setTransports(['websocket', 'polling'])
+            .disableAutoConnect()
+            .setExtraHeaders(token != null ? {'Authorization': 'Bearer $token'} : {})
+            .setAuth(token != null ? {'token': token} : {})
+            .build(),
+      );
 
+      _socket!.onConnect((_) {
+        debugPrint('RealtimeSyncService conectado a $websocketUrl');
+      });
+
+      _socket!.onDisconnect((_) {
+        debugPrint('RealtimeSyncService desconectado');
+      });
+
+      _socket!.onConnectError((error) {
+        debugPrint('Error de conexion RealtimeSyncService: $error');
+      });
+
+      _socket!.on('scan:new', (data) {
+        debugPrint('Realtime Sync: nuevo escaneo recibido');
+        if (data is Map) {
+          _scansController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('card:updated', (data) {
+        debugPrint('Realtime Sync: tarjeta actualizada');
+        if (data is Map) {
+          _loyaltyCardsController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('scan:status', (data) {
+        debugPrint('Realtime Sync: estado de escaneo actualizado');
+        if (data is Map) {
+          _scansController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('reward:status', (data) {
+        debugPrint('Realtime Sync: estado de premio actualizado');
+        if (data is Map) {
+          _rewardsController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.on('reward:transferred', (data) {
+        debugPrint('Realtime Sync: transferencia de premio recibida');
+        if (data is Map) {
+          final map = Map<String, dynamic>.from(data);
+          _rewardTransfersController.add(map);
+          _rewardsController.add(map);
+        }
+      });
+
+      _socket!.on('qr:updated', (data) {
+        debugPrint('Realtime Sync: codigo QR actualizado');
+        if (data is Map) {
+          _qrCodesController.add(Map<String, dynamic>.from(data));
+        }
+      });
+
+      _socket!.connect();
       _isInitialized = true;
-      debugPrint('✅ RealtimeSyncService initialized');
     } catch (e) {
-      debugPrint('❌ Failed to initialize RealtimeSyncService: $e');
+      debugPrint('Fallo al inicializar RealtimeSyncService: $e');
     }
   }
 
-  /// Cierra el canal y permite re-suscribir en el próximo login SIN cerrar los
-  /// StreamControllers (las pantallas mantienen sus suscripciones entre sesiones).
-  /// Se llama al cerrar sesión para que el siguiente usuario abra un canal limpio
-  /// con su propio JWT.
+  void joinBusiness(String businessId) {
+    if (_socket != null && _socket!.connected && businessId.isNotEmpty) {
+      _socket!.emit('join_business', businessId);
+    }
+  }
+
+  void leaveBusiness(String businessId) {
+    if (_socket != null && _socket!.connected && businessId.isNotEmpty) {
+      _socket!.emit('leave_business', businessId);
+    }
+  }
+
   void reset() {
     try {
-      if (_channel != null) {
-        _supabase.removeChannel(_channel!);
+      if (_socket != null) {
+        _socket!.disconnect();
+        _socket!.dispose();
       }
     } catch (e) {
-      debugPrint('⚠️ Error al resetear RealtimeSyncService: $e');
+      debugPrint('Error al resetear RealtimeSyncService: $e');
     }
-    _channel = null;
+    _socket = null;
     _isInitialized = false;
-    debugPrint('🧹 RealtimeSyncService reset');
+    debugPrint('RealtimeSyncService reseteado');
   }
 
   void dispose() {
-    _channel?.unsubscribe();
+    reset();
     _scansController.close();
     _rewardsController.close();
     _loyaltyCardsController.close();
     _rewardTransfersController.close();
     _qrCodesController.close();
-    _isInitialized = false;
   }
 }
