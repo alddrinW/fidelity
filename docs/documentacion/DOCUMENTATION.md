@@ -113,3 +113,24 @@ graph TD
    ```bash
    npm test
    ```
+
+---
+
+## 4. Ecosistema de Experiencia de Usuario (UX/UI) y Gamificación
+
+### 🎮 Gamificación y Rutas de Progreso (Estilo Duolingo)
+- **Navegación en Rutas de Misiones:** Sustitución de listas tradicionales por mapas de progreso interactivos donde cada comercio representa una parada con barra de avance perimetral.
+- **Módulo de Juegos Diarios:** Ruleta de beneficios con multiplicadores y comodines, raspa y gana digital y desafíos semanales de fidelización.
+- **Sistema de Rachas:** Premiación de visitas continuas mediante multiplicadores de puntos y medallas de constancia.
+
+### 🐾 Sistema de Mascota Oficial: "Fido"
+- **Guía Omnipresente y Reactivo:** Fido acompaña de forma no intrusiva en flujos de bienvenida, escaneo QR, advertencia de enfriamiento (*cooldown*), soporte y activación comercial.
+- **Motor de Micro-Animaciones:** Integración de transiciones fluidas, rebotes elásticos (`spring physics`) y confeti radial en hitos clave.
+
+### 🏢 Plataforma Empresarial Multi-sucursal y Flujos Transaccionales
+- **Control Centralizado:** Administración de cadenas de locales con métricas operativas individuales y colectivas.
+- **Motor de Campañas:** Creación de promociones segmentadas despachadas en carruseles animados para clientes fidelizados.
+- **Activación PAGA YA:** Asistente interactivo guiado para suscripciones comerciales y ampliación de sucursales.
+- **Jerarquía RBAC con Rol Aprobador:** Supervisión de canjes de premios, anulaciones y gestión de tickets de reclamo.
+- **Monitoreo de Integración API:** Semáforo de conectividad y registro de telemetría con sistemas de punto de venta (POS).
+

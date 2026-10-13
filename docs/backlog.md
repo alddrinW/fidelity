@@ -43,3 +43,27 @@
 - [x] **HU-07:** Migración de repositorios de negocio (`LoyaltyCards`, `Scans`, `Rewards`, `Businesses`, `Users`, `Admin`).
 - [x] **HU-07:** Adaptación de `RealtimeSyncService` a Socket.io WebSocket Gateway.
 - [x] **HU-07:** Desacople completo de `Supabase.initialize()` y validación estática de la app.
+
+### 🎮 Épica 8: Gamificación y Rutas de Progreso Estilo Duolingo
+- [ ] **HU-08:** Dashboard interactivo en formato "Ruta de Misiones" con barras de progreso a la siguiente recompensa.
+- [ ] **HU-08:** Módulo de mini-juegos (Ruleta de beneficios y Raspa y Gana digital).
+- [ ] **HU-08:** Sistema de rachas y multiplicadores de puntos por constancia de visita.
+
+### 🐾 Épica 9: Mascota Guía "Fido" y Micro-interacciones
+- [ ] **HU-09:** Integración de Fido como guía en flujos de bienvenida, escaneo y soporte.
+- [ ] **HU-09:** Micro-animaciones de celebración con confeti y reacciones dinámicas de estado.
+- [ ] **HU-09:** Modos reactivos (calma, alerta de cooldown, euforia de canje).
+
+### 🏢 Épica 10: Panel Empresarial Multi-sucursal y Campañas
+- [ ] **HU-10:** Matriz de control centralizado de múltiples sucursales para comercios.
+- [ ] **HU-10:** Creador de campañas de marketing segmentadas para clientes fidelizados.
+- [ ] **HU-10:** Selector global de idiomas en tiempo real para el panel de escritorio.
+
+### 💳 Épica 11: Módulo Transaccional "PAGA YA" y Rol Aprobador
+- [ ] **HU-11:** Asistente interactivo guiado por Fido para activación de planes y sucursales (PAGA YA).
+- [ ] **HU-11:** Control de acceso avanzado con rol de "Aprobador" para validación de premios especiales.
+- [ ] **HU-11:** Monitor visual de estado de conectividad API y puntos de venta.
+
+### 💬 Épica 12: Buzón de Sugerencias Conversacional Post-Escaneo
+- [ ] **HU-12:** Hoja interactiva post-escaneo para calificación ágil de atención.
+- [ ] **HU-12:** Enrutamiento privado de comentarios y reclamos al panel de dueños y aprobadores.
