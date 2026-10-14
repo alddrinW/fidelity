@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../providers/dashboard_provider.dart';
+import '../../../../../core/utils/image_source.dart';
 class TabCustomers extends ConsumerStatefulWidget {
   const TabCustomers({super.key});
 
@@ -190,9 +191,7 @@ class _TabCustomersState extends ConsumerState<TabCustomers> {
                           CircleAvatar(
                             radius: 28,
                             backgroundColor: accentColor.withValues(alpha: 0.1),
-                            backgroundImage: profile?['avatar_url'] != null
-                                ? NetworkImage(profile!['avatar_url'])
-                                : null,
+                            backgroundImage: imageProviderFromUrl(profile?['avatar_url']?.toString()),
                             child: profile?['avatar_url'] == null
                                 ? Text(
                                     (profile?['full_name']?[0] ?? '?').toUpperCase(),

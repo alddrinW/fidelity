@@ -13,6 +13,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../auth/providers/auth_provider.dart';
 import 'data/admin_repository.dart';
 import 'dart:async';
+import '../../core/utils/image_source.dart';
 
 class AdminDashboardScreen extends ConsumerStatefulWidget {
   const AdminDashboardScreen({super.key});
@@ -85,7 +86,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
                       child: CircleAvatar(
                         radius: 12,
                         backgroundColor: Colors.white,
-                        backgroundImage: NetworkImage(logoUrl),
+                        backgroundImage: imageProviderFromUrl(logoUrl.toString()),
                       ),
                     )
                   else

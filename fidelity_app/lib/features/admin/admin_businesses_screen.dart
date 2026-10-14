@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/date_utils.dart';
 import '../../core/services/export_service.dart';
 import 'widgets/export_preview_dialog.dart';
+import '../../core/utils/image_source.dart';
 
 class AdminBusinessesScreen extends StatefulWidget {
   const AdminBusinessesScreen({super.key});
@@ -467,9 +468,7 @@ class _AdminBusinessesScreenState extends State<AdminBusinessesScreen> {
                           leading: CircleAvatar(
                             radius: 28,
                             backgroundColor: Colors.black.withValues(alpha: 0.05),
-                            backgroundImage: business['logo_url'] != null
-                                ? NetworkImage(business['logo_url'])
-                                : null,
+                            backgroundImage: imageProviderFromUrl(business['logo_url']?.toString()),
                             child: business['logo_url'] == null
                                 ? const Icon(Icons.store, color: Colors.black)
                                 : null,

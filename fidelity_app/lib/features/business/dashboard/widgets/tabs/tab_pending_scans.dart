@@ -4,6 +4,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import '../../../../../core/theme/app_theme.dart';
 import '../../../../../core/utils/date_utils.dart';
 import '../../providers/dashboard_provider.dart';
+import '../../../../../core/utils/image_source.dart';
 
 class TabPendingScans extends ConsumerWidget {
   const TabPendingScans({super.key});
@@ -82,9 +83,7 @@ class TabPendingScans extends ConsumerWidget {
                 CircleAvatar(
                   radius: 24,
                   backgroundColor: Colors.black.withValues(alpha: 0.04),
-                  backgroundImage: profile?['avatar_url'] != null
-                      ? NetworkImage(profile!['avatar_url'])
-                      : null,
+                  backgroundImage: imageProviderFromUrl(profile?['avatar_url']?.toString()),
                   child: profile?['avatar_url'] == null
                       ? Text(
                           (profile?['full_name']?[0] ?? '?').toUpperCase(),

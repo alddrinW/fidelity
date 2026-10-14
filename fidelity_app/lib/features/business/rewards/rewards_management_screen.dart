@@ -8,6 +8,7 @@ import '../../../core/theme/app_theme.dart';
 import '../../../core/services/realtime_sync_service.dart';
 import 'dart:async';
 import 'providers/rewards_management_provider.dart';
+import '../../../core/utils/image_source.dart';
 
 class RewardsManagementScreen extends ConsumerStatefulWidget {
   final String businessId;
@@ -178,9 +179,7 @@ class _RewardsManagementScreenState extends ConsumerState<RewardsManagementScree
                               CircleAvatar(
                                 radius: 24,
                                 backgroundColor: statusColor.withValues(alpha: 0.1),
-                                backgroundImage: reward['avatar_url'] != null
-                                    ? NetworkImage(reward['avatar_url'])
-                                    : null,
+                                backgroundImage: imageProviderFromUrl(reward['avatar_url']?.toString()),
                                 child: reward['avatar_url'] == null
                                     ? Text(
                                         fullName.isNotEmpty ? fullName[0] : '?',
