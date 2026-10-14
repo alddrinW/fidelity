@@ -61,6 +61,49 @@ class AppValidators {
     return null;
   }
 
+  // Validar nombre de negocio
+  static String? validateBusinessName(String? value) {
+    final name = value?.trim() ?? '';
+    if (name.isEmpty) return 'Ingresa el nombre de tu negocio';
+    if (name.length < 2) return 'El nombre debe tener al menos 2 caracteres';
+    return null;
+  }
+
+  // Teléfono de atención: celular (10 dígitos) o convencional con código de
+  // área (9 dígitos). Solo dígitos.
+  static String? validateBusinessPhone(String? value) {
+    final phone = value?.trim() ?? '';
+    if (phone.isEmpty) return 'Ingresa un teléfono de atención';
+    if (!RegExp(r'^\d{9,10}$').hasMatch(phone)) {
+      return 'El teléfono debe tener 9 o 10 dígitos';
+    }
+    return null;
+  }
+
+  // Cédula (10 dígitos) o RUC (13 dígitos) del propietario. Solo se valida
+  // el formato, no el dígito verificador: hay varios tipos de RUC y rechazar
+  // uno válido bloquearía al negocio.
+  static String? validateTaxId(String? value, {bool required = true}) {
+    final id = value?.trim() ?? '';
+    if (id.isEmpty) return required ? 'Ingresa tu cédula o RUC' : null;
+    if (!RegExp(r'^(\d{10}|\d{13})$').hasMatch(id)) {
+      return 'La cédula tiene 10 dígitos y el RUC 13';
+    }
+    return null;
+  }
+
+  static String? validateRewardName(String? value) {
+    if ((value?.trim() ?? '').isEmpty) return 'Indica qué premio entregas';
+    return null;
+  }
+
+  static String? validatePointsRequired(String? value) {
+    final points = int.tryParse(value?.trim() ?? '');
+    if (points == null || points < 1) return 'Mínimo 1 punto';
+    if (points > 100) return 'Máximo 100 puntos';
+    return null;
+  }
+
   // Validar confirmación de contraseña
   static String? validateConfirmPassword(String? value, String password) {
     if (value == null || value.isEmpty) {

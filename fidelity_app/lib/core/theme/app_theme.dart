@@ -1,11 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'app_colors.dart';
+import 'app_typography.dart';
+
 class AppTheme {
   // Paleta de colores "Pop-Minimalism" (Emote Agency Style)
-  static const Color _background = Color(0xFFFFFFFF);
+  static const Color _background = AppColors.white;
   static const Color _surface = Color(0xFFF2F2F2);
-  static const Color _primary = Color(0xFF000000); // Negro puro
+  static const Color _primary = AppColors.black; // Negro puro
   static const Color _accentPurple = Color(0xFF8A84FF);
   static const Color _accentPink = Color(0xFFFF4FD0);
   static const Color _accentYellow = Color(0xFFFFBF43);
@@ -15,7 +18,7 @@ class AppTheme {
   static const Color _error = Color(0xFFFF4949);
 
   static const double _radiusLarge = 48.0;
-  static const double _radiusMedium = 24.0;
+  static const double _radiusInput = 36.0;
   static const double _radiusPill = 999.0;
 
   // Animaciones centralizadas (DRY / NO_HARDCODING)
@@ -100,11 +103,7 @@ class AppTheme {
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(_radiusPill),
           ),
-          textStyle: GoogleFonts.poppins(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-            letterSpacing: 0.2,
-          ),
+          textStyle: AppTypography.label(size: 14, tracking: 1.5),
         ),
       ),
 
@@ -112,40 +111,44 @@ class AppTheme {
         style: TextButton.styleFrom(
           foregroundColor: _primary,
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          textStyle: GoogleFonts.poppins(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-          ),
+          textStyle: AppTypography.body(size: 15, weight: FontWeight.w500),
         ),
       ),
 
+      // Inputs de los mockups: píldora blanca con contorno negro fino.
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: _surface,
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(_radiusMedium),
-          borderSide: BorderSide.none,
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(_radiusMedium),
-          borderSide: BorderSide.none,
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(_radiusMedium),
-          borderSide: const BorderSide(color: _primary, width: 2.5),
-        ),
+        fillColor: _background,
+        border: _inputBorder(width: 1.2),
+        enabledBorder: _inputBorder(width: 1.2),
+        focusedBorder: _inputBorder(width: 2.4),
+        errorBorder: _inputBorder(width: 1.2, color: _error),
+        focusedErrorBorder: _inputBorder(width: 2.4, color: _error),
         contentPadding: const EdgeInsets.symmetric(
           horizontal: 24,
           vertical: 20,
         ),
-        labelStyle: GoogleFonts.poppins(
+        hintStyle: AppTypography.body(size: 17, weight: FontWeight.w300),
+        labelStyle: AppTypography.body(
+          size: 16,
+          weight: FontWeight.w400,
           color: _textSecondary,
-          fontWeight: FontWeight.w500,
+        ),
+        helperStyle: AppTypography.body(
+          size: 12,
+          weight: FontWeight.w400,
+          color: _textSecondary,
+        ),
+        errorStyle: AppTypography.body(
+          size: 12,
+          weight: FontWeight.w500,
+          color: _error,
         ),
         prefixIconColor: _primary,
+        suffixIconColor: _primary,
       ),
 
-      fontFamily: GoogleFonts.poppins().fontFamily,
+      fontFamily: GoogleFonts.jost().fontFamily,
       textTheme: TextTheme(
         headlineLarge: GoogleFonts.anton(
           fontSize: 36,
@@ -173,23 +176,23 @@ class AppTheme {
           color: _textPrimary,
           letterSpacing: 0.3,
         ),
-        bodyLarge: GoogleFonts.poppins(
+        bodyLarge: GoogleFonts.jost(
           fontSize: 16,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w400,
           color: _textPrimary,
           height: 1.5,
         ),
-        bodyMedium: GoogleFonts.poppins(
+        bodyMedium: GoogleFonts.jost(
           fontSize: 14,
-          fontWeight: FontWeight.w500,
+          fontWeight: FontWeight.w400,
           color: _textSecondary,
         ),
-        bodySmall: GoogleFonts.poppins(
+        bodySmall: GoogleFonts.jost(
           fontSize: 12,
           fontWeight: FontWeight.w400,
           color: _textSecondary,
         ),
-        labelLarge: GoogleFonts.poppins(
+        labelLarge: GoogleFonts.jost(
           fontSize: 14,
           fontWeight: FontWeight.w600,
           color: _primary,
@@ -198,7 +201,18 @@ class AppTheme {
     );
   }
 
+  static OutlineInputBorder _inputBorder({
+    required double width,
+    Color color = _primary,
+  }) {
+    return OutlineInputBorder(
+      borderRadius: BorderRadius.circular(_radiusInput),
+      borderSide: BorderSide(color: color, width: width),
+    );
+  }
+
   // Alias para compatibilidad y facilitar el uso directo
+  static const Color pink = AppColors.pink;
   static const Color primary = _primary;
   static const Color accentPurple = _accentPurple;
   static const Color accentPink = _accentPink;
