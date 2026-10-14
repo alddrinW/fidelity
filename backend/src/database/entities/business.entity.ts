@@ -50,6 +50,9 @@ export class Business {
   })
   rewardDescription: string;
 
+  @Column({ name: 'reward_long_description', type: 'text', nullable: true })
+  rewardLongDescription: string;
+
   @Column({ name: 'points_required', type: 'int', default: 10 })
   pointsRequired: number;
 
@@ -70,6 +73,10 @@ export class Business {
 
   @Column({ type: 'varchar', length: 50, nullable: true })
   phone: string;
+
+  /** Cedula (10 digitos) o RUC (13 digitos) del propietario. */
+  @Column({ name: 'tax_id', type: 'varchar', length: 13, nullable: true })
+  taxId: string;
 
   @OneToMany(() => LoyaltyCard, (card) => card.business)
   loyaltyCards: LoyaltyCard[];

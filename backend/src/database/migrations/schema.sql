@@ -46,6 +46,7 @@ CREATE TABLE IF NOT EXISTS public.businesses (
     category VARCHAR(100),
     logo_url TEXT,
     reward_description TEXT NOT NULL DEFAULT 'Premio Fidelity por puntos completados',
+    reward_long_description TEXT,
     points_required INT NOT NULL DEFAULT 10,
     cooldown_hours INT NOT NULL DEFAULT 24,
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -53,6 +54,7 @@ CREATE TABLE IF NOT EXISTS public.businesses (
     longitude DECIMAL(10, 7),
     address TEXT,
     phone VARCHAR(50),
+    tax_id VARCHAR(13),
     created_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE NOT NULL DEFAULT NOW()
 );

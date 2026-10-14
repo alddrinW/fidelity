@@ -4,8 +4,13 @@ import {
   IsString,
   IsNumber,
   IsBoolean,
+  Matches,
   Min,
 } from 'class-validator';
+import { IsImageSource } from '../../../common/validators/is-image-source.validator';
+
+const TAX_ID_PATTERN = /^(\d{10}|\d{13})$/;
+const TAX_ID_MESSAGE = 'La cedula debe tener 10 digitos o el RUC 13 digitos';
 
 export class CreateBusinessDto {
   @IsString()
@@ -24,13 +29,17 @@ export class CreateBusinessDto {
   @IsOptional()
   category?: string;
 
-  @IsString()
+  @IsImageSource()
   @IsOptional()
   logoUrl?: string;
 
   @IsString()
   @IsOptional()
   rewardDescription?: string;
+
+  @IsString()
+  @IsOptional()
+  rewardLongDescription?: string;
 
   @IsNumber()
   @Min(1, { message: 'Los puntos requeridos deben ser al menos 1' })
@@ -57,6 +66,10 @@ export class CreateBusinessDto {
   @IsString()
   @IsOptional()
   phone?: string;
+
+  @Matches(TAX_ID_PATTERN, { message: TAX_ID_MESSAGE })
+  @IsOptional()
+  taxId?: string;
 }
 
 export class UpdateBusinessDto {
@@ -76,13 +89,17 @@ export class UpdateBusinessDto {
   @IsOptional()
   category?: string;
 
-  @IsString()
+  @IsImageSource()
   @IsOptional()
   logoUrl?: string;
 
   @IsString()
   @IsOptional()
   rewardDescription?: string;
+
+  @IsString()
+  @IsOptional()
+  rewardLongDescription?: string;
 
   @IsNumber()
   @Min(1)
@@ -113,6 +130,10 @@ export class UpdateBusinessDto {
   @IsString()
   @IsOptional()
   phone?: string;
+
+  @Matches(TAX_ID_PATTERN, { message: TAX_ID_MESSAGE })
+  @IsOptional()
+  taxId?: string;
 }
 
 export class CreateCategoryDto {

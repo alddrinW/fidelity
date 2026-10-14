@@ -3,6 +3,7 @@ import {
   NotFoundException,
   ForbiddenException,
   Logger,
+  OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -19,8 +20,22 @@ import {
 } from './dto/businesses.dto';
 import { NotificationsService } from '../notifications/notifications.service';
 
+/**
+ * Categorias base. Las crea el backend al arrancar si la tabla esta vacia
+ * (con DB_SYNCHRONIZE=true las tablas las crea TypeORM y el INSERT de
+ * schema.sql nunca se ejecuta). Mantener alineado con schema.sql.
+ */
+export const DEFAULT_CATEGORIES: ReadonlyArray<{ name: string; icon: string }> = [
+  { name: 'Cafeterías & Panaderías', icon: 'coffee' },
+  { name: 'Restaurantes & Bares', icon: 'restaurant' },
+  { name: 'Belleza & Barberías', icon: 'content_cut' },
+  { name: 'Moda & Calzado', icon: 'checkroom' },
+  { name: 'Salud & Fitness', icon: 'fitness_center' },
+  { name: 'Servicios & Entretenimiento', icon: 'local_activity' },
+];
+
 @Injectable()
-export class BusinessesService {
+export class BusinessesService implements OnModuleInit {
   private readonly logger = new Logger(BusinessesService.name);
 
   constructor(
@@ -38,6 +53,27 @@ export class BusinessesService {
     private readonly profileRepository: Repository<Profile>,
     private readonly notificationsService: NotificationsService,
   ) {}
+
+  async onModuleInit() {
+    await this.seedDefaultCategories();
+  }
+
+  /** Crea las categorias base solo si no existe ninguna. Devuelve cuantas creo. */
+  async seedDefaultCategories(): Promise<number> {
+    try {
+      if ((await this.categoryRepository.count()) > 0) return 0;
+      const categories = this.categoryRepository.create(
+        DEFAULT_CATEGORIES.map((c) => ({ ...c })),
+      );
+      await this.categoryRepository.save(categories);
+      this.logger.log(`Categorias base creadas: ${categories.length}`);
+      return categories.length;
+    } catch (error) {
+      // No impedir el arranque del servidor si la siembra falla.
+      this.logger.error(`No se pudieron crear las categorias base: ${error.message}`);
+      return 0;
+    }
+  }
 
   // Categories
   async getCategories() {
