@@ -1,5 +1,6 @@
 import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength, IsEnum, IsBoolean } from 'class-validator';
 import { UserRole } from '../../../database/entities/profile.entity';
+import { IsImageSource } from '../../../common/validators/is-image-source.validator';
 
 export class RegisterDto {
   @IsEmail({}, { message: 'El correo electronico debe ser valido' })
@@ -21,7 +22,7 @@ export class RegisterDto {
   @IsOptional()
   phone?: string;
 
-  @IsString()
+  @IsImageSource()
   @IsOptional()
   avatarUrl?: string;
 

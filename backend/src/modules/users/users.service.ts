@@ -2,8 +2,11 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
+  UnauthorizedException,
   Logger,
 } from '@nestjs/common';
+import * as bcrypt from 'bcrypt';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource, ILike } from 'typeorm';
 import { Profile, UserRole } from '../../database/entities/profile.entity';
@@ -14,7 +17,7 @@ import { ScanAttempt } from '../../database/entities/scan-attempt.entity';
 import { Reward } from '../../database/entities/reward.entity';
 import { SupportTicket } from '../../database/entities/support-ticket.entity';
 import { QrCode } from '../../database/entities/qr-code.entity';
-import { UpdateProfileDto, UpdateFcmTokenDto } from './dto/users.dto';
+import { UpdateProfileDto, UpdateFcmTokenDto, ChangePasswordDto } from './dto/users.dto';
 
 @Injectable()
 export class UsersService {
@@ -45,6 +48,38 @@ export class UsersService {
     if (dto.fcmToken !== undefined) profile.fcmToken = dto.fcmToken;
 
     return this.profileRepository.save(profile);
+  }
+
+  async changePassword(userId: string, dto: ChangePasswordDto) {
+    // passwordHash no se selecciona por defecto (select: false).
+    const profile = await this.profileRepository
+      .createQueryBuilder('profile')
+      .addSelect('profile.passwordHash')
+      .where('profile.id = :userId', { userId })
+      .getOne();
+
+    if (!profile) {
+      throw new NotFoundException('Perfil de usuario no encontrado');
+    }
+
+    if (!profile.passwordHash) {
+      throw new BadRequestException('El usuario no tiene contrasena configurada');
+    }
+
+    const matches = await bcrypt.compare(dto.currentPassword, profile.passwordHash);
+    if (!matches) {
+      throw new UnauthorizedException('La contrasena actual no es correcta');
+    }
+
+    if (dto.currentPassword === dto.newPassword) {
+      throw new BadRequestException('La nueva contrasena debe ser distinta de la actual');
+    }
+
+    const salt = await bcrypt.genSalt(10);
+    profile.passwordHash = await bcrypt.hash(dto.newPassword, salt);
+    await this.profileRepository.save(profile);
+
+    return { message: 'Contrasena actualizada correctamente' };
   }
 
   async updateFcmToken(userId: string, dto: UpdateFcmTokenDto) {

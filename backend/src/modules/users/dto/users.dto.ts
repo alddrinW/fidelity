@@ -1,5 +1,5 @@
-import { IsOptional, IsString, IsEnum } from 'class-validator';
-import { UserRole } from '../../../database/entities/profile.entity';
+import { IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsImageSource } from '../../../common/validators/is-image-source.validator';
 
 export class UpdateProfileDto {
   @IsString()
@@ -10,7 +10,7 @@ export class UpdateProfileDto {
   @IsOptional()
   phone?: string;
 
-  @IsString()
+  @IsImageSource()
   @IsOptional()
   avatarUrl?: string;
 
@@ -22,4 +22,14 @@ export class UpdateProfileDto {
 export class UpdateFcmTokenDto {
   @IsString()
   fcmToken: string;
+}
+
+export class ChangePasswordDto {
+  @IsString()
+  @IsNotEmpty({ message: 'La contrasena actual es requerida' })
+  currentPassword: string;
+
+  @IsString()
+  @MinLength(6, { message: 'La nueva contrasena debe tener al menos 6 caracteres' })
+  newPassword: string;
 }
