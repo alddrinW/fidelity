@@ -1,19 +1,26 @@
-import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_animate/flutter_animate.dart';
-import 'package:confetti/confetti.dart';
-import '../scanner/scanner_screen.dart';
-import 'card_history_screen.dart';
-import '../profile/user_profile_screen.dart';
-import '../auth/data/auth_repository.dart';
-import '../../core/services/api_client.dart';
-import '../../core/theme/app_theme.dart';
-import 'providers/my_cards_provider.dart';
 import 'dart:async';
+
+import 'package:confetti/confetti.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/services/api_client.dart';
 import '../../core/services/realtime_sync_service.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/utils/image_source.dart';
+import '../../core/widgets/app_button.dart';
+import '../../core/widgets/app_message_dialog.dart';
+import '../../core/widgets/app_responsive_body.dart';
 import '../../core/widgets/global_celebration_dialog.dart';
 import '../../core/widgets/user_avatar_circle.dart';
+import '../auth/data/auth_repository.dart';
+import '../profile/user_profile_screen.dart';
+import '../scanner/scanner_screen.dart';
+import 'card_history_screen.dart';
+import 'providers/my_cards_provider.dart';
 
 class MyCardsScreen extends ConsumerStatefulWidget {
   const MyCardsScreen({super.key});
@@ -47,8 +54,8 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
       final notifier = ref.read(myCardsProvider.notifier);
       notifier.onCardCompleted = _showCelebrationDialog;
       notifier.onPointEarned = _showPointEarnedAnimation;
-      
-      // Evitar que el diálogo salte si la pantalla está oculta detrás del RegisterScreen
+
+      // Evitar que el diálogo salte si la pantalla está oculta detrás de otra
       if (ModalRoute.of(context)?.isCurrent == true) {
         _checkWelcomeMessage();
       }
@@ -83,10 +90,17 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
     if (!mounted) return;
     _confettiController.play();
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('¡Punto aprobado! Sumaste 1 punto ✨', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: AppTheme.accentGreen,
-        duration: Duration(seconds: 3),
+      SnackBar(
+        content: Text(
+          'Punto aprobado. Sumaste 1 punto.',
+          style: AppTypography.body(
+            size: 15,
+            weight: FontWeight.w600,
+            color: AppColors.white,
+          ),
+        ),
+        backgroundColor: AppColors.black,
+        duration: const Duration(seconds: 3),
       ),
     );
   }
@@ -112,50 +126,18 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
   }
 
   void _showWelcomeDialog() {
-    final state = ref.read(myCardsProvider);
-    final displayName = _getDisplayName(state.userName);
+    final displayName = _getDisplayName(ref.read(myCardsProvider).userName);
+    final greeting = displayName.isEmpty ? '¡Hola!' : '¡Hola $displayName!';
 
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Column(
-          children: [
-            const Icon(Icons.waving_hand_rounded, color: AppTheme.accentPurple, size: 48),
-            const SizedBox(height: 16),
-            Text(
-              '¡Bienvenido a Fidelity!',
-              style: GoogleFonts.anton(
-                fontSize: 24,
-                color: AppTheme.accentPurple,
-                letterSpacing: 1,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-        content: Text(
-          '¡Hola $displayName, tu cuenta ha sido creada exitosamente!\n\nAquí podrás ver tus tarjetas y acumular puntos escaneando los códigos QR de tus negocios favoritos.',
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 16, color: Colors.black87),
-        ),
-        actions: [
-          Center(
-            child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.accentPurple,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-              ),
-              child: const Text('¡Empezar!'),
-            ),
-          ),
-        ],
-      ).animate().scale(duration: 400.ms, curve: Curves.easeOutBack),
+      builder: (_) => AppMessageDialog(
+        icon: Icons.waving_hand_rounded,
+        title: '¡Bienvenido a Fidelity!',
+        message: '$greeting Tu cuenta ha sido creada. Aquí verás tus tarjetas y '
+            'acumularás puntos escaneando los códigos QR de tus negocios favoritos.',
+        primaryLabel: '¡Empezar!',
+      ),
     );
   }
 
@@ -200,74 +182,27 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
     final business = card['businesses'];
     showDialog(
       context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(28)),
-        title: Column(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppTheme.accentYellow.withValues(alpha: 0.15),
-                shape: BoxShape.circle,
+      builder: (_) => AppMessageDialog(
+        icon: Icons.card_giftcard_rounded,
+        title: '¡Tienes un premio!',
+        message:
+            'Tienes un premio pendiente en ${business['name']}. ¡No te olvides de reclamarlo!',
+        primaryLabel: 'Ver premio',
+        onPrimary: () {
+          if (!mounted) return;
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (_) => CardHistoryScreen(
+                loyaltyCardId: card['id'],
+                businessId: business['id'],
+                businessName: business['name'],
+                initialTabIndex: 1, // pestaña PREMIOS
               ),
-              child: const Icon(Icons.card_giftcard_rounded, color: AppTheme.accentYellow, size: 44),
-            ).animate().scale(duration: 450.ms, curve: Curves.easeOutBack),
-            const SizedBox(height: 16),
-            Text(
-              '¡TIENES UN PREMIO!',
-              style: GoogleFonts.anton(fontSize: 22, letterSpacing: 1, color: Colors.black),
-              textAlign: TextAlign.center,
             ),
-          ],
-        ),
-        content: Text(
-          'Tienes un premio pendiente en ${business['name']}. ¡No te olvides de reclamarlo!',
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 15, color: Colors.black87),
-        ),
-        actions: [
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  child: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text(
-                      'DESPUÉS',
-                      maxLines: 1,
-                      style: TextStyle(color: Colors.black45, fontWeight: FontWeight.w900),
-                    ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () {
-                    Navigator.pop(ctx);
-                    Navigator.push(
-                      context,
-                      MaterialPageRoute(
-                        builder: (_) => CardHistoryScreen(
-                          loyaltyCardId: card['id'],
-                          businessId: business['id'],
-                          businessName: business['name'],
-                          initialTabIndex: 1, // pestaña PREMIOS
-                        ),
-                      ),
-                    );
-                  },
-                  child: const FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: Text('VER PREMIO', maxLines: 1),
-                  ),
-                ),
-              ),
-            ],
-          ),
-        ],
+          );
+        },
+        secondaryLabel: 'Después',
       ),
     );
   }
@@ -280,11 +215,49 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
     return parts[0];
   }
 
+  void _openScanner() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ScannerScreen()),
+    );
+  }
+
+  Future<void> _openProfile() async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+    );
+    if (result == true) {
+      // Esperamos a que termine la animación de vuelta (Hero) ANTES de
+      // refrescar, para no reconstruir el avatar a mitad del vuelo (eso
+      // causaba el salto de tamaño "se agranda y se achica"). Luego
+      // actualiza foto/nombre en su lugar, sin parpadear.
+      Future.delayed(const Duration(milliseconds: 450), () {
+        if (mounted) {
+          ref.read(myCardsProvider.notifier).refreshCards(silent: true);
+        }
+      });
+    }
+  }
+
+  void _openCard(Map<String, dynamic> card) {
+    final business = card['businesses'];
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CardHistoryScreen(
+          loyaltyCardId: card['id'],
+          businessId: business['id'],
+          businessName: business['name'],
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final state = ref.watch(myCardsProvider);
-    
+
     // Listen to error state
     ref.listen<MyCardsState>(myCardsProvider, (previous, next) {
       if (next.error != null && next.error != previous?.error) {
@@ -311,221 +284,208 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
     return Stack(
       children: [
         Scaffold(
-          backgroundColor: theme.scaffoldBackgroundColor,
-          appBar: AppBar(
-        toolbarHeight: 100,
-        backgroundColor: Colors.white,
-        centerTitle: false,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-              if (displayName.isNotEmpty)
-                Text(
-                  'Hola, $displayName',
-                  style: const TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                    color: Colors.black87,
-                  ),
-                ),
-          ],
-        ),
-        leadingWidth: 70,
-        leading: Padding(
-          padding: const EdgeInsets.only(left: 16.0),
-          child: Center(
-            child: GestureDetector(
-              onTap: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const UserProfileScreen()),
-                );
-                if (result == true) {
-                  // Esperamos a que termine la animación de vuelta (Hero) ANTES de
-                  // refrescar, para no reconstruir el avatar a mitad del vuelo (eso
-                  // causaba el salto de tamaño "se agranda y se achica"). Luego
-                  // actualiza foto/nombre en su lugar, sin parpadear.
-                  Future.delayed(const Duration(milliseconds: 450), () {
-                    if (mounted) {
-                      ref.read(myCardsProvider.notifier).refreshCards(silent: true);
-                    }
-                  });
-                }
-              },
-              child: Stack(
+          body: SafeArea(
+            child: AppResponsiveBody(
+              child: Column(
                 children: [
-                  // Hero: anima la transición del avatar al entrar al perfil,
-                  // igual que el negocio. El mismo widget vuela como UNA sola
-                  // pieza (child + flightShuttleBuilder), sin rearmarse.
-                  Hero(
-                    tag: 'user_avatar',
-                    flightShuttleBuilder: (_, __, ___, ____, _____) =>
-                        UserAvatarCircle(avatarUrl: state.avatarUrl),
-                    child: SizedBox(
-                      width: 44,
-                      height: 44,
-                      child: UserAvatarCircle(avatarUrl: state.avatarUrl),
-                    ),
-                  ),
-                  Positioned(
-                    right: 0,
-                    bottom: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [AppTheme.accentPurple, AppTheme.accentPink],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        shape: BoxShape.circle,
-                        border: Border.all(color: Colors.white, width: 1.5),
-                      ),
-                      child: const Icon(
-                        Icons.edit_rounded,
-                        size: 10,
-                        color: Colors.white,
-                      ),
-                    )
-                        .animate(
-                          onPlay: (controller) => controller.repeat(reverse: true),
-                        )
-                        .scale(
-                          duration: const Duration(seconds: 1),
-                          begin: const Offset(1, 1),
-                          end: const Offset(1.15, 1.15),
-                          curve: Curves.easeInOut,
-                        )
-                        .shimmer(
-                          duration: const Duration(seconds: 3),
-                          color: Colors.white.withValues(alpha: 0.5),
-                        ),
+                  _buildHeader(state, displayName),
+                  Expanded(
+                    child: state.isLoading && state.cards.isEmpty
+                        ? const Center(child: CircularProgressIndicator())
+                        : state.cards.isEmpty
+                            ? _buildEmptyState()
+                            : _buildCardList(state),
                   ),
                 ],
               ),
             ),
           ),
         ),
-      ),
-      body: SafeArea(
-        child: state.isLoading && state.cards.isEmpty
-            ? const Center(child: CircularProgressIndicator())
-            : state.cards.isEmpty
-            ? _buildEmptyState(theme)
-            : RefreshIndicator(
-                onRefresh: () => ref.read(myCardsProvider.notifier).refreshCards(),
-                child: ListView.builder(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 24,
-                  ),
-                  itemCount: state.cards.length,
-                  itemBuilder: (context, index) {
-                    return _LoyaltyCardItem(
-                      card: state.cards[index],
-                      index: index,
-                      sessionLastViewedAt: state.sessionLastViewedAt,
-                      onTap: () {
-                        final card = state.cards[index];
-                        final business = card['businesses'];
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CardHistoryScreen(
-                              loyaltyCardId: card['id'],
-                              businessId: business['id'],
-                              businessName: business['name'],
-                            ),
-                          ),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-      ),
-      floatingActionButton: state.cards.isEmpty
-          ? null
-          : FloatingActionButton.extended(
-              onPressed: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ScannerScreen()),
-                );
-              },
-              icon: const Icon(Icons.qr_code_scanner),
-              label: const Text('ESCANEAR QR'),
-            ).animate().scale(delay: 1.seconds, curve: Curves.elasticOut),
-        ),
         Align(
           alignment: Alignment.topCenter,
           child: ConfettiWidget(
             confettiController: _confettiController,
             blastDirection: 3.14 / 2, // Hacia abajo
-            maxBlastForce: 5, 
-            minBlastForce: 2, 
-            emissionFrequency: 0.05, 
-            numberOfParticles: 50, 
+            maxBlastForce: 5,
+            minBlastForce: 2,
+            emissionFrequency: 0.05,
+            numberOfParticles: 50,
             gravity: 0.2,
+            colors: const [AppColors.pink, AppColors.black],
           ),
         ),
       ],
     );
   }
 
-  Widget _buildEmptyState(ThemeData theme) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildHeader(MyCardsState state, String displayName) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 28, 24, 8),
+      child: Row(
         children: [
-          Container(
-            padding: const EdgeInsets.all(40),
-            decoration: BoxDecoration(
-              color: AppTheme.accentPurple.withValues(alpha: 0.05),
-              shape: BoxShape.circle,
-            ),
-            child: const Icon(
-              Icons.card_membership_rounded,
-              size: 80,
-              color: AppTheme.accentPurple,
-            ),
-          ).animate().scale(curve: Curves.elasticOut, duration: 800.ms),
-          const SizedBox(height: 32),
-          Text(
-            '¡EMPIEZA TU COLECCIÓN!',
-            style: GoogleFonts.anton(
-              fontSize: 20,
-              fontWeight: FontWeight.w400,
-              letterSpacing: 1,
+          Semantics(
+            button: true,
+            label: 'Mi perfil',
+            child: GestureDetector(
+              onTap: _openProfile,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  // Hero: anima la transición del avatar al entrar al perfil.
+                  // El mismo widget vuela como UNA sola pieza (child +
+                  // flightShuttleBuilder), sin rearmarse.
+                  Hero(
+                    tag: 'user_avatar',
+                    flightShuttleBuilder: (_, __, ___, ____, _____) =>
+                        UserAvatarCircle(avatarUrl: state.avatarUrl),
+                    child: SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: UserAvatarCircle(avatarUrl: state.avatarUrl),
+                    ),
+                  ),
+                  Positioned(
+                    right: -4,
+                    bottom: -4,
+                    child: Container(
+                      padding: const EdgeInsets.all(3),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.black, width: 1),
+                      ),
+                      child: const Icon(
+                        Icons.edit_outlined,
+                        size: 11,
+                        color: AppColors.black,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-          const SizedBox(height: 12),
-          const Text(
-            'ESCANEA TU PRIMER CÓDIGO QR EN\nCUALQUIER LOCAL AFILIADO.',
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              fontWeight: FontWeight.w700,
-              color: Colors.black26,
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 48),
-          ElevatedButton.icon(
-                onPressed: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const ScannerScreen()),
+          const SizedBox(width: 20),
+          if (displayName.isNotEmpty)
+            Expanded(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  'Hola, $displayName',
+                  style: AppTypography.display(size: 34),
                 ),
-                icon: const Icon(Icons.qr_code_scanner_rounded),
-                label: const Text('ESCANEAR AHORA'),
-              )
-              .animate(delay: 400.ms)
-              .fadeIn()
-              .moveY(begin: 20, curve: Curves.easeOut),
+              ),
+            ),
         ],
       ),
     );
   }
+
+  Widget _buildCardList(MyCardsState state) {
+    return Stack(
+      children: [
+        RefreshIndicator(
+          color: AppColors.black,
+          onRefresh: () => ref.read(myCardsProvider.notifier).refreshCards(),
+          child: ListView.builder(
+            // Espacio inferior para que la última tarjeta no quede bajo el botón.
+            padding: const EdgeInsets.fromLTRB(24, 16, 24, 140),
+            itemCount: state.cards.length + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(left: 4, bottom: 16),
+                  child: Semantics(
+                    header: true,
+                    child: Text(
+                      'ESCANEOS REGISTRADOS',
+                      style: AppTypography.label(size: 16, tracking: 0.5),
+                    ),
+                  ),
+                );
+              }
+              final card = state.cards[index - 1];
+              return _LoyaltyCardItem(
+                card: card,
+                index: index - 1,
+                sessionLastViewedAt: state.sessionLastViewedAt,
+                onTap: () => _openCard(card),
+              );
+            },
+          ),
+        ),
+        Positioned(
+          left: 0,
+          right: 0,
+          bottom: 0,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(48, 32, 48, 24),
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Color(0x00FFFFFF), AppColors.white],
+                stops: [0, 0.45],
+              ),
+            ),
+            child: AppPrimaryButton(label: 'Escanear', onPressed: _openScanner),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Column(
+      children: [
+        Expanded(
+          child: Center(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Image.asset(
+                    'assets/images/logo_transparente.png',
+                    height: 280,
+                    fit: BoxFit.contain,
+                    semanticLabel: 'Fido',
+                  ).animate().scale(
+                        begin: const Offset(0.8, 0.8),
+                        duration: 700.ms,
+                        curve: const Cubic(0.34, 1.56, 0.64, 1),
+                      ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'EMPIEZA A GANAR',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.display(size: 44),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'ESCANEA TU PRIMER CÓDIGO QR\nEN CUALQUIER NEGOCIO AFILIADO\nPARA RECIBIR PREMIOS',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.body(size: 16, weight: FontWeight.w300),
+                  ),
+                ],
+              ).animate().fadeIn(),
+            ),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(48, 8, 48, 56),
+          child: AppPrimaryButton(label: 'Escanear', onPressed: _openScanner)
+              .animate(delay: 300.ms)
+              .fadeIn()
+              .moveY(begin: 16, curve: Curves.easeOut),
+        ),
+      ],
+    );
+  }
 }
 
+/// Tarjeta de un negocio: logo, nombre, premio y avance (p. ej. "6/10").
 class _LoyaltyCardItem extends StatelessWidget {
   final Map<String, dynamic> card;
   final int index;
@@ -539,342 +499,187 @@ class _LoyaltyCardItem extends StatelessWidget {
     this.sessionLastViewedAt,
   });
 
+  bool get _isRecentlyUpdated {
+    final lastScan = DateTime.tryParse(card['last_scan_at']?.toString() ?? '');
+    if (lastScan == null) return false;
+    final viewedAt = sessionLastViewedAt;
+    if (viewedAt != null) return lastScan.isAfter(viewedAt);
+    // Si es la primera vez que abre la app en su vida, usamos la regla de 5 mins por si acaso
+    return DateTime.now().toUtc().difference(lastScan).inMinutes < 5;
+  }
+
   @override
   Widget build(BuildContext context) {
     final business = card['businesses'];
+    final name = business['name'].toString();
     final currentPoints = card['current_points'] as int;
     final pointsRequired = business['points_required'] as int;
-    final progress = (currentPoints / pointsRequired).clamp(0.0, 1.0);
-    final theme = Theme.of(context);
+    final reward = business['reward_description']?.toString();
 
     // Premios ganados pero todavía no entregados por el local (status 'pending').
     // Apenas el local lo entrega (status 'approved') deja de mostrarse.
     // Se actualiza EN VIVO porque el realtime de rewards dispara refreshCards.
     final rewardsList = (card['rewards'] as List?) ?? const [];
-    final unclaimedRewards = rewardsList
-        .where((r) => (r as Map)['status'] == 'pending')
-        .toList();
-    final bool hasUnclaimedReward = unclaimedRewards.isNotEmpty;
+    final unclaimedCount =
+        rewardsList.where((r) => (r as Map)['status'] == 'pending').length;
 
-    // Colores dinámicos basados en el índice para variedad (Estilo Emote)
-    final accents = [
-      AppTheme.accentPurple,
-      AppTheme.accentPink,
-      AppTheme.accentYellow,
-      AppTheme.accentGreen,
-    ];
-    final accentColor = accents[index % accents.length];
-
-    final String? lastScanStr = card['last_scan_at'];
-    bool isRecentlyUpdated = false;
-    if (lastScanStr != null) {
-      final lastScan = DateTime.tryParse(lastScanStr);
-      if (lastScan != null) {
-        if (sessionLastViewedAt != null) {
-          isRecentlyUpdated = lastScan.isAfter(sessionLastViewedAt!);
-        } else {
-          // Si es la primera vez que abre la app en su vida, usamos la regla de 5 mins por si acaso
-          final diff = DateTime.now().toUtc().difference(lastScan);
-          isRecentlyUpdated = diff.inMinutes < 5;
-        }
-      }
-    }
-
-    return GestureDetector(
-          onTap: onTap,
-          child: Container(
-            margin: const EdgeInsets.only(bottom: 24),
-            padding: const EdgeInsets.all(24),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(48),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withValues(alpha: 0.04),
-                  blurRadius: 20,
-                  offset: const Offset(0, 10),
-                ),
-              ],
+    return Semantics(
+      button: true,
+      label: 'Tarjeta de $name, $currentPoints de $pointsRequired puntos',
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 20),
+        child: Material(
+          color: AppColors.white,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(36),
+            side: const BorderSide(color: AppColors.border, width: 1.2),
+          ),
+          child: InkWell(
+            customBorder: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(36),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Container(
-                      width: 64,
-                      height: 64,
-                      decoration: BoxDecoration(
-                        color: accentColor.withValues(alpha: 0.12),
-                        borderRadius: BorderRadius.circular(24),
-                        image: business['logo_url'] != null
-                            ? DecorationImage(
-                                image: NetworkImage(business['logo_url']),
-                                fit: BoxFit.cover,
-                              )
-                            : null,
-                      ),
-                      child: business['logo_url'] == null
-                          ? Icon(
-                              AppTheme.getCategoryIcon(
-                                business['business_categories']?['name'] ?? 'Otra',
-                              ),
-                              color: accentColor,
-                              size: 32,
-                            )
-                          : null,
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                            crossAxisAlignment: CrossAxisAlignment.start,
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(20, 20, 16, 16),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  _BusinessLogo(
+                    logoUrl: business['logo_url']?.toString(),
+                    category: business['business_categories']?['name']?.toString(),
+                  ),
+                  const SizedBox(width: 16),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          name.toUpperCase(),
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: AppTypography.display(size: 28),
+                        ),
+                        if (reward != null && reward.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            'PREMIO: ${reward.toUpperCase()}',
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.body(
+                              size: 15,
+                              weight: FontWeight.w300,
+                            ),
+                          ),
+                        ],
+                        if (unclaimedCount > 0 || _isRecentlyUpdated) ...[
+                          const SizedBox(height: 10),
+                          Wrap(
+                            spacing: 8,
+                            runSpacing: 6,
                             children: [
-                              Expanded(
-                                child: Text(
-                                  business['name'].toString().toUpperCase(),
-                                  style: theme.textTheme.titleLarge?.copyWith(
-                                    fontWeight: FontWeight.w900,
-                                  ),
+                              if (unclaimedCount > 0)
+                                _StatusChip(
+                                  label: unclaimedCount > 1
+                                      ? '$unclaimedCount PREMIOS LISTOS'
+                                      : 'PREMIO LISTO',
+                                  dark: true,
                                 ),
-                              ),
-                              if (isRecentlyUpdated)
-                                Container(
-                                  margin: const EdgeInsets.only(left: 8),
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.accentGreen.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(12),
-                                    border: Border.all(color: AppTheme.accentGreen.withValues(alpha: 0.5), width: 1),
-                                  ),
-                                  child: Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const Icon(Icons.bolt_rounded, color: AppTheme.accentGreen, size: 12),
-                                      const SizedBox(width: 4),
-                                      const Text(
-                                        '¡NUEVO!',
-                                        style: TextStyle(
-                                          color: AppTheme.accentGreen,
-                                          fontSize: 9,
-                                          fontWeight: FontWeight.w900,
-                                          letterSpacing: 0.5,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ).animate(onPlay: (c) => c.repeat(reverse: true)).scaleXY(begin: 1.0, end: 1.05, duration: 800.ms),
+                              if (_isRecentlyUpdated)
+                                const _StatusChip(label: 'NUEVO'),
                             ],
                           ),
-                          if (business['reward_description'] != null)
-                            Text(
-                              business['reward_description']!
-                                  .toString()
-                                  .toUpperCase(),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: Colors.black54,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          if (business['reward_long_description'] != null)
-                            Text(
-                              business['reward_long_description'].toString(),
-                              style: theme.textTheme.bodySmall?.copyWith(
-                                color: Colors.black38,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
                         ],
-                      ),
+                        const SizedBox(height: 14),
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '$currentPoints/$pointsRequired',
+                                style: AppTypography.label(size: 28, tracking: 1),
+                              ),
+                            ),
+                            const Icon(
+                              Icons.chevron_right_rounded,
+                              size: 36,
+                              color: AppColors.black,
+                            ),
+                          ],
+                        ),
+                      ],
                     ),
-                  ],
-                ),
-
-                // Premio ganado visible en vivo en la tarjeta.
-                if (hasUnclaimedReward) ...[
-                  const SizedBox(height: 20),
-                  _RewardBanner(count: unclaimedRewards.length),
+                  ),
                 ],
-
-                const SizedBox(height: 32),
-
-                // Progreso Estilo Minimalista
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '$currentPoints / $pointsRequired PUNTOS',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 1.2,
-                      ),
-                    ),
-                    Text(
-                      '${(progress * 100).toInt()}%',
-                      style: theme.textTheme.labelLarge?.copyWith(
-                        color: accentColor,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 12),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: progress,
-                    minHeight: 14,
-                    backgroundColor: accentColor.withValues(alpha: 0.1),
-                    valueColor: AlwaysStoppedAnimation(accentColor),
-                  ),
-                ),
-
-                const SizedBox(height: 32),
-
-                // Stats en horizontal
-                Row(
-                  children: [
-                    _MiniStat(
-                      icon: Icons.auto_awesome,
-                      value: (card['total_points_lifetime'] ?? 0).toString(),
-                      label: 'TOTAL',
-                      color: accentColor,
-                    ),
-                    const Spacer(),
-                    _MiniStat(
-                      icon: Icons.card_giftcard,
-                      value: (card['rewards_claimed'] ?? 0).toString(),
-                      label: 'CANJES',
-                      color: AppTheme.accentPink,
-                    ),
-                    const Spacer(),
-                    _MiniStat(
-                      icon: Icons.calendar_today_outlined,
-                      value: 'ACTIVA',
-                      label: 'ESTADO',
-                      color: AppTheme.accentGreen,
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-        )
-        .animate(delay: (index * 100).ms)
-        .slideY(begin: 0.2, curve: Curves.elasticOut, duration: 800.ms)
-        .fadeIn();
-  }
-}
-
-class _RewardBanner extends StatelessWidget {
-  final int count;
-
-  const _RewardBanner({required this.count});
-
-  @override
-  Widget build(BuildContext context) {
-    const Color color = AppTheme.accentYellow;
-    final String title = count > 1
-        ? '¡TIENES $count PREMIOS!'
-        : '¡TIENES UN PREMIO!';
-    const String subtitle = 'Acércate al local para reclamarlo.';
-
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: color.withValues(alpha: 0.4), width: 1.5),
-      ),
-      child: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withValues(alpha: 0.18),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.card_giftcard_rounded, color: color, size: 22),
-          )
-              .animate(onPlay: (c) => c.repeat(reverse: true))
-              .scaleXY(begin: 1.0, end: 1.12, duration: 800.ms, curve: Curves.easeInOut),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: TextStyle(
-                    color: color == AppTheme.accentYellow
-                        ? const Color(0xFF8A6D00)
-                        : color,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 13,
-                    letterSpacing: 0.5,
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: const TextStyle(
-                    color: Colors.black54,
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class _MiniStat extends StatelessWidget {
-  final IconData icon;
-  final String value;
-  final String label;
-  final Color color;
-
-  const _MiniStat({
-    required this.icon,
-    required this.value,
-    required this.label,
-    required this.color,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 28, color: color),
-        const SizedBox(width: 8),
-        Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              value,
-              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14),
-            ),
-            Text(
-              label,
-              style: const TextStyle(
-                color: Colors.black38,
-                fontSize: 10,
-                fontWeight: FontWeight.w800,
               ),
             ),
-          ],
+          ),
         ),
-      ],
+      ),
+    )
+        .animate(delay: (index.clamp(0, 6) * 80).ms)
+        .fadeIn(duration: 400.ms)
+        .slideY(begin: 0.08, curve: Curves.easeOutCubic, duration: 500.ms);
+  }
+}
+
+class _BusinessLogo extends StatelessWidget {
+  final String? logoUrl;
+  final String? category;
+
+  const _BusinessLogo({required this.logoUrl, required this.category});
+
+  static const double _size = 88;
+
+  @override
+  Widget build(BuildContext context) {
+    final fallback = Icon(
+      AppTheme.getCategoryIcon(category ?? 'Otra'),
+      color: AppColors.black,
+      size: 38,
+    );
+    final image = imageProviderFromUrl(logoUrl);
+
+    return Container(
+      width: _size,
+      height: _size,
+      decoration: const BoxDecoration(
+        color: AppColors.surfaceMuted,
+        shape: BoxShape.circle,
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: image == null
+          ? fallback
+          : Image(
+              image: image,
+              fit: BoxFit.cover,
+              errorBuilder: (_, __, ___) => fallback,
+            ),
     );
   }
 }
 
+class _StatusChip extends StatelessWidget {
+  final String label;
+  final bool dark;
 
+  const _StatusChip({required this.label, this.dark = false});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(
+        color: dark ? AppColors.black : AppColors.pink,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: AppTypography.label(
+          size: 10,
+          tracking: 1.5,
+          color: dark ? AppColors.white : AppColors.black,
+        ),
+      ),
+    );
+  }
+}

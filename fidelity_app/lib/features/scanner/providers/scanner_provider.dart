@@ -3,53 +3,49 @@ import '../../../core/services/api_client.dart';
 import '../../auth/data/auth_repository.dart';
 import '../data/scanner_repository.dart';
 
+/// Estado del escáner. Cada transición establece solo los campos que aplican:
+/// `copyWith` NO conserva mensajes previos, de modo que un resultado se
+/// consume una vez (ver [ScannerNotifier.reset]).
 class ScannerState {
   final bool isProcessing;
   final String? error;
-  final String? cooldownHours;
-  final bool hasPendingReward;
-  final String? successBusinessName;
 
-  ScannerState({
+  /// Mensaje del backend con el tiempo restante cuando el local aún no
+  /// permite otro escaneo (HTTP 429).
+  final String? cooldownMessage;
+  final bool hasPendingReward;
+  final ScanResult? result;
+
+  const ScannerState({
     this.isProcessing = false,
     this.error,
-    this.cooldownHours,
+    this.cooldownMessage,
     this.hasPendingReward = false,
-    this.successBusinessName,
+    this.result,
   });
 
   ScannerState copyWith({
     bool? isProcessing,
     String? error,
-    String? cooldownHours,
-    bool? hasPendingReward,
-    String? successBusinessName,
+    String? cooldownMessage,
+    bool hasPendingReward = false,
+    ScanResult? result,
   }) {
     return ScannerState(
       isProcessing: isProcessing ?? this.isProcessing,
       error: error,
-      cooldownHours: cooldownHours,
-      hasPendingReward: hasPendingReward ?? false,
-      successBusinessName: successBusinessName,
+      cooldownMessage: cooldownMessage,
+      hasPendingReward: hasPendingReward,
+      result: result,
     );
   }
 
-  ScannerState clearMessages() {
-    return ScannerState(
-      isProcessing: isProcessing,
-      error: null,
-      cooldownHours: null,
-      hasPendingReward: false,
-      successBusinessName: null,
-    );
-  }
+  ScannerState clearMessages() => ScannerState(isProcessing: isProcessing);
 }
 
 class ScannerNotifier extends Notifier<ScannerState> {
   @override
-  ScannerState build() {
-    return ScannerState();
-  }
+  ScannerState build() => const ScannerState();
 
   void reset() {
     state = state.clearMessages();
@@ -58,41 +54,26 @@ class ScannerNotifier extends Notifier<ScannerState> {
   Future<void> validateScan(String qrCode) async {
     if (state.isProcessing) return;
 
-    state = state.copyWith(isProcessing: true).clearMessages();
+    state = state.copyWith(isProcessing: true);
 
     try {
       final userId = ref.read(authRepositoryProvider).currentUser?.id;
       if (userId == null) throw Exception('Usuario no autenticado');
 
-      final businessName = await ref.read(scannerRepositoryProvider).validateScan(qrCode, userId);
-
-      state = state.copyWith(
-        isProcessing: false,
-        successBusinessName: businessName,
-      );
+      final result = await ref.read(scannerRepositoryProvider).validateScan(qrCode);
+      state = state.copyWith(isProcessing: false, result: result);
     } on ApiException catch (e) {
-      if (e.statusCode == 429 || e.message.toLowerCase().contains('cooldown') || e.message.toLowerCase().contains('espera')) {
-        state = state.copyWith(
-          isProcessing: false,
-          error: e.message,
-          cooldownHours: '4',
-        );
-      } else if (e.message.contains('PENDING_REWARD') || e.message.toLowerCase().contains('premio pendiente')) {
-        state = state.copyWith(
-          isProcessing: false,
-          hasPendingReward: true,
-        );
+      final message = e.message.toLowerCase();
+      if (e.statusCode == 429) {
+        state = state.copyWith(isProcessing: false, cooldownMessage: e.message);
+      } else if (e.message.contains('PENDING_REWARD') ||
+          message.contains('premio pendiente')) {
+        state = state.copyWith(isProcessing: false, hasPendingReward: true);
       } else {
-        state = state.copyWith(
-          isProcessing: false,
-          error: e.message,
-        );
+        state = state.copyWith(isProcessing: false, error: e.message);
       }
     } catch (e) {
-      state = state.copyWith(
-        isProcessing: false,
-        error: e.toString(),
-      );
+      state = state.copyWith(isProcessing: false, error: e.toString());
     }
   }
 }

@@ -1,10 +1,14 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import '../../core/theme/app_theme.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:mobile_scanner/mobile_scanner.dart';
+
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/widgets/app_message_dialog.dart';
+import '../../core/widgets/app_responsive_body.dart';
 import 'providers/scanner_provider.dart';
+import 'scan_success_screen.dart';
 
 class ScannerScreen extends ConsumerStatefulWidget {
   const ScannerScreen({super.key});
@@ -16,130 +20,9 @@ class ScannerScreen extends ConsumerStatefulWidget {
 class _ScannerScreenState extends ConsumerState<ScannerScreen> {
   final MobileScannerController cameraController = MobileScannerController();
 
-  void _showSuccessDialog(String businessName) {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(48)),
-        title: const Text('PENDIENTE', textAlign: TextAlign.center),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: AppTheme.accentYellow.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.hourglass_empty, size: 48, color: AppTheme.accentYellow),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              businessName.toUpperCase(),
-              style: GoogleFonts.anton(fontSize: 18, fontWeight: FontWeight.w400, letterSpacing: 0.5),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 12),
-            const Text(
-              'Escaneo registrado. Espera a que el local lo apruebe para recibir tu punto.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black45),
-            ),
-          ],
-        ),
-        actions: [
-          Center(
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context); // cierra el diálogo
-                Navigator.of(context).pop(); // cierra el scanner y vuelve a MyCardsScreen
-              },
-              child: const Text('ENTENDIDO'),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-
-  void _showCooldownDialog({required String businessName, required String message}) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(48)),
-        title: const Text('ESPERA', textAlign: TextAlign.center),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(24),
-              decoration: BoxDecoration(
-                color: AppTheme.accentPurple.withValues(alpha: 0.1),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.access_time_rounded, size: 48, color: AppTheme.accentPurple),
-            ),
-            const SizedBox(height: 24),
-            Text(
-              message.toUpperCase(),
-              style: GoogleFonts.anton(fontSize: 16, fontWeight: FontWeight.w400, letterSpacing: 0.5),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              '¡Pero puedes escanear en otros locales ahora mismo!',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black38),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-        actions: [
-          Center(
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                cameraController.start();
-              },
-              child: const Text('VALE'),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
-
-  void _showErrorDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(48)),
-        title: const Text('ERROR', textAlign: TextAlign.center),
-        content: Text(
-          message.toUpperCase(),
-          style: const TextStyle(fontWeight: FontWeight.w800),
-          textAlign: TextAlign.center,
-        ),
-        actions: [
-          Center(
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                cameraController.start();
-              },
-              child: const Text('REINTENTAR'),
-            ),
-          ),
-          const SizedBox(height: 16),
-        ],
-      ),
-    );
-  }
+  static const _textShadow = [
+    Shadow(color: Colors.black54, blurRadius: 12, offset: Offset(0, 2)),
+  ];
 
   @override
   void dispose() {
@@ -147,98 +30,148 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     super.dispose();
   }
 
+  void _showCooldownDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (_) => AppMessageDialog(
+        icon: Icons.hourglass_top_rounded,
+        title: 'Espera un poco',
+        message: message,
+        hint: 'Pero puedes escanear en otros locales ahora mismo.',
+        primaryLabel: 'Vale',
+        onPrimary: cameraController.start,
+      ),
+    );
+  }
+
+  void _showPendingRewardDialog() {
+    showDialog(
+      context: context,
+      builder: (_) => AppMessageDialog(
+        icon: Icons.card_giftcard_rounded,
+        title: 'Tienes un premio pendiente',
+        message:
+            'Reclámalo en este local antes de seguir acumulando puntos.',
+        primaryLabel: 'Entendido',
+        onPrimary: cameraController.start,
+      ),
+    );
+  }
+
+  void _showErrorDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (_) => AppMessageDialog(
+        icon: Icons.qr_code_scanner_rounded,
+        title: 'No se pudo escanear',
+        message: message,
+        primaryLabel: 'Reintentar',
+        onPrimary: cameraController.start,
+      ),
+    );
+  }
+
+  Widget _buildCameraError(MobileScannerException error) {
+    final denied = error.errorCode == MobileScannerErrorCode.permissionDenied;
+    return ColoredBox(
+      color: AppColors.black,
+      child: Center(
+        child: Padding(
+          padding: const EdgeInsets.all(32),
+          child: Text(
+            denied
+                ? 'Necesitamos acceso a la cámara para escanear el código QR. '
+                    'Actívalo en los permisos del dispositivo.'
+                : 'No pudimos iniciar la cámara. Cierra esta pantalla e inténtalo de nuevo.',
+            textAlign: TextAlign.center,
+            style: AppTypography.body(size: 17, color: AppColors.white),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(scannerProvider);
 
     ref.listen<ScannerState>(scannerProvider, (previous, next) {
-      if (previous?.isProcessing == true && next.isProcessing == false) {
-        if (next.successBusinessName != null) {
-          _showSuccessDialog(next.successBusinessName!);
-        } else if (next.cooldownHours != null) {
-          _showCooldownDialog(
-            businessName: '¡ESPERA!',
-            message: 'Este local tiene una restricción de ${next.cooldownHours} horas entre escaneos.',
-          );
-        } else if (next.hasPendingReward) {
-          _showErrorDialog(
-            '¡Tenés un premio pendiente en este local! Reclamalo primero antes de seguir acumulando puntos.',
-          );
-        } else if (next.error != null) {
-          _showErrorDialog(next.error!);
-        }
-        ref.read(scannerProvider.notifier).reset();
+      if (previous?.isProcessing != true || next.isProcessing) return;
+
+      final result = next.result;
+      if (result != null) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(builder: (_) => ScanSuccessScreen(result: result)),
+        );
+      } else if (next.cooldownMessage != null) {
+        _showCooldownDialog(next.cooldownMessage!);
+      } else if (next.hasPendingReward) {
+        _showPendingRewardDialog();
+      } else if (next.error != null) {
+        _showErrorDialog(next.error!);
       }
+      ref.read(scannerProvider.notifier).reset();
     });
 
     return Scaffold(
-      extendBodyBehindAppBar: true,
-      appBar: AppBar(
-        title: const Text('ESCANEAR QR'),
-        backgroundColor: Colors.transparent,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.flash_on),
-            onPressed: () => cameraController.toggleTorch(),
-          ),
-        ],
-      ),
+      backgroundColor: AppColors.black,
       body: Stack(
+        fit: StackFit.expand,
         children: [
           MobileScanner(
             controller: cameraController,
+            errorBuilder: (context, error, child) => _buildCameraError(error),
             onDetect: (capture) {
-              final barcodes = capture.barcodes;
-              for (final barcode in barcodes) {
-                if (barcode.rawValue != null && !state.isProcessing) {
+              if (state.isProcessing) return;
+              for (final barcode in capture.barcodes) {
+                final code = barcode.rawValue;
+                if (code != null) {
                   cameraController.stop();
-                  ref.read(scannerProvider.notifier).validateScan(barcode.rawValue!);
+                  ref.read(scannerProvider.notifier).validateScan(code);
                   break;
                 }
               }
             },
           ),
-          
-          // Custom Overlay
-          Center(
-            child: Container(
-              width: 250,
-              height: 250,
-              decoration: BoxDecoration(
-                border: Border.all(color: Colors.white, width: 4),
-                borderRadius: BorderRadius.circular(48),
+
+          // Degradado superior para que el título se lea sobre cualquier imagen.
+          const Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 180,
+            child: IgnorePointer(
+              child: DecoratedBox(
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [Colors.black54, Colors.transparent],
+                  ),
+                ),
               ),
             ),
           ),
 
-          if (!state.isProcessing)
-            Positioned(
-              bottom: 60,
-              left: 24,
-              right: 24,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(48),
-                ),
-                child: Column(
-                  children: [
-                    Text(
-                      'APUNTA AL CÓDIGO QR',
-                      style: GoogleFonts.anton(fontSize: 16, fontWeight: FontWeight.w400, letterSpacing: 1),
-                      textAlign: TextAlign.center,
+          SafeArea(
+            child: AppResponsiveBody(
+              maxWidth: 600,
+              child: Column(
+                children: [
+                  _buildHeader(),
+                  Expanded(
+                    child: ValueListenableBuilder<MobileScannerState>(
+                      valueListenable: cameraController,
+                      // Con la cámara en error el mensaje ocupa el lugar del marco.
+                      builder: (context, scanner, _) => scanner.error != null
+                          ? const SizedBox.shrink()
+                          : Center(child: _buildViewfinder(context)),
                     ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Asegúrate de que el código esté dentro del recuadro.',
-                      style: TextStyle(color: Colors.black45, fontWeight: FontWeight.w600),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ).animate().slideY(begin: 1, curve: Curves.easeOutBack, duration: 600.ms),
+                  ),
+                ],
+              ),
             ),
+          ),
 
           if (state.isProcessing)
             Container(
@@ -247,12 +180,17 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const CircularProgressIndicator(color: Colors.white),
+                    const CircularProgressIndicator(color: AppColors.white),
                     const SizedBox(height: 24),
                     Text(
                       'VALIDANDO...',
-                      style: GoogleFonts.anton(color: Colors.white, fontWeight: FontWeight.w400, letterSpacing: 2),
-                    ).animate(onPlay: (controller) => controller.repeat()).fadeIn().fadeOut(),
+                      style: AppTypography.display(
+                        size: 24,
+                        color: AppColors.white,
+                      ).copyWith(letterSpacing: 2),
+                    )
+                        .animate(onPlay: (c) => c.repeat(reverse: true))
+                        .fade(begin: 1, end: 0.3),
                   ],
                 ),
               ),
@@ -261,5 +199,87 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       ),
     );
   }
-}
 
+  Widget _buildHeader() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 20, 8, 0),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 56,
+            child: IconButton(
+              tooltip: 'Volver',
+              icon: const Icon(
+                Icons.chevron_left_rounded,
+                size: 40,
+                color: AppColors.white,
+              ),
+              onPressed: () => Navigator.of(context).maybePop(),
+            ),
+          ),
+          Expanded(
+            child: Semantics(
+              header: true,
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(
+                  'APUNTA BIEN',
+                  style: AppTypography.display(
+                    size: 48,
+                    color: AppColors.white,
+                  ).copyWith(shadows: _textShadow),
+                ),
+              ),
+            ),
+          ),
+          SizedBox(
+            width: 56,
+            child: ValueListenableBuilder<MobileScannerState>(
+              valueListenable: cameraController,
+              builder: (context, scanner, _) {
+                final on = scanner.torchState == TorchState.on;
+                final available = scanner.torchState != TorchState.unavailable;
+                return IconButton(
+                  tooltip: on ? 'Apagar linterna' : 'Encender linterna',
+                  icon: Icon(
+                    on ? Icons.flash_on_rounded : Icons.flash_off_rounded,
+                    size: 28,
+                    color: available ? AppColors.white : Colors.white38,
+                  ),
+                  onPressed: available ? cameraController.toggleTorch : null,
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildViewfinder(BuildContext context) {
+    final side = (MediaQuery.sizeOf(context).width * 0.65).clamp(220.0, 320.0);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: side,
+          height: side,
+          decoration: BoxDecoration(
+            border: Border.all(color: AppColors.white, width: 4),
+            borderRadius: BorderRadius.circular(40),
+          ),
+        ),
+        const SizedBox(height: 32),
+        Text(
+          'ESCANEA EL CÓDIGO QR\nY POR FAVOR... APUNTA BIEN',
+          textAlign: TextAlign.center,
+          style: AppTypography.label(
+            size: 15,
+            tracking: 0.5,
+            color: AppColors.white,
+          ).copyWith(shadows: _textShadow),
+        ),
+      ],
+    );
+  }
+}
