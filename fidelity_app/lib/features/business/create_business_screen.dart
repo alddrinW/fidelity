@@ -1,24 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
-import 'widgets/business_creation/step_logo_picker.dart';
-import 'widgets/business_creation/step_personal_data.dart';
-import 'widgets/business_creation/step_business_data.dart';
-import 'widgets/business_creation/step_campaign_data.dart';
-import '../../core/theme/app_theme.dart';
-import '../../core/utils/whatsapp_launcher.dart';
 import '../../core/models/business_category.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/utils/image_picking.dart';
+import '../../core/utils/whatsapp_launcher.dart';
+import '../../core/widgets/app_button.dart';
+import '../../core/widgets/app_message_dialog.dart';
+import '../../core/widgets/app_page_header.dart';
+import '../../core/widgets/app_photo_picker.dart';
+import '../../core/widgets/app_responsive_body.dart';
 import '../auth/providers/auth_provider.dart';
-import '../auth/data/auth_repository.dart';
-
-import 'providers/create_business_provider.dart';
 import 'data/business_repository.dart';
-import '../profile/providers/user_profile_provider.dart';
+import 'providers/create_business_provider.dart';
+import 'widgets/business_form_fields.dart';
+import 'widgets/campaign_form_fields.dart';
+import 'widgets/location_picker_page.dart';
 
+/// Alta de un negocio en dos pasos: "Mi negocio" (logo, datos y ubicación) y
+/// "Mi campaña" (premio y puntos).
 class CreateBusinessScreen extends ConsumerStatefulWidget {
   const CreateBusinessScreen({super.key});
 
@@ -27,49 +29,51 @@ class CreateBusinessScreen extends ConsumerStatefulWidget {
 }
 
 class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
-  int _currentStep = 0;
+  int _step = 0;
 
-  // Form keys for steps
-  final _personalFormKey = GlobalKey<FormState>();
   final _businessFormKey = GlobalKey<FormState>();
   final _campaignFormKey = GlobalKey<FormState>();
 
-  // Controllers & Data
-  XFile? _logoFile;
-  final _fullNameController = TextEditingController();
-  final _phoneController = TextEditingController();
+  PickedImage? _logo;
 
-  final _businessNameController = TextEditingController();
-  final _businessDescriptionController = TextEditingController();
+  final _nameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _taxIdController = TextEditingController();
+  final _addressController = TextEditingController();
   BusinessCategory? _selectedCategory;
   List<BusinessCategory> _categories = [];
-  double? _selectedLatitude;
-  double? _selectedLongitude;
-  String _selectedAddress = '';
+  double? _latitude;
+  double? _longitude;
 
-  final _rewardDescriptionController = TextEditingController();
-  final _rewardLongDescriptionController = TextEditingController();
-  final _pointsRequiredController = TextEditingController(text: '10');
+  final _rewardController = TextEditingController();
+  final _rewardLongController = TextEditingController();
+  final _pointsController = TextEditingController(text: '10');
 
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _loadExistingProfileData();
-      _loadCategories();
-    });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadCategories());
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _taxIdController.dispose();
+    _addressController.dispose();
+    _rewardController.dispose();
+    _rewardLongController.dispose();
+    _pointsController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadCategories() async {
     try {
-      final repo = ref.read(businessRepositoryProvider);
-      final categories = await repo.getCategories();
+      final categories = await ref.read(businessRepositoryProvider).getCategories();
       if (mounted) {
         setState(() {
           _categories = categories;
-          if (_categories.isNotEmpty) {
-            _selectedCategory = _categories.first;
-          }
+          _selectedCategory ??= categories.isNotEmpty ? categories.first : null;
         });
       }
     } catch (e) {
@@ -77,324 +81,308 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
     }
   }
 
-  Future<void> _loadExistingProfileData() async {
-    final user = ref.read(authRepositoryProvider).currentUser;
-    if (user != null) {
-      try {
-        final repo = ref.read(userProfileRepositoryProvider);
-        final profile = await repo.getProfile(user.id);
-        if (profile != null && mounted) {
-          setState(() {
-            _fullNameController.text = profile['full_name'] ?? '';
-            _phoneController.text = profile['phone'] ?? '';
-          });
-        }
-      } catch (e) {
-        debugPrint('Error loading profile: $e');
-      }
-    }
-  }
-
-  @override
-  void dispose() {
-    _fullNameController.dispose();
-    _phoneController.dispose();
-    _businessNameController.dispose();
-    _businessDescriptionController.dispose();
-    _rewardDescriptionController.dispose();
-    _rewardLongDescriptionController.dispose();
-    _pointsRequiredController.dispose();
-    super.dispose();
-  }
-
-  void _nextStep() {
-    bool canContinue = false;
-
-    if (_currentStep == 0) {
-      canContinue = true;
-    } else if (_currentStep == 1) {
-      if (_personalFormKey.currentState!.validate()) canContinue = true;
-    } else if (_currentStep == 2) {
-      if (_businessFormKey.currentState!.validate()) {
-        if (_selectedLatitude == null || _selectedLongitude == null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Debes seleccionar la ubicación en el mapa'),
-              backgroundColor: AppTheme.accentPink,
-            ),
-          );
-        } else {
-          canContinue = true;
-        }
-      }
-    } else if (_currentStep == 3) {
-      if (_campaignFormKey.currentState!.validate()) {
-        _submitBusiness();
-        return;
-      }
-    }
-
-    if (canContinue && _currentStep < 3) {
-      setState(() => _currentStep += 1);
-    }
-  }
-
-  void _previousStep() {
-    if (_currentStep > 0) {
-      setState(() => _currentStep -= 1);
-    }
-  }
-
-  void _submitBusiness() {
-    final pointsText = _pointsRequiredController.text.trim();
-    final pointsRequired = int.tryParse(pointsText) ?? 10;
-
-    ref.read(createBusinessProvider.notifier).submitBusiness(
-      fullName: _fullNameController.text,
-      phone: _phoneController.text,
-      logoFile: _logoFile,
-      businessName: _businessNameController.text,
-      businessDescription: _businessDescriptionController.text,
-      address: _selectedAddress,
-      latitude: _selectedLatitude,
-      longitude: _selectedLongitude,
-      categoryId: _selectedCategory?.id.toString(),
-      rewardDescription: _rewardDescriptionController.text,
-      rewardLongDescription: _rewardLongDescriptionController.text,
-      pointsRequired: pointsRequired,
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: AppColors.error),
     );
   }
 
+  Future<void> _pickLogo() async {
+    try {
+      final picked = await pickImageFromGallery();
+      if (picked != null && mounted) setState(() => _logo = picked);
+    } on FormatException catch (e) {
+      if (mounted) _showError(e.message);
+    } catch (_) {
+      if (mounted) _showError('No se pudo seleccionar la imagen.');
+    }
+  }
+
+  Future<void> _pickLocation() async {
+    final selection = await pickBusinessLocation(
+      context,
+      latitude: _latitude,
+      longitude: _longitude,
+      address: _addressController.text,
+    );
+    if (selection == null || !mounted) return;
+    setState(() {
+      _latitude = selection.latitude;
+      _longitude = selection.longitude;
+      _addressController.text = selection.address;
+    });
+  }
+
+  void _next() {
+    if (_step == 0) {
+      if (_businessFormKey.currentState!.validate()) setState(() => _step = 1);
+    } else if (_campaignFormKey.currentState!.validate()) {
+      _submit();
+    }
+  }
+
+  void _back() {
+    if (_step == 1) {
+      setState(() => _step = 0);
+    } else {
+      _confirmExit();
+    }
+  }
+
+  /// El alta es obligatoria para usar la cuenta de negocio: salir implica
+  /// cerrar sesión. Podrá terminarla al volver a entrar.
+  void _confirmExit() {
+    showDialog(
+      context: context,
+      builder: (_) => AppMessageDialog(
+        icon: Icons.logout_rounded,
+        title: '¿Salir por ahora?',
+        message: 'Cerraremos tu sesión. Podrás terminar de configurar tu '
+            'negocio cuando vuelvas a entrar.',
+        primaryLabel: 'Cerrar sesión',
+        onPrimary: () => ref.read(authStateProvider.notifier).logout(),
+        secondaryLabel: 'Seguir aquí',
+      ),
+    );
+  }
+
+  void _submit() {
+    ref.read(createBusinessProvider.notifier).submitBusiness(
+          logoDataUri: _logo?.dataUri,
+          businessName: _nameController.text.trim(),
+          phone: _phoneController.text.trim(),
+          taxId: _taxIdController.text.trim(),
+          address: _addressController.text,
+          latitude: _latitude,
+          longitude: _longitude,
+          categoryId: _selectedCategory?.id.toString(),
+          rewardDescription: _rewardController.text,
+          rewardLongDescription: _rewardLongController.text,
+          pointsRequired: int.tryParse(_pointsController.text.trim()) ?? 10,
+        );
+  }
+
   void _showSuccessDialog() {
-    final String businessName = _businessNameController.text.trim();
-    final String waMessage =
-        'Hola, acabo de crear mi negocio $businessName y quiero información para activar la cuenta.';
+    final waMessage =
+        'Hola, acabo de crear mi negocio ${_nameController.text.trim()} y quiero '
+        'información para activar la cuenta.';
 
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
+      builder: (ctx) => _BusinessCreatedDialog(
+        onEmail: () => launchUrl(
+          Uri.parse('mailto:fidelitysistemadefidelizacion@gmail.com'),
         ),
-        title: Text(
-          '¡TODO LISTO!',
-          style: GoogleFonts.anton(
-            letterSpacing: 1,
-            color: Colors.black,
+        onWhatsApp: () => openSupportWhatsApp(waMessage),
+        onDone: () {
+          Navigator.pop(ctx);
+          ref.read(authStateProvider.notifier).logout();
+        },
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final createState = ref.watch(createBusinessProvider);
+
+    ref.listen<CreateBusinessState>(createBusinessProvider, (previous, next) {
+      if (next.error != null && previous?.error != next.error) {
+        _showError('No se pudo crear el negocio: ${next.error}');
+      } else if (next.isSuccess && previous?.isSuccess != next.isSuccess) {
+        _showSuccessDialog();
+      }
+    });
+
+    return Scaffold(
+      body: SafeArea(
+        child: AppResponsiveBody(
+          child: Column(
+            children: [
+              AppPageHeader(
+                title: _step == 0 ? 'Mi negocio' : 'Mi campaña',
+                onBack: createState.isLoading ? () {} : _back,
+              ),
+              Expanded(
+                child: SingleChildScrollView(
+                  padding: const EdgeInsets.fromLTRB(32, 16, 32, 24),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    child: _step == 0 ? _buildBusinessStep() : _buildCampaignStep(),
+                  ),
+                ),
+              ),
+              Align(
+                alignment: Alignment.centerRight,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(24, 8, 32, 32),
+                  child: AppCircleButton(
+                    tooltip: _step == 0 ? 'Continuar con la campaña' : 'Crear mi negocio',
+                    isLoading: createState.isLoading,
+                    onPressed: _next,
+                  ),
+                ),
+              ),
+            ],
           ),
-          textAlign: TextAlign.center,
         ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Tu negocio fue creado exitosamente.\n\nPara activarlo en la plataforma, comunícate con nosotros por WhatsApp o correo:',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 15),
+      ),
+    );
+  }
+
+  Widget _buildBusinessStep() {
+    return Form(
+      key: _businessFormKey,
+      child: Column(
+        key: const ValueKey('step-business'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Center(
+            child: AppPhotoPicker(
+              caption: 'Logo de negocio',
+              image: _logo == null ? null : MemoryImage(_logo!.bytes),
+              onTap: _pickLogo,
             ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => launchUrl(Uri.parse('mailto:fidelitysistemadefidelizacion@gmail.com')),
-                icon: const Icon(Icons.email_outlined, color: Colors.blue),
-                label: const Text('Enviar Correo', style: TextStyle(color: Colors.blue)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.blue, width: 1.5),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ).animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .scaleXY(begin: 1.0, end: 1.03, duration: 1.2.seconds, curve: Curves.easeInOut),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => openSupportWhatsApp(waMessage),
-                icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
-                label: const Text('Contactar por WhatsApp', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF25D366),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ).animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .scaleXY(begin: 1.0, end: 1.03, duration: 1.2.seconds, delay: 600.ms, curve: Curves.easeInOut),
-          ],
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                ref.read(authStateProvider.notifier).logout();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.black,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: const Text('ENTENDIDO', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
+          ),
+          const SizedBox(height: 32),
+          const _SectionLabel('DATOS DE MI NEGOCIO'),
+          BusinessFormFields(
+            nameController: _nameController,
+            phoneController: _phoneController,
+            taxIdController: _taxIdController,
+            addressController: _addressController,
+            hasLocation: _latitude != null && _longitude != null,
+            onPickLocation: _pickLocation,
+            category: _selectedCategory,
+            categories: _categories,
+            onCategoryChanged: (c) => setState(() => _selectedCategory = c),
+            onRetryCategories: _loadCategories,
           ),
         ],
       ),
     );
   }
 
+  Widget _buildCampaignStep() {
+    return Form(
+      key: _campaignFormKey,
+      child: Column(
+        key: const ValueKey('step-campaign'),
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const _SectionLabel('TU PRIMER SISTEMA DE PUNTOS'),
+          Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 20),
+            child: Text(
+              '¿Qué ganan tus clientes y cuántos puntos necesitan?',
+              style: AppTypography.body(size: 15, weight: FontWeight.w300),
+            ),
+          ),
+          CampaignFormFields(
+            rewardController: _rewardController,
+            rewardLongController: _rewardLongController,
+            pointsController: _pointsController,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SectionLabel extends StatelessWidget {
+  final String text;
+
+  const _SectionLabel(this.text);
 
   @override
   Widget build(BuildContext context) {
-    final createBusinessState = ref.watch(createBusinessProvider);
+    return Padding(
+      padding: const EdgeInsets.only(left: 8, bottom: 12),
+      child: Text(text, style: AppTypography.label(size: 13, tracking: 5)),
+    );
+  }
+}
 
-    ref.listen<CreateBusinessState>(createBusinessProvider, (previous, next) {
-      if (next.error != null && (previous?.error != next.error)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al crear negocio: ${next.error}'),
-            backgroundColor: AppTheme.accentPink,
-          ),
-        );
-      } else if (next.isSuccess && (previous?.isSuccess != next.isSuccess)) {
-        _showSuccessDialog();
-      }
-    });
+/// Aviso tras crear el negocio: hay que contactar a Fidelity para activarlo.
+class _BusinessCreatedDialog extends StatelessWidget {
+  final VoidCallback onEmail;
+  final VoidCallback onWhatsApp;
+  final VoidCallback onDone;
 
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Configurar Negocio'),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        foregroundColor: Colors.black,
-        automaticallyImplyLeading: false, // Prevent going back if mandatory
-      ),
-      body: createBusinessState.isLoading
-          ? const Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation(AppTheme.accentPurple),
+  const _BusinessCreatedDialog({
+    required this.onEmail,
+    required this.onWhatsApp,
+    required this.onDone,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+      contentPadding: const EdgeInsets.fromLTRB(24, 28, 24, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+      content: SingleChildScrollView(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(20),
+              decoration: const BoxDecoration(
+                color: AppColors.pink,
+                shape: BoxShape.circle,
               ),
-            )
-          : Stepper(
-              type: StepperType.vertical,
-              currentStep: _currentStep,
-              onStepContinue: _nextStep,
-              onStepCancel: _previousStep,
-              physics: const ScrollPhysics(),
-              controlsBuilder: (context, details) {
-                final isLastStep = _currentStep == 3;
-                return Padding(
-                  padding: const EdgeInsets.only(top: 24),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: ElevatedButton(
-                          onPressed: details.onStepContinue,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.black,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                          child: Text(
-                            isLastStep ? 'Finalizar y Crear' : 'Siguiente',
-                          ),
-                        ),
-                      ),
-                      if (_currentStep > 0) ...[
-                        const SizedBox(width: 12),
-                        TextButton(
-                          onPressed: details.onStepCancel,
-                          style: TextButton.styleFrom(
-                            foregroundColor: Colors.black54,
-                          ),
-                          child: const Text('Atrás'),
-                        ),
-                      ],
-                    ],
-                  ),
-                );
-              },
-              steps: [
-                Step(
-                  title: const Text('Logo de la Tienda'),
-                  subtitle: const Text('Imagen principal de tu negocio'),
-                  isActive: _currentStep >= 0,
-                  state: _currentStep > 0
-                      ? StepState.complete
-                      : StepState.indexed,
-                  content: StepLogoPicker(
-                    initialImage: _logoFile,
-                    onImageSelected: (file) => setState(() => _logoFile = file),
-                  ),
-                ),
-                Step(
-                  title: const Text('Datos Personales'),
-                  subtitle: const Text('Información de contacto'),
-                  isActive: _currentStep >= 1,
-                  state: _currentStep > 1
-                      ? StepState.complete
-                      : StepState.indexed,
-                  content: StepPersonalData(
-                    formKey: _personalFormKey,
-                    fullNameController: _fullNameController,
-                    phoneController: _phoneController,
-                  ),
-                ),
-                Step(
-                  title: const Text('Datos del Negocio'),
-                  subtitle: const Text('Nombre, categoría y ubicación'),
-                  isActive: _currentStep >= 2,
-                  state: _currentStep > 2
-                      ? StepState.complete
-                      : StepState.indexed,
-                  content: StepBusinessData(
-                    formKey: _businessFormKey,
-                    nameController: _businessNameController,
-                    descriptionController: _businessDescriptionController,
-                    selectedCategory: _selectedCategory,
-                    categories: _categories,
-                    onCategoryChanged: (cat) =>
-                        setState(() => _selectedCategory = cat),
-                    latitude: _selectedLatitude,
-                    longitude: _selectedLongitude,
-                    address: _selectedAddress,
-                    onLocationSelected: (lat, lng, address) {
-                      setState(() {
-                        _selectedLatitude = lat;
-                        _selectedLongitude = lng;
-                        _selectedAddress = address;
-                      });
-                    },
-                  ),
-                ),
-                Step(
-                  title: const Text('Datos de Campaña'),
-                  subtitle: const Text('Premio principal y puntos'),
-                  isActive: _currentStep >= 3,
-                  state: _currentStep == 3
-                      ? StepState.editing
-                      : StepState.indexed,
-                  content: StepCampaignData(
-                    formKey: _campaignFormKey,
-                    rewardController: _rewardDescriptionController,
-                    rewardLongController: _rewardLongDescriptionController,
-                    pointsController: _pointsRequiredController,
-                  ),
-                ),
-              ],
+              child: const Icon(Icons.storefront_outlined, size: 44),
             ),
+            const SizedBox(height: 20),
+            Text(
+              '¡TODO LISTO!',
+              textAlign: TextAlign.center,
+              style: AppTypography.display(size: 28),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Tu negocio fue creado. Para activarlo en la plataforma, '
+              'comunícate con nosotros por WhatsApp o correo.',
+              textAlign: TextAlign.center,
+              style: AppTypography.body(size: 16),
+            ),
+            const SizedBox(height: 20),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton.icon(
+                onPressed: onWhatsApp,
+                icon: const Icon(Icons.chat_bubble_outline, color: AppColors.white),
+                label: const Text('WhatsApp'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: const Color(0xFF25D366),
+                  foregroundColor: AppColors.white,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: onEmail,
+                icon: const Icon(Icons.mail_outline_rounded),
+                label: const Text('Enviar correo'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AppColors.black,
+                  side: const BorderSide(color: AppColors.black, width: 1.2),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  shape: const StadiumBorder(),
+                  textStyle: AppTypography.label(size: 14, tracking: 1.5),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+      actions: [
+        AppPrimaryButton(label: 'Entendido', onPressed: onDone),
+      ],
     );
   }
 }

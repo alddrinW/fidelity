@@ -19,6 +19,7 @@ import 'widgets/tabs/tab_pending_scans.dart';
 import 'widgets/tabs/tab_statistics.dart';
 import '../../auth/providers/auth_provider.dart';
 import '../../auth/data/auth_repository.dart';
+import '../../../core/utils/image_source.dart';
 
 class BusinessDashboardScreen extends ConsumerStatefulWidget {
   final int initialIndex;
@@ -401,7 +402,7 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
               onTap: () async {
                 final result = await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => BusinessProfileScreen(business: business, ownerName: state.ownerName)),
+                  MaterialPageRoute(builder: (context) => BusinessProfileScreen(business: business)),
                 );
                 if (result == true) {
                   // Recarga silenciosa: evita el parpadeo de reconstruir todo el dashboard.
@@ -416,7 +417,7 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
                     child: CircleAvatar(
                       radius: 28,
                       backgroundColor: Colors.white,
-                      backgroundImage: business['logo_url'] != null ? NetworkImage(business['logo_url']) : null,
+                      backgroundImage: imageProviderFromUrl(business['logo_url']?.toString()),
                       child: business['logo_url'] == null ? const Icon(Icons.store, color: Colors.black, size: 28) : null,
                     ),
                   ),

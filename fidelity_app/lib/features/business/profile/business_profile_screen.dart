@@ -1,818 +1,272 @@
-import 'dart:convert';
-import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
-import '../../../core/theme/app_theme.dart';
+
 import '../../../core/models/business_category.dart';
-import '../../../core/services/api_client.dart';
-import '../../auth/providers/auth_provider.dart';
-import '../../help/business_faqs_screen.dart';
-import '../widgets/location_picker_map.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/image_picking.dart';
+import '../../../core/utils/image_source.dart';
+import '../../../core/widgets/app_nav_row.dart';
+import '../../../core/widgets/app_page_header.dart';
+import '../../../core/widgets/app_photo_picker.dart';
+import '../../../core/widgets/app_responsive_body.dart';
+import '../../profile/user_profile_screen.dart';
+import '../data/business_repository.dart';
+import '../widgets/business_form_fields.dart';
+import '../widgets/location_picker_page.dart';
+import 'campaign_settings_screen.dart';
 
-class BusinessProfileScreen extends StatefulWidget {
+/// "Mi negocio": edición de los datos del negocio, con accesos a los ajustes
+/// de campaña y a los datos personales del dueño.
+///
+/// Al cerrarse devuelve `true` si algo cambió, para que el panel se actualice.
+class BusinessProfileScreen extends ConsumerStatefulWidget {
   final Map<String, dynamic> business;
-  final String ownerName;
 
-  const BusinessProfileScreen({
-    super.key,
-    required this.business,
-    required this.ownerName,
-  });
+  const BusinessProfileScreen({super.key, required this.business});
 
   @override
-  State<BusinessProfileScreen> createState() => _BusinessProfileScreenState();
+  ConsumerState<BusinessProfileScreen> createState() => _BusinessProfileScreenState();
 }
 
-class _BusinessProfileScreenState extends State<BusinessProfileScreen> {
-  bool _isLoading = false;
+class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen> {
   final _formKey = GlobalKey<FormState>();
 
-  // Profile Controllers
-  late TextEditingController _fullNameController;
-  late TextEditingController _phoneController;
-
-  // Business Controllers
-  late TextEditingController _businessNameController;
-  late TextEditingController _businessDescriptionController;
-  late TextEditingController _rewardDescriptionController;
-  late TextEditingController _rewardLongDescriptionController;
-  late TextEditingController _pointsRequiredController;
+  late final TextEditingController _nameController;
+  late final TextEditingController _phoneController;
+  late final TextEditingController _taxIdController;
+  late final TextEditingController _addressController;
 
   String? _logoUrl;
-  XFile? _newLogoFile;
+  PickedImage? _newLogo;
 
   BusinessCategory? _selectedCategory;
   List<BusinessCategory> _categories = [];
 
   double? _latitude;
   double? _longitude;
-  String? _address;
+
+  bool _isSaving = false;
+
+  /// `true` si se guardó algo aquí o en la pantalla de campaña.
+  bool _changed = false;
+
+  /// Los campos `decimal` de Postgres llegan como texto desde el backend.
+  static double? _toDouble(Object? value) =>
+      value == null ? null : double.tryParse(value.toString());
+
+  static String _text(Object? value) => value?.toString() ?? '';
 
   @override
   void initState() {
     super.initState();
-    _logoUrl = widget.business['logo_url'] ?? widget.business['logoUrl'];
-    _fullNameController = TextEditingController(text: widget.ownerName);
-    _phoneController = TextEditingController(text: ''); // We'll fetch this
-
-    _businessNameController = TextEditingController(
-      text: widget.business['name'],
-    );
-    _businessDescriptionController = TextEditingController(
-      text: widget.business['description'] ?? '',
-    );
-    _rewardDescriptionController = TextEditingController(
-      text: widget.business['reward_description'] ?? widget.business['rewardDescription'] ?? '',
-    );
-    _rewardLongDescriptionController = TextEditingController(
-      text: widget.business['reward_long_description'] ?? widget.business['rewardLongDescription'] ?? '',
-    );
-    _pointsRequiredController = TextEditingController(
-      text: (widget.business['points_required'] ?? widget.business['pointsRequired'])?.toString() ?? '10',
-    );
-
-    _latitude = widget.business['latitude'];
-    _longitude = widget.business['longitude'];
-    _address = widget.business['address'];
-
-    _loadProfileData();
+    final b = widget.business;
+    _logoUrl = (b['logo_url'] ?? b['logoUrl'])?.toString();
+    _nameController = TextEditingController(text: _text(b['name']));
+    _phoneController = TextEditingController(text: _text(b['phone']));
+    _taxIdController = TextEditingController(text: _text(b['tax_id'] ?? b['taxId']));
+    _addressController = TextEditingController(text: _text(b['address']));
+    _latitude = _toDouble(b['latitude']);
+    _longitude = _toDouble(b['longitude']);
     _loadCategories();
   }
 
-  Future<void> _loadProfileData() async {
-    try {
-      final profile = await ApiClient().get('users/profile');
-      if (mounted && profile is Map<String, dynamic>) {
-        setState(() {
-          _phoneController.text = profile['phone'] ?? '';
-        });
-      }
-    } catch (e) {
-      debugPrint('Error loading profile phone: $e');
-    }
+  @override
+  void dispose() {
+    _nameController.dispose();
+    _phoneController.dispose();
+    _taxIdController.dispose();
+    _addressController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadCategories() async {
     try {
-      final response = await ApiClient().get('businesses/categories');
-      if (mounted && response is List) {
-        setState(() {
-          _categories = response
-              .map((c) => BusinessCategory.fromJson(Map<String, dynamic>.from(c as Map)))
-              .toList();
-
-          final categoryId = widget.business['category_id'] ?? widget.business['categoryId'];
-          if (categoryId != null) {
-            try {
-              _selectedCategory = _categories.firstWhere(
-                (c) => c.id.toString() == categoryId.toString(),
-              );
-            } catch (_) {}
-          }
-        });
-      }
+      final categories = await ref.read(businessRepositoryProvider).getCategories();
+      if (!mounted) return;
+      final categoryId = widget.business['category_id'] ?? widget.business['categoryId'];
+      setState(() {
+        _categories = categories;
+        for (final c in categories) {
+          if (c.id.toString() == categoryId?.toString()) _selectedCategory = c;
+        }
+      });
     } catch (e) {
       debugPrint('Error loading categories: $e');
     }
   }
 
-  @override
-  void dispose() {
-    _fullNameController.dispose();
-    _phoneController.dispose();
-    _businessNameController.dispose();
-    _businessDescriptionController.dispose();
-    _rewardDescriptionController.dispose();
-    _rewardLongDescriptionController.dispose();
-    _pointsRequiredController.dispose();
-    super.dispose();
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: AppColors.error),
+    );
   }
 
-  Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final image = await picker.pickImage(
-      source: ImageSource.gallery,
-      imageQuality: 70,
-    );
-    if (image != null) {
-      setState(() => _newLogoFile = image);
+  Future<void> _pickLogo() async {
+    try {
+      final picked = await pickImageFromGallery();
+      if (picked != null && mounted) setState(() => _newLogo = picked);
+    } on FormatException catch (e) {
+      if (mounted) _showError(e.message);
+    } catch (_) {
+      if (mounted) _showError('No se pudo seleccionar la imagen.');
     }
   }
 
-  Future<void> _saveChanges() async {
+  Future<void> _pickLocation() async {
+    final selection = await pickBusinessLocation(
+      context,
+      latitude: _latitude,
+      longitude: _longitude,
+      address: _addressController.text,
+    );
+    if (selection == null || !mounted) return;
+    setState(() {
+      _latitude = selection.latitude;
+      _longitude = selection.longitude;
+      _addressController.text = selection.address;
+    });
+  }
+
+  Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
 
-    setState(() => _isLoading = true);
+    setState(() => _isSaving = true);
     try {
-      final businessId = widget.business['id'];
-
-      // 1. Upload Logo if changed
-      String? finalLogoUrl = _logoUrl;
-      if (_newLogoFile != null) {
-        final fileBytes = await _newLogoFile!.readAsBytes();
-        final fileExt = _newLogoFile!.name.split('.').last.toLowerCase();
-        String mimeType = 'image/jpeg';
-        if (fileExt == 'png') { mimeType = 'image/png'; }
-        else if (fileExt == 'webp') { mimeType = 'image/webp'; }
-        else if (fileExt == 'gif') { mimeType = 'image/gif'; }
-        final base64 = base64Encode(fileBytes);
-        finalLogoUrl = 'data:$mimeType;base64,$base64';
-      }
-
-      // 2. Update Profile
-      await ApiClient().put('users/profile', body: {
-        'fullName': _fullNameController.text.trim(),
-        'phone': _phoneController.text.trim(),
-      });
-
-      // 3. Update Business
-      await ApiClient().put('businesses/$businessId', body: {
-        'name': _businessNameController.text.trim(),
-        'description': _businessDescriptionController.text.trim(),
-        if (finalLogoUrl != null) 'logoUrl': finalLogoUrl,
-        if (_selectedCategory != null) 'categoryId': _selectedCategory!.id,
-        'address': _address,
-        'latitude': _latitude,
-        'longitude': _longitude,
-        'rewardDescription': _rewardDescriptionController.text.trim(),
-        'rewardLongDescription': _rewardLongDescriptionController.text.trim(),
-        'pointsRequired': int.parse(_pointsRequiredController.text),
-      });
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Perfil actualizado exitosamente'),
-            backgroundColor: AppTheme.accentGreen,
-          ),
-        );
-        Navigator.pop(context, true); // Indicate success to refresh parent
-      }
+      await ref.read(businessRepositoryProvider).updateBusinessData(
+            businessId: widget.business['id'].toString(),
+            name: _nameController.text,
+            phone: _phoneController.text,
+            taxId: _taxIdController.text,
+            address: _addressController.text,
+            latitude: _latitude!,
+            longitude: _longitude!,
+            categoryId: _selectedCategory?.id,
+            logoDataUri: _newLogo?.dataUri,
+          );
+      _changed = true;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Negocio actualizado')),
+      );
+      Navigator.pop(context, true);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error: $e'),
-            backgroundColor: AppTheme.accentPink,
-          ),
-        );
-      }
+      if (mounted) _showError(e.toString());
     } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
-  Future<void> _deleteAccount() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        final confirmController = TextEditingController();
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(32),
-          ),
-          title: const Text(
-            '¿ELIMINAR CUENTA?',
-            style: TextStyle(fontWeight: FontWeight.w900),
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Esta acción es irreversible. Se borrarán todos tus datos, negocios, premios y puntos acumulados.',
-                style: TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black54,
-                ),
-              ),
-              const SizedBox(height: 24),
-              const Text(
-                'Escribe "ELIMINAR" para confirmar:',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: confirmController,
-                decoration: InputDecoration(
-                  hintText: 'ELIMINAR',
-                  filled: true,
-                  fillColor: Colors.black.withValues(alpha: 0.05),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    borderSide: BorderSide.none,
-                  ),
-                ),
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w900,
-                  letterSpacing: 2,
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context, false),
-              child: const Text('CANCELAR'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (confirmController.text.trim().toUpperCase() == 'ELIMINAR') {
-                  Navigator.pop(context, true);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.accentPink,
-              ),
-              child: const Text('ELIMINAR DEFINITIVAMENTE'),
-            ),
-          ],
-        );
-      },
+  Future<void> _openCampaign() async {
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CampaignSettingsScreen(business: widget.business),
+      ),
     );
+    if (saved == true) _changed = true;
+  }
 
-    if (confirm != true) return;
-
-    setState(() => _isLoading = true);
-    try {
-      await ApiClient().delete('users/account');
-
-      if (mounted) {
-        await ProviderScope.containerOf(context).read(authStateProvider.notifier).logout();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al eliminar: $e'),
-            backgroundColor: AppTheme.accentPink,
-          ),
-        );
-        setState(() => _isLoading = false);
-      }
-    }
+  void _openOwnerData() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const UserProfileScreen()),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        toolbarHeight: 80,
-        backgroundColor: Colors.white,
-        title: const Text(
-          'EDITAR PERFIL',
-          style: TextStyle(
-            fontWeight: FontWeight.w900,
-            fontSize: 16,
-            letterSpacing: 1.5,
+    final logo = _newLogo != null
+        ? MemoryImage(_newLogo!.bytes)
+        : imageProviderFromUrl(_logoUrl);
+
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) Navigator.pop(context, _changed);
+      },
+      child: Scaffold(
+        body: SafeArea(
+          child: AppResponsiveBody(
+            child: Column(
+              children: [
+                AppPageHeader(
+                  title: 'Mi negocio',
+                  onBack: () => Navigator.pop(context, _changed),
+                  trailing: _isSaving
+                      ? const Padding(
+                          padding: EdgeInsets.all(16),
+                          child: CircularProgressIndicator(strokeWidth: 3),
+                        )
+                      : IconButton(
+                          tooltip: 'Guardar',
+                          icon: const Icon(
+                            Icons.check_rounded,
+                            size: 36,
+                            color: AppColors.black,
+                          ),
+                          onPressed: _save,
+                        ),
+                ),
+                Expanded(
+                  child: SingleChildScrollView(
+                    padding: const EdgeInsets.fromLTRB(32, 16, 32, 32),
+                    child: Form(
+                      key: _formKey,
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                          Center(
+                            child: AppPhotoPicker(
+                              caption: 'Logo de negocio',
+                              image: logo,
+                              heroTag: 'business_logo',
+                              onTap: _pickLogo,
+                            ),
+                          ),
+                          const SizedBox(height: 32),
+                          Padding(
+                            padding: const EdgeInsets.only(left: 8, bottom: 12),
+                            child: Text(
+                              'DATOS DE MI NEGOCIO',
+                              style: AppTypography.label(size: 13, tracking: 5),
+                            ),
+                          ),
+                          BusinessFormFields(
+                            nameController: _nameController,
+                            phoneController: _phoneController,
+                            taxIdController: _taxIdController,
+                            addressController: _addressController,
+                            hasLocation: _latitude != null && _longitude != null,
+                            onPickLocation: _pickLocation,
+                            category: _selectedCategory,
+                            categories: _categories,
+                            onCategoryChanged: (c) =>
+                                setState(() => _selectedCategory = c),
+                            onRetryCategories: _loadCategories,
+                            taxIdRequired: false,
+                          ),
+                          const SizedBox(height: 16),
+                          AppNavRow(
+                            icon: Icons.savings_outlined,
+                            label: 'Ajustar mi campaña',
+                            onTap: _openCampaign,
+                          ),
+                          const SizedBox(height: 16),
+                          AppNavRow(
+                            icon: Icons.person_outline_rounded,
+                            label: 'Ajustar mis datos',
+                            onTap: _openOwnerData,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            onPressed: _isLoading ? null : _saveChanges,
-            icon: const Icon(
-              Icons.check_rounded,
-              color: AppTheme.accentGreen,
-              size: 28,
-            ),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    // Header Logo
-                    Center(
-                      child: GestureDetector(
-                        onTap: _pickImage,
-                        child: Stack(
-                          children: [
-                            Hero(
-                              tag: 'business_logo',
-                              child: Container(
-                                width: 120,
-                                height: 120,
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  image: _newLogoFile != null
-                                      ? DecorationImage(
-                                          image: FileImage(
-                                            File(_newLogoFile!.path),
-                                          ),
-                                          fit: BoxFit.cover,
-                                        )
-                                      : (_logoUrl != null
-                                            ? DecorationImage(
-                                                image: NetworkImage(_logoUrl!),
-                                                fit: BoxFit.cover,
-                                              )
-                                            : null),
-                                ),
-                                child:
-                                    (_logoUrl == null && _newLogoFile == null)
-                                    ? const Icon(
-                                        Icons.storefront_rounded,
-                                        size: 50,
-                                        color: Colors.black26,
-                                      )
-                                    : null,
-                              ),
-                            ),
-                            Positioned(
-                              right: 0,
-                              bottom: 0,
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: const BoxDecoration(
-                                  color: Colors.black,
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.camera_alt_rounded,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 48),
-
-                    // SECTION: DATOS PERSONALES
-                    _buildSectionHeader(
-                      'DATOS PERSONALES',
-                      Icons.person_outline_rounded,
-                    ),
-                    _buildTextField(
-                      _fullNameController,
-                      'NOMBRE COMPLETO',
-                      Icons.badge_outlined,
-                    ),
-                    _buildTextField(
-                      _phoneController,
-                      'WHATSAPP / CELULAR',
-                      Icons.phone_android_rounded,
-                      keyboardType: TextInputType.phone,
-                      inputFormatters: [
-                        LengthLimitingTextInputFormatter(10),
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
-                    ),
-
-                    const SizedBox(height: 40),
-
-                    // SECTION: DATOS DEL NEGOCIO
-                    _buildSectionHeader(
-                      'DATOS DEL NEGOCIO',
-                      Icons.storefront_rounded,
-                    ),
-                    _buildTextField(
-                      _businessNameController,
-                      'NOMBRE DEL NEGOCIO',
-                      Icons.business_rounded,
-                    ),
-                    _buildTextField(
-                      _businessDescriptionController,
-                      'DESCRIPCIÓN BREVE',
-                      Icons.description_outlined,
-                      maxLines: 2,
-                      isRequired: false,
-                    ),
-
-                    const SizedBox(height: 16),
-                    // Category Dropdown
-                    const Text(
-                      'CATEGORÍA',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 12,
-                        color: Colors.black38,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Autocomplete<BusinessCategory>(
-                      initialValue: TextEditingValue(text: _selectedCategory?.name.toUpperCase() ?? ''),
-                      displayStringForOption: (BusinessCategory option) => option.name.toUpperCase(),
-                      optionsBuilder: (TextEditingValue textEditingValue) {
-                        if (textEditingValue.text.isEmpty) {
-                          return _categories;
-                        }
-                        return _categories.where((BusinessCategory option) {
-                          return option.name.toLowerCase().contains(textEditingValue.text.toLowerCase());
-                        });
-                      },
-                      onSelected: (BusinessCategory selection) {
-                        setState(() => _selectedCategory = selection);
-                      },
-                      fieldViewBuilder: (BuildContext context, TextEditingController textEditingController, FocusNode focusNode, VoidCallback onFieldSubmitted) {
-                        return TextFormField(
-                          controller: textEditingController,
-                          focusNode: focusNode,
-                          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-                          decoration: InputDecoration(
-                            prefixIcon: const Icon(Icons.category_rounded, size: 20, color: Colors.black26),
-                            suffixIcon: const Icon(Icons.arrow_drop_down, color: Colors.black54),
-                            filled: true,
-                            fillColor: Colors.black.withValues(alpha: 0.04),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(20),
-                              borderSide: BorderSide.none,
-                            ),
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 20,
-                              vertical: 16,
-                            ),
-                          ),
-                          validator: (String? value) {
-                            if (_selectedCategory == null || value == null || value.isEmpty) {
-                              return 'Selecciona una categoría válida';
-                            }
-                            return null;
-                          },
-                        );
-                      },
-                      optionsViewBuilder: (BuildContext context, AutocompleteOnSelected<BusinessCategory> onSelected, Iterable<BusinessCategory> options) {
-                        return Align(
-                          alignment: Alignment.topLeft,
-                          child: Material(
-                            elevation: 8.0,
-                            borderRadius: BorderRadius.circular(20),
-                            clipBehavior: Clip.antiAlias,
-                            child: Container(
-                              constraints: const BoxConstraints(maxHeight: 250),
-                              width: MediaQuery.of(context).size.width - 48,
-                              child: ListView.builder(
-                                padding: EdgeInsets.zero,
-                                shrinkWrap: true,
-                                itemCount: options.length,
-                                itemBuilder: (BuildContext context, int index) {
-                                  final BusinessCategory option = options.elementAt(index);
-                                  return ListTile(
-                                    title: Text(option.name.toUpperCase(), style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w800)),
-                                    onTap: () => onSelected(option),
-                                  );
-                                },
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                    ),
-
-                    const SizedBox(height: 24),
-                    // Location Picker
-                    const Text(
-                      'UBICACIÓN',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        fontSize: 12,
-                        color: Colors.black38,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    GestureDetector(
-                      onTap: () async {
-                        double? tempLat = _latitude;
-                        double? tempLng = _longitude;
-                        String? tempAddr = _address;
-
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => Scaffold(
-                              appBar: AppBar(
-                                title: const Text(
-                                  'SELECCIONAR UBICACIÓN',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: 14,
-                                  ),
-                                ),
-                                actions: [
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(context),
-                                    child: const Text(
-                                      'CONFIRMAR',
-                                      style: TextStyle(
-                                        color: AppTheme.accentPurple,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
-                              ),
-                              body: LocationPickerMap(
-                                initialLatitude: _latitude,
-                                initialLongitude: _longitude,
-                                initialAddress: _address,
-                                onLocationSelected: (lat, lng, addr) {
-                                  tempLat = lat;
-                                  tempLng = lng;
-                                  tempAddr = addr;
-                                },
-                              ),
-                            ),
-                          ),
-                        );
-
-                        setState(() {
-                          _latitude = tempLat;
-                          _longitude = tempLng;
-                          _address = tempAddr;
-                        });
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: Colors.black.withValues(alpha: 0.05),
-                          ),
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.location_on_rounded,
-                              color: AppTheme.accentPink,
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Text(
-                                _address ?? 'SELECCIONAR EN EL MAPA',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 12,
-                                  color: _address == null
-                                      ? Colors.black26
-                                      : Colors.black,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                            ),
-                            const Icon(
-                              Icons.chevron_right_rounded,
-                              color: Colors.black26,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 48),
-
-                    // SECTION: CAMPAÑA DE PUNTOS
-                    _buildSectionHeader(
-                      'CAMPAÑA DE PUNTOS',
-                      Icons.auto_awesome_rounded,
-                    ),
-                    _buildTextField(
-                      _rewardDescriptionController,
-                      '¿QUÉ PREMIO ENTREGAS?',
-                      Icons.card_giftcard_rounded,
-                    ),
-                    _buildTextField(
-                      _rewardLongDescriptionController,
-                      'DESCRIPCIÓN DEL PREMIO',
-                      Icons.description_rounded,
-                      maxLines: 2,
-                      isRequired: false,
-                    ),
-                    _buildTextField(
-                      _pointsRequiredController,
-                      'PUNTOS NECESARIOS',
-                      Icons.numbers_rounded,
-                      keyboardType: TextInputType.number,
-                    ),
-
-                    const SizedBox(height: 40),
-
-                    // FAQ
-                    GestureDetector(
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => const BusinessFaqsScreen(),
-                        ),
-                      ),
-                      child: Container(
-                        padding: const EdgeInsets.all(20),
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              AppTheme.accentPurple.withValues(alpha: 0.08),
-                              AppTheme.accentPink.withValues(alpha: 0.05),
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: Row(
-                          children: [
-                            Container(
-                              padding: const EdgeInsets.all(10),
-                              decoration: BoxDecoration(
-                                color: AppTheme.accentPurple.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(14),
-                              ),
-                              child: const Icon(
-                                Icons.help_outline_rounded,
-                                color: AppTheme.accentPurple,
-                                size: 22,
-                              ),
-                            ),
-                            const SizedBox(width: 16),
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: const [
-                                  Text(
-                                    'PREGUNTAS FRECUENTES',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.w900,
-                                      fontSize: 13,
-                                      letterSpacing: 1,
-                                    ),
-                                  ),
-                                  SizedBox(height: 2),
-                                  Text(
-                                    'Guía completa para gestionar tu negocio',
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
-                                      color: Colors.black45,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            const Icon(
-                              Icons.chevron_right_rounded,
-                              color: AppTheme.accentPurple,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-
-                    const SizedBox(height: 40),
-
-                    // DELETE ACCOUNT
-                    Center(
-                      child: TextButton.icon(
-                        onPressed: _deleteAccount,
-                        icon: const Icon(
-                          Icons.delete_forever_rounded,
-                          color: Colors.black26,
-                        ),
-                        label: const Text(
-                          'ELIMINAR MI CUENTA',
-                          style: TextStyle(
-                            color: Colors.black26,
-                            fontWeight: FontWeight.w900,
-                            fontSize: 12,
-                            letterSpacing: 1,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 100),
-                  ],
-                ),
-              ),
-            ),
-    );
-  }
-
-  Widget _buildSectionHeader(String title, IconData icon) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: AppTheme.accentPurple),
-          const SizedBox(width: 12),
-          Text(
-            title,
-            style: const TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 14,
-              letterSpacing: 2,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildTextField(
-    TextEditingController controller,
-    String label,
-    IconData icon, {
-    TextInputType keyboardType = TextInputType.text,
-    int maxLines = 1,
-    bool isRequired = true,
-    List<TextInputFormatter>? inputFormatters,
-  }) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 24),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            label,
-            style: const TextStyle(
-              fontWeight: FontWeight.w900,
-              fontSize: 12,
-              color: Colors.black38,
-              letterSpacing: 1,
-            ),
-          ),
-          const SizedBox(height: 8),
-          TextFormField(
-            controller: controller,
-            keyboardType: keyboardType,
-            maxLines: maxLines,
-            inputFormatters: inputFormatters,
-            style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 14),
-            decoration: InputDecoration(
-              prefixIcon: Icon(icon, size: 20, color: Colors.black26),
-              filled: true,
-              fillColor: Colors.black.withValues(alpha: 0.04),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(20),
-                borderSide: BorderSide.none,
-              ),
-              contentPadding: const EdgeInsets.symmetric(
-                horizontal: 20,
-                vertical: 16,
-              ),
-            ),
-            validator: (value) {
-              if (isRequired && (value == null || value.isEmpty)) {
-                return 'Campo requerido';
-              }
-              return null;
-            },
-          ),
-        ],
       ),
     );
   }

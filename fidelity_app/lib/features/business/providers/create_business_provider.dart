@@ -1,7 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import '../../auth/data/auth_repository.dart';
-import '../../profile/providers/user_profile_provider.dart';
 import '../data/business_repository.dart';
 
 class CreateBusinessState {
@@ -34,12 +32,14 @@ class CreateBusinessNotifier extends Notifier<CreateBusinessState> {
     return CreateBusinessState();
   }
 
+  /// Crea el negocio con su campaña y genera el QR inicial. El nombre y el
+  /// teléfono del dueño ya se guardaron al registrarse; se editan después
+  /// desde "Ajustar mis datos".
   Future<void> submitBusiness({
-    required String fullName,
-    required String phone,
-    XFile? logoFile,
+    String? logoDataUri,
     required String businessName,
-    String? businessDescription,
+    required String phone,
+    required String taxId,
     required String address,
     required double? latitude,
     required double? longitude,
@@ -58,35 +58,27 @@ class CreateBusinessNotifier extends Notifier<CreateBusinessState> {
     state = state.copyWith(isLoading: true, error: null);
 
     try {
-      final profileRepo = ref.read(userProfileRepositoryProvider);
       final businessRepo = ref.read(businessRepositoryProvider);
 
-      // 1. Actualizar Perfil
-      await profileRepo.updateProfile(
-        userId: authUser.id,
-        fullName: fullName.trim(),
-        phone: phone.trim(),
-      );
-
-      // 2. Crear el negocio
+      // 1. Crear el negocio
       final businessId = await businessRepo.createBusiness(
-        userId: authUser.id,
-        name: businessName.trim(),
-        description: businessDescription?.trim().isEmpty ?? true ? null : businessDescription!.trim(),
+        name: businessName,
+        phone: phone,
+        taxId: taxId,
+        logoDataUri: logoDataUri,
         address: address.trim().isEmpty ? null : address.trim(),
         latitude: latitude,
         longitude: longitude,
         categoryId: categoryId,
-        rewardDescription: rewardDescription.trim(),
-        rewardLongDescription:
-            (rewardLongDescription?.trim().isEmpty ?? true) ? null : rewardLongDescription!.trim(),
+        rewardDescription: rewardDescription,
+        rewardLongDescription: rewardLongDescription,
         pointsRequired: pointsRequired,
       );
 
-      // 3. Crear QR inicial
+      // 2. Crear QR inicial
       await businessRepo.generateInitialQrCode(businessId);
 
-      // 4. Refrescar el perfil de autenticación
+      // 3. Refrescar el perfil de autenticación
       await ref.read(authRepositoryProvider).refreshProfile();
 
       state = state.copyWith(isLoading: false, isSuccess: true);

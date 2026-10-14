@@ -253,6 +253,7 @@ class _TabStatisticsState extends ConsumerState<TabStatistics> {
                       'businesses/${business['id']}',
                       body: {
                         'rewardDescription': newDesc,
+                        'rewardLongDescription': newLongDesc,
                         'pointsRequired': newPoints,
                       },
                     );

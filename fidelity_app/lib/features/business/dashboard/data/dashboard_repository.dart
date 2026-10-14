@@ -21,6 +21,8 @@ class DashboardRepository {
         'description': raw['description'],
         'logo_url': raw['logoUrl'] ?? raw['logo_url'],
         'address': raw['address'],
+        'phone': raw['phone'],
+        'tax_id': raw['taxId'] ?? raw['tax_id'],
         'latitude': raw['latitude'],
         'longitude': raw['longitude'],
         'category_id': raw['categoryId'] ?? raw['category_id'],
