@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:geocoding/geocoding.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'dart:async';
@@ -154,69 +153,44 @@ class _LocationPickerMapState extends State<LocationPickerMap> {
     setState(() => _isLoading = true);
     String? newAddress;
 
+    // Geocoding nativo deshabilitado para evitar dependencia de Android SDK 33;
+    // se usa Nominatim (OpenStreetMap).
     try {
-      // Intento 1: Geocoding Nativo
-      List<Placemark> placemarks = await placemarkFromCoordinates(lat, lon);
-      if (placemarks.isNotEmpty) {
-        Placemark place = placemarks.first;
-        List<String> parts = [];
-        if (place.street?.isNotEmpty ?? false) parts.add(place.street!);
-        if (place.subLocality?.isNotEmpty ?? false) {
-          parts.add(place.subLocality!);
-        } else if (place.locality?.isNotEmpty ?? false) {
-          parts.add(place.locality!);
-        }
-        if (place.subAdministrativeArea?.isNotEmpty ?? false) {
-          parts.add(place.subAdministrativeArea!);
-        }
+      
+      
+      final uri = Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon&zoom=18&addressdetails=1');
+      final response = await http.get(uri, headers: {
+        'User-Agent': 'FidelityApp/1.0 (fidelitysistemadefidelizacion@gmail.com)',
+        'Accept-Language': 'es-ES,es;q=0.9',
+      });
+      
+      if (response.statusCode == 200) {
+        final content = utf8.decode(response.bodyBytes);
+        final data = json.decode(content);
         
-        if (parts.isNotEmpty) {
-          newAddress = parts.join(', ');
-        }
-      }
-    } catch (e) {
-      debugPrint('Error geocoding nativo: $e');
-    }
-
-    // Intento 2: Nominatim (OpenStreetMap) de respaldo si el nativo falla o es incompleto
-    if (newAddress == null || newAddress.length < 5) {
-      try {
-        
-        
-        final uri = Uri.parse('https://nominatim.openstreetmap.org/reverse?format=json&lat=$lat&lon=$lon&zoom=18&addressdetails=1');
-        final response = await http.get(uri, headers: {
-          'User-Agent': 'FidelityApp/1.0 (fidelitysistemadefidelizacion@gmail.com)',
-          'Accept-Language': 'es-ES,es;q=0.9',
-        });
-        
-        if (response.statusCode == 200) {
-          final content = utf8.decode(response.bodyBytes);
-          final data = json.decode(content);
+        final addressData = data['address'];
+        if (addressData != null) {
+          final road = addressData['road'] ?? addressData['pedestrian'] ?? '';
+          final neighborhood = addressData['neighborhood'] ?? addressData['suburb'] ?? addressData['residential'] ?? '';
+          final city = addressData['city'] ?? addressData['town'] ?? addressData['village'] ?? '';
           
-          final addressData = data['address'];
-          if (addressData != null) {
-            final road = addressData['road'] ?? addressData['pedestrian'] ?? '';
-            final neighborhood = addressData['neighborhood'] ?? addressData['suburb'] ?? addressData['residential'] ?? '';
-            final city = addressData['city'] ?? addressData['town'] ?? addressData['village'] ?? '';
-            
-            final parts = [road, neighborhood, city].where((s) => s.toString().isNotEmpty).toList();
-            if (parts.isNotEmpty) {
-              newAddress = parts.join(', ');
-            } else {
-              newAddress = data['display_name'];
-            }
+          final parts = [road, neighborhood, city].where((s) => s.toString().isNotEmpty).toList();
+          if (parts.isNotEmpty) {
+            newAddress = parts.join(', ');
           } else {
             newAddress = data['display_name'];
           }
-          
-          // Limpiar si es demasiado largo
-          if (newAddress != null && newAddress.length > 100) {
-            newAddress = newAddress.split(',').take(3).join(', ').trim();
-          }
+        } else {
+          newAddress = data['display_name'];
         }
-      } catch (e) {
-        debugPrint('Error geocoding Nominatim: $e');
+        
+        // Limpiar si es demasiado largo
+        if (newAddress != null && newAddress.length > 100) {
+          newAddress = newAddress.split(',').take(3).join(', ').trim();
+        }
       }
+    } catch (e) {
+      debugPrint('Error geocoding Nominatim: $e');
     }
 
     setState(() {
@@ -267,51 +241,40 @@ class _LocationPickerMapState extends State<LocationPickerMap> {
     LatLng? newLocation;
     String? newAddress;
 
+    // Geocoding nativo deshabilitado para evitar dependencia de Android SDK 33;
+    // se usa Nominatim (OpenStreetMap).
     try {
-      // Intento 1: Geocoding Nativo
-      List<Location> locations = await locationFromAddress(query);
-      if (locations.isNotEmpty) {
-        newLocation = LatLng(locations.first.latitude, locations.first.longitude);
-      }
-    } catch (e) {
-      debugPrint('Error búsqueda nativa: $e');
-    }
-
-    // Intento 2: Nominatim Search de respaldo
-    if (newLocation == null) {
-      try {
-        
-        
-        final uri = Uri.parse('https://nominatim.openstreetmap.org/search?format=json&q=${Uri.encodeComponent(query)}&limit=1&addressdetails=1');
-        final response = await http.get(uri, headers: {
-          'User-Agent': 'FidelityApp/1.0',
-        });
-        
-        if (response.statusCode == 200) {
-          final content = utf8.decode(response.bodyBytes);
-          final data = json.decode(content);
-          if (data is List && data.isNotEmpty) {
-            final firstMatch = data[0];
-            newLocation = LatLng(
-              double.parse(firstMatch['lat']),
-              double.parse(firstMatch['lon']),
-            );
-            
-            final addressData = firstMatch['address'];
-            if (addressData != null) {
-              final road = addressData['road'] ?? addressData['pedestrian'] ?? '';
-              final neighborhood = addressData['neighborhood'] ?? addressData['suburb'] ?? addressData['residential'] ?? '';
-              final city = addressData['city'] ?? addressData['town'] ?? addressData['village'] ?? '';
-              final parts = [road, neighborhood, city].where((s) => s.toString().isNotEmpty).toList();
-              newAddress = parts.isNotEmpty ? parts.join(', ') : firstMatch['display_name'];
-            } else {
-              newAddress = firstMatch['display_name'];
-            }
+      
+      
+      final uri = Uri.parse('https://nominatim.openstreetmap.org/search?format=json&q=${Uri.encodeComponent(query)}&limit=1&addressdetails=1');
+      final response = await http.get(uri, headers: {
+        'User-Agent': 'FidelityApp/1.0',
+      });
+      
+      if (response.statusCode == 200) {
+        final content = utf8.decode(response.bodyBytes);
+        final data = json.decode(content);
+        if (data is List && data.isNotEmpty) {
+          final firstMatch = data[0];
+          newLocation = LatLng(
+            double.parse(firstMatch['lat']),
+            double.parse(firstMatch['lon']),
+          );
+          
+          final addressData = firstMatch['address'];
+          if (addressData != null) {
+            final road = addressData['road'] ?? addressData['pedestrian'] ?? '';
+            final neighborhood = addressData['neighborhood'] ?? addressData['suburb'] ?? addressData['residential'] ?? '';
+            final city = addressData['city'] ?? addressData['town'] ?? addressData['village'] ?? '';
+            final parts = [road, neighborhood, city].where((s) => s.toString().isNotEmpty).toList();
+            newAddress = parts.isNotEmpty ? parts.join(', ') : firstMatch['display_name'];
+          } else {
+            newAddress = firstMatch['display_name'];
           }
         }
-      } catch (e) {
-        debugPrint('Error búsqueda Nominatim: $e');
       }
+    } catch (e) {
+      debugPrint('Error búsqueda Nominatim: $e');
     }
 
     if (newLocation != null) {
