@@ -1,5 +1,4 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:image_picker/image_picker.dart';
 import '../data/user_profile_repository.dart';
 import '../../auth/data/auth_repository.dart';
 
@@ -80,7 +79,7 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
   Future<bool> saveProfile({
     required String fullName,
     required String phone,
-    XFile? newAvatarFile,
+    String? avatarDataUri,
   }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
@@ -90,7 +89,7 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
         userId: user.id,
         fullName: fullName,
         phone: phone,
-        avatarFile: newAvatarFile,
+        avatarDataUri: avatarDataUri,
       );
       await _loadProfile();
       return true;
@@ -100,10 +99,16 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
     }
   }
 
-  Future<bool> changePassword(String newPassword) async {
+  Future<bool> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
-      await _repository.changePassword(newPassword);
+      await _repository.changePassword(
+        currentPassword: currentPassword,
+        newPassword: newPassword,
+      );
       state = state.copyWith(isLoading: false);
       return true;
     } catch (e) {

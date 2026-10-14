@@ -1,4 +1,3 @@
-import 'package:image_picker/image_picker.dart';
 import '../../../core/services/api_client.dart';
 
 class UserProfileRepository {
@@ -22,15 +21,18 @@ class UserProfileRepository {
     return null;
   }
 
+  /// Actualiza nombre, teléfono y, si se indica, la foto de perfil.
+  /// [avatarDataUri] es la imagen como data URI base64 (ver `image_source.dart`).
   Future<void> updateProfile({
     required String userId,
     required String fullName,
     required String phone,
-    XFile? avatarFile,
+    String? avatarDataUri,
   }) async {
     await _api.put('users/profile', body: {
       'fullName': fullName.trim(),
       'phone': phone.trim(),
+      if (avatarDataUri != null) 'avatarUrl': avatarDataUri,
     });
   }
 
@@ -38,9 +40,15 @@ class UserProfileRepository {
     await _api.delete('users/account');
   }
 
-  Future<void> changePassword(String newPassword) async {
-    await _api.put('users/profile', body: {
-      'password': newPassword,
+  /// Cambia la contraseña. El backend exige la actual para confirmar que
+  /// quien lo pide es el dueño de la cuenta.
+  Future<void> changePassword({
+    required String currentPassword,
+    required String newPassword,
+  }) async {
+    await _api.put('users/password', body: {
+      'currentPassword': currentPassword,
+      'newPassword': newPassword,
     });
   }
 }

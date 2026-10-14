@@ -1,17 +1,29 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/widgets/user_avatar_circle.dart';
-import '../../../core/validators/app_validators.dart';
-import '../help/faqs_screen.dart';
-import '../auth/providers/auth_provider.dart';
-import 'providers/user_profile_provider.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/utils/image_picking.dart';
+import '../../core/validators/app_validators.dart';
+import '../../core/widgets/app_button.dart';
+import '../../core/widgets/app_message_dialog.dart';
+import '../../core/widgets/app_nav_row.dart';
+import '../../core/widgets/app_page_header.dart';
+import '../../core/widgets/app_responsive_body.dart';
+import '../../core/widgets/app_text_field.dart';
+import '../../core/widgets/user_avatar_circle.dart';
+import '../auth/data/auth_repository.dart';
+import '../auth/providers/auth_provider.dart';
+import '../help/business_faqs_screen.dart';
+import '../help/faqs_screen.dart';
+import 'providers/user_profile_provider.dart';
+import 'widgets/change_password_dialog.dart';
+import 'widgets/delete_account_dialog.dart';
+
+/// Ajustes de mi perfil: datos personales, foto, contraseña, ayuda y cuenta.
+/// Sirve tanto al cliente como al dueño de un negocio ("Ajustar mis datos").
 class UserProfileScreen extends ConsumerStatefulWidget {
   const UserProfileScreen({super.key});
 
@@ -24,7 +36,13 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
 
   late TextEditingController _fullNameController;
   late TextEditingController _phoneController;
-  XFile? _newAvatarFile;
+  late TextEditingController _emailController;
+
+  /// Foto elegida y aún sin guardar.
+  PickedImage? _newAvatar;
+
+  bool get _isBusinessOwner =>
+      ref.read(authRepositoryProvider).currentUser?.role == 'business';
 
   @override
   void initState() {
@@ -32,49 +50,55 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     final state = ref.read(userProfileProvider);
     _fullNameController = TextEditingController(text: state.fullName);
     _phoneController = TextEditingController(text: state.phone);
+    _emailController = TextEditingController(text: state.email ?? '');
   }
 
   @override
   void dispose() {
     _fullNameController.dispose();
     _phoneController.dispose();
+    _emailController.dispose();
     super.dispose();
   }
 
+  void _showError(String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: AppColors.error),
+    );
+  }
+
   Future<void> _pickImage() async {
-    final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-    if (image != null) {
-      setState(() => _newAvatarFile = image);
+    try {
+      final picked = await pickImageFromGallery();
+      if (picked != null && mounted) setState(() => _newAvatar = picked);
+    } on FormatException catch (e) {
+      if (mounted) _showError(e.message);
+    } catch (_) {
+      if (mounted) _showError('No se pudo seleccionar la imagen.');
     }
   }
 
   Future<void> _saveChanges() async {
     if (!_formKey.currentState!.validate()) return;
-    
-    final success = await ref.read(userProfileProvider.notifier).saveProfile(
-      fullName: _fullNameController.text,
-      phone: _phoneController.text,
-      newAvatarFile: _newAvatarFile,
-    );
 
-    if (mounted) {
-      if (success) {
-        await _showSavedAnimation();
-        if (mounted) Navigator.pop(context, true);
-      } else {
-        final error = ref.read(userProfileProvider).error;
-        if (error != null) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $error'), backgroundColor: AppTheme.accentPink),
-          );
-        }
-      }
+    final success = await ref.read(userProfileProvider.notifier).saveProfile(
+          fullName: _fullNameController.text,
+          phone: _phoneController.text,
+          avatarDataUri: _newAvatar?.dataUri,
+        );
+
+    if (!mounted) return;
+    if (success) {
+      await _showSavedAnimation();
+      if (mounted) Navigator.pop(context, true);
+    } else {
+      final error = ref.read(userProfileProvider).error;
+      if (error != null) _showError(error);
     }
   }
 
-  /// Muestra una animación de éxito (check que escala) tras guardar el perfil.
-  /// Se autocierra a los ~1.4s y recién ahí volvemos a la pantalla anterior.
+  /// Animación de éxito tras guardar. Se cierra sola a los ~1.4 s y recién
+  /// entonces volvemos a la pantalla anterior.
   Future<void> _showSavedAnimation() async {
     await showDialog(
       context: context,
@@ -90,7 +114,7 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
             padding: const EdgeInsets.symmetric(horizontal: 40, vertical: 36),
             margin: const EdgeInsets.symmetric(horizontal: 48),
             decoration: BoxDecoration(
-              color: Colors.white,
+              color: AppColors.white,
               borderRadius: BorderRadius.circular(32),
             ),
             child: Column(
@@ -99,189 +123,104 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
                 Container(
                   padding: const EdgeInsets.all(20),
                   decoration: const BoxDecoration(
-                    color: AppTheme.accentGreen,
+                    color: AppColors.pink,
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.check_rounded, color: Colors.white, size: 48),
-                )
-                    .animate()
-                    .scale(duration: 450.ms, curve: Curves.easeOutBack)
-                    .then()
-                    .shimmer(duration: 600.ms, color: Colors.white70),
+                  child: const Icon(
+                    Icons.check_rounded,
+                    color: AppColors.black,
+                    size: 48,
+                  ),
+                ).animate().scale(
+                      duration: 450.ms,
+                      curve: const Cubic(0.34, 1.56, 0.64, 1),
+                    ),
                 const SizedBox(height: 20),
-                Text(
-                  '¡PERFIL ACTUALIZADO!',
-                  textAlign: TextAlign.center,
-                  style: GoogleFonts.anton(fontSize: 16, letterSpacing: 1, fontWeight: FontWeight.w400),
-                ).animate().fadeIn(delay: 200.ms),
+                Material(
+                  color: Colors.transparent,
+                  child: Text(
+                    'PERFIL ACTUALIZADO',
+                    textAlign: TextAlign.center,
+                    style: AppTypography.display(size: 24),
+                  ).animate().fadeIn(delay: 200.ms),
+                ),
               ],
             ),
-          ).animate().fadeIn(duration: 250.ms).scale(begin: const Offset(0.85, 0.85), curve: Curves.easeOut),
+          ).animate().fadeIn(duration: 250.ms).scale(
+                begin: const Offset(0.85, 0.85),
+                curve: Curves.easeOut,
+              ),
         );
       },
     );
+  }
+
+  Future<void> _changePassword() async {
+    final change = await showDialog<PasswordChange>(
+      context: context,
+      builder: (_) => const ChangePasswordDialog(),
+    );
+    if (change == null) return;
+
+    final success = await ref.read(userProfileProvider.notifier).changePassword(
+          currentPassword: change.current,
+          newPassword: change.next,
+        );
+    if (!mounted) return;
+    if (success) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Text('Contraseña actualizada'),
+          backgroundColor: AppColors.black,
+        ),
+      );
+    } else {
+      _showError(ref.read(userProfileProvider).error ?? 'No se pudo cambiar la contraseña.');
+    }
   }
 
   Future<void> _deleteAccount() async {
     final confirm = await showDialog<bool>(
       context: context,
-      builder: (context) {
-        final confirmController = TextEditingController();
-        return AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
-          title: Text('¿ELIMINAR MI CUENTA?', style: GoogleFonts.anton(fontWeight: FontWeight.w400, letterSpacing: 1)),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text(
-                'Esta acción es irreversible y cumplimos con borrar todos tus datos personales.',
-                style: TextStyle(fontWeight: FontWeight.w600, color: Colors.black54),
-              ),
-              const SizedBox(height: 24),
-              const Text('Escribe "ELIMINAR" para confirmar:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 12)),
-              const SizedBox(height: 8),
-              TextField(
-                controller: confirmController,
-                decoration: InputDecoration(
-                  hintText: 'ELIMINAR',
-                  filled: true,
-                  fillColor: Colors.black.withValues(alpha: 0.05),
-                  border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
-                ),
-                textAlign: TextAlign.center,
-                style: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 2),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('CANCELAR')),
-            ElevatedButton(
-              onPressed: () {
-                if (confirmController.text.trim().toUpperCase() == 'ELIMINAR') Navigator.pop(context, true);
-              },
-              style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accentPink),
-              child: const Text('ELIMINAR DEFINITIVAMENTE'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => DeleteAccountDialog(
+        detail: _isBusinessOwner
+            ? 'Se borrarán tus datos, tu negocio, los premios y los puntos acumulados.'
+            : 'Se borrarán todos tus datos personales.',
+      ),
     );
-
     if (confirm != true) return;
 
     final success = await ref.read(userProfileProvider.notifier).deleteAccount();
-    if (mounted) {
-      if (success) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      } else {
-        final error = ref.read(userProfileProvider).error;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $error'), backgroundColor: AppTheme.accentPink),
-        );
-      }
+    if (!mounted) return;
+    if (success) {
+      Navigator.of(context).popUntil((route) => route.isFirst);
+    } else {
+      _showError(ref.read(userProfileProvider).error ?? 'No se pudo eliminar la cuenta.');
     }
   }
 
-  Future<void> _changePassword() async {
-    final newPwdController = TextEditingController();
-    final confirmPwdController = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-    bool isVisible = false;
-
-    final confirmed = await showDialog<bool>(
+  void _confirmLogout() {
+    showDialog(
       context: context,
-      builder: (ctx) => StatefulBuilder(
-        builder: (ctx, setLocalState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-          title: Text('CAMBIAR CONTRASEÑA',
-              style: GoogleFonts.anton(fontWeight: FontWeight.w400, letterSpacing: 1, fontSize: 16),
-              textAlign: TextAlign.center),
-          content: Form(
-            key: formKey,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextFormField(
-                  controller: newPwdController,
-                  obscureText: !isVisible,
-                  decoration: InputDecoration(
-                    labelText: 'Nueva contraseña',
-                    helperText: 'Mínimo 6 caracteres',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    suffixIcon: IconButton(
-                      icon: Icon(isVisible ? Icons.visibility : Icons.visibility_off),
-                      onPressed: () => setLocalState(() => isVisible = !isVisible),
-                    ),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                  validator: AppValidators.validatePassword,
-                ),
-                const SizedBox(height: 16),
-                TextFormField(
-                  controller: confirmPwdController,
-                  obscureText: !isVisible,
-                  decoration: InputDecoration(
-                    labelText: 'Confirmar contraseña',
-                    prefixIcon: const Icon(Icons.lock_outline),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(16)),
-                  ),
-                  validator: (v) => AppValidators.validateConfirmPassword(v, newPwdController.text),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
-            ElevatedButton(
-              onPressed: () {
-                if (formKey.currentState!.validate()) Navigator.pop(ctx, true);
-              },
-              child: const Text('GUARDAR'),
-            ),
-          ],
-        ),
+      builder: (_) => AppMessageDialog(
+        icon: Icons.logout_rounded,
+        title: '¿Cerrar sesión?',
+        message: '¿Estás seguro de que deseas salir de tu cuenta?',
+        primaryLabel: 'Cerrar sesión',
+        onPrimary: () => ref.read(authStateProvider.notifier).logout(),
+        secondaryLabel: 'Cancelar',
       ),
     );
-
-    if (confirmed != true) return;
-
-    final success = await ref.read(userProfileProvider.notifier).changePassword(newPwdController.text);
-    if (mounted) {
-      if (success) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Contraseña actualizada'), backgroundColor: AppTheme.accentGreen),
-        );
-      } else {
-        final error = ref.read(userProfileProvider).error;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $error'), backgroundColor: AppTheme.accentPink),
-        );
-      }
-    }
   }
 
-  Future<void> _logout() async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('¿CERRAR SESIÓN?', textAlign: TextAlign.center),
-        content: const Text('¿Estás seguro que deseas salir de tu cuenta?',
-            textAlign: TextAlign.center),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('CANCELAR')),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('CERRAR SESIÓN'),
-          ),
-        ],
+  void _openFaqs() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) =>
+            _isBusinessOwner ? const BusinessFaqsScreen() : const FaqsScreen(),
       ),
     );
-
-    if (confirm != true) return;
-
-    await ref.read(authStateProvider.notifier).logout();
   }
 
   @override
@@ -293,229 +232,207 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
       if (previous?.phone != next.phone && next.phone.isNotEmpty) {
         _phoneController.text = next.phone;
       }
+      if (previous?.email != next.email && (next.email ?? '').isNotEmpty) {
+        _emailController.text = next.email!;
+      }
     });
 
     final state = ref.watch(userProfileProvider);
 
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: Text('MI PERFIL', style: GoogleFonts.anton(fontSize: 16, fontWeight: FontWeight.w400, letterSpacing: 2)),
-        centerTitle: true,
-        actions: [
-          IconButton(
-            onPressed: state.isLoading ? null : _saveChanges,
-            icon: const Icon(Icons.check_rounded, color: AppTheme.accentGreen, size: 28),
-          ),
-          const SizedBox(width: 8),
-        ],
-      ),
-      body: state.isLoading && state.fullName.isEmpty
-          ? const Center(child: CircularProgressIndicator())
-          : SingleChildScrollView(
-              padding: const EdgeInsets.all(32),
-              child: Form(
-                key: _formKey,
-                child: Column(
-                  children: [
-                    Center(
-                      child: GestureDetector(
-                        onTap: _pickImage,
-                        child: Stack(
-                          children: [
-                            // Hero destino: mismo widget que MyCardsScreen, para
-                            // que vuele como UNA sola pieza (child + flightShuttle).
-                            Hero(
-                              tag: 'user_avatar',
-                              flightShuttleBuilder: (_, __, ___, ____, _____) => UserAvatarCircle(
-                                avatarUrl: state.avatarUrl,
-                                newAvatarFile: _newAvatarFile != null ? File(_newAvatarFile!.path) : null,
-                              ),
-                              child: SizedBox(
-                                width: 120,
-                                height: 120,
-                                child: UserAvatarCircle(
+      body: SafeArea(
+        child: AppResponsiveBody(
+          child: Column(
+            children: [
+              const AppPageHeader(title: 'Mi perfil'),
+              Expanded(
+                child: state.isLoading && state.fullName.isEmpty
+                    ? const Center(child: CircularProgressIndicator())
+                    : SingleChildScrollView(
+                        padding: const EdgeInsets.fromLTRB(32, 16, 32, 24),
+                        child: Form(
+                          key: _formKey,
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              Center(
+                                child: _AvatarEditor(
                                   avatarUrl: state.avatarUrl,
-                                  newAvatarFile: _newAvatarFile != null ? File(_newAvatarFile!.path) : null,
+                                  newAvatarBytes: _newAvatar?.bytes,
+                                  onTap: _pickImage,
                                 ),
                               ),
-                            ),
-                            Positioned(
-                              right: 0,
-                              bottom: 0,
-                              child: Container(
-                                padding: const EdgeInsets.all(8),
-                                decoration: const BoxDecoration(color: Colors.black, shape: BoxShape.circle),
-                                child: const Icon(Icons.camera_alt_rounded, color: Colors.white, size: 18),
+                              const SizedBox(height: 32),
+                              Padding(
+                                padding: const EdgeInsets.only(left: 8, bottom: 12),
+                                child: Text(
+                                  'MIS DATOS',
+                                  style: AppTypography.label(size: 13, tracking: 5),
+                                ),
                               ),
-                            ),
-                          ],
+                              AppTextField(
+                                controller: _fullNameController,
+                                hint: 'Nombres y apellidos',
+                                icon: Icons.person_outline_rounded,
+                                keyboardType: TextInputType.name,
+                                textCapitalization: TextCapitalization.words,
+                                textInputAction: TextInputAction.next,
+                                validator: AppValidators.validateName,
+                              ),
+                              const SizedBox(height: 16),
+                              AppTextField(
+                                controller: _emailController,
+                                hint: 'Correo electrónico',
+                                icon: Icons.mail_outline_rounded,
+                                readOnly: true,
+                                trailing: const Icon(
+                                  Icons.lock_outline_rounded,
+                                  size: 18,
+                                  color: AppColors.textSecondary,
+                                ),
+                              ),
+                              const SizedBox(height: 16),
+                              AppTextField(
+                                controller: _phoneController,
+                                hint: 'Teléfono',
+                                icon: Icons.phone_outlined,
+                                keyboardType: TextInputType.phone,
+                                textInputAction: TextInputAction.done,
+                                inputFormatters: [
+                                  FilteringTextInputFormatter.digitsOnly,
+                                  LengthLimitingTextInputFormatter(10),
+                                ],
+                                validator: AppValidators.validateEcuadorPhone,
+                              ),
+                              const SizedBox(height: 16),
+                              AppNavRow(
+                                icon: Icons.lock_outline_rounded,
+                                label: 'Cambiar contraseña',
+                                onTap: _changePassword,
+                              ),
+                              const SizedBox(height: 16),
+                              AppNavRow(
+                                icon: Icons.help_outline_rounded,
+                                label: 'Preguntas frecuentes',
+                                onTap: _openFaqs,
+                              ),
+                              const SizedBox(height: 24),
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  TextButton(
+                                    onPressed: _confirmLogout,
+                                    child: Text(
+                                      'Cerrar sesión',
+                                      style: AppTypography.body(
+                                        size: 15,
+                                        weight: FontWeight.w500,
+                                      ),
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  TextButton(
+                                    onPressed: _deleteAccount,
+                                    child: Text(
+                                      'Eliminar mi cuenta',
+                                      style: AppTypography.body(
+                                        size: 15,
+                                        weight: FontWeight.w300,
+                                        color: AppColors.textSecondary,
+                                      ),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ]
+                                .animate(interval: 50.ms)
+                                .fadeIn(duration: 300.ms)
+                                .slideY(begin: 0.05),
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(height: 48),
-                    _buildField(_fullNameController, 'NOMBRE COMPLETO', Icons.person_outline),
-                    const SizedBox(height: 24),
-                    _buildField(
-                      _phoneController,
-                      'TELÉFONO',
-                      Icons.phone_android_rounded,
-                      keyboardType: TextInputType.phone,
-                      inputFormatters: [
-                        LengthLimitingTextInputFormatter(10),
-                        FilteringTextInputFormatter.digitsOnly,
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-                    _buildEmailReadOnly(state.email ?? ''),
-                    const SizedBox(height: 32),
-
-                    // ACCIONES DE CUENTA
-                    _ProfileAction(
-                      icon: Icons.lock_reset_rounded,
-                      label: 'CAMBIAR CONTRASEÑA',
-                      color: AppTheme.accentPurple,
-                      onTap: _changePassword,
-                    ),
-                    const SizedBox(height: 12),
-                    _ProfileAction(
-                      icon: Icons.help_outline_rounded,
-                      label: 'PREGUNTAS FRECUENTES',
-                      color: AppTheme.accentYellow,
-                      onTap: () => Navigator.push(
-                        context,
-                        MaterialPageRoute(builder: (_) => const FaqsScreen()),
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    _ProfileAction(
-                      icon: Icons.logout_rounded,
-                      label: 'CERRAR SESIÓN',
-                      color: Colors.black54,
-                      onTap: _logout,
-                    ),
-                    const SizedBox(height: 32),
-                    TextButton.icon(
-                      onPressed: _deleteAccount,
-                      icon: const Icon(Icons.delete_forever_rounded, color: Colors.black26),
-                      label: const Text(
-                        'ELIMINAR MI CUENTA',
-                        style: TextStyle(color: Colors.black26, fontWeight: FontWeight.w900, fontSize: 12, letterSpacing: 1),
-                      ),
-                    ),
-                  ],
-                )
-                 
-                 ,
               ),
-            ),
-    );
-  }
-
-  Widget _buildEmailReadOnly(String email) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('CORREO REGISTRADO',
-            style: TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.black38, letterSpacing: 1)),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.04),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            children: [
-              const Icon(Icons.email_outlined, size: 20, color: Colors.black26),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  email,
-                  style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15, color: Colors.black54),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(48, 8, 48, 32),
+                child: AppPrimaryButton(
+                  label: 'Guardar',
+                  isLoading: state.isLoading,
+                  onPressed: _saveChanges,
                 ),
               ),
-              const Icon(Icons.lock_outline, size: 16, color: Colors.black26),
             ],
           ),
         ),
-      ],
-    );
-  }
-
-  Widget _buildField(TextEditingController controller, String label, IconData icon, {TextInputType keyboardType = TextInputType.text, List<TextInputFormatter>? inputFormatters}) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, color: Colors.black38, letterSpacing: 1)),
-        const SizedBox(height: 8),
-        TextFormField(
-          controller: controller,
-          keyboardType: keyboardType,
-          inputFormatters: inputFormatters,
-          style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 15),
-          decoration: InputDecoration(
-            prefixIcon: Icon(icon, size: 20, color: Colors.black26),
-            filled: true,
-            fillColor: Colors.black.withValues(alpha: 0.04),
-            border: OutlineInputBorder(borderRadius: BorderRadius.circular(16), borderSide: BorderSide.none),
-          ),
-          validator: (v) => v == null || v.isEmpty ? 'Requerido' : null,
-        ),
-      ],
+      ),
     );
   }
 }
 
-class _ProfileAction extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final Color color;
+/// Foto de perfil con lápiz de edición y leyenda. Conserva el `Hero` que enlaza
+/// con el avatar de Inicio para que vuele como una sola pieza.
+class _AvatarEditor extends StatelessWidget {
+  final String? avatarUrl;
+  final Uint8List? newAvatarBytes;
   final VoidCallback onTap;
 
-  const _ProfileAction({
-    required this.icon,
-    required this.label,
-    required this.color,
+  const _AvatarEditor({
+    required this.avatarUrl,
+    required this.newAvatarBytes,
     required this.onTap,
   });
 
+  static const double _size = 100;
+
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.03),
-            borderRadius: BorderRadius.circular(16),
-          ),
-          child: Row(
-            children: [
-              Icon(icon, size: 22, color: color),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Text(
-                  label,
-                  style: TextStyle(
-                    color: color,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 13,
-                    letterSpacing: 1,
+    Widget avatar() => UserAvatarCircle(
+          avatarUrl: avatarUrl,
+          newAvatarBytes: newAvatarBytes,
+        );
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Semantics(
+          button: true,
+          label: 'Cambiar foto de perfil',
+          child: GestureDetector(
+            onTap: onTap,
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                Hero(
+                  tag: 'user_avatar',
+                  flightShuttleBuilder: (_, __, ___, ____, _____) => avatar(),
+                  child: SizedBox(width: _size, height: _size, child: avatar()),
+                ),
+                Positioned(
+                  right: -2,
+                  bottom: -2,
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.black, width: 1),
+                    ),
+                    child: const Icon(
+                      Icons.edit_outlined,
+                      size: 16,
+                      color: AppColors.black,
+                    ),
                   ),
                 ),
-              ),
-              const Icon(Icons.chevron_right_rounded, color: Colors.black26),
-            ],
+              ],
+            ),
           ),
         ),
-      ),
+        const SizedBox(height: 8),
+        Text(
+          'FOTO DE PERFIL',
+          style: AppTypography.body(size: 12, weight: FontWeight.w300),
+        ),
+      ],
     );
   }
 }
-
-
-
