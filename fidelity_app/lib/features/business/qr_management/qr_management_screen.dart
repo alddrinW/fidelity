@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -14,6 +15,7 @@ import 'package:flutter_animate/flutter_animate.dart';
 import 'package:gal/gal.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/utils/date_utils.dart';
+import '../../../core/utils/file_download.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/realtime_sync_service.dart';
 import 'dart:async';
@@ -150,10 +152,25 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       final pngBytes = byteData!.buffer.asUint8List();
 
-      final tempDir = await getTemporaryDirectory();
       final cleanLabel = label
           .replaceAll(RegExp(r'[^\w\s]+'), '')
           .replaceAll(' ', '_');
+
+      // En el navegador no hay galería ni carpeta temporal: se descarga el PNG.
+      if (kIsWeb) {
+        downloadBytesInBrowser(pngBytes, 'qr_$cleanLabel.png', 'image/png');
+        if (mounted) {
+          ScaffoldMessenger.of(context).hideCurrentSnackBar();
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Imagen descargada. Búscala en tu carpeta de descargas.'),
+            ),
+          );
+        }
+        return;
+      }
+
+      final tempDir = await getTemporaryDirectory();
       final file = await File('${tempDir.path}/qr_$cleanLabel.png').create();
       await file.writeAsBytes(pngBytes);
 
