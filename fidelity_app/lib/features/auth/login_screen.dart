@@ -1,10 +1,19 @@
 import 'package:flutter/material.dart';
-import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_animate/flutter_animate.dart';
-import 'register_screen.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+
+import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/utils/auth_error_translator.dart';
+import '../../core/validators/app_validators.dart';
+import '../../core/widgets/app_button.dart';
+import '../../core/widgets/app_responsive_body.dart';
+import '../../core/widgets/app_text_field.dart';
+import '../../core/widgets/app_wordmark.dart';
+import '../../core/widgets/fido_dome.dart';
 import 'data/auth_repository.dart';
+import 'register_choice_screen.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -18,7 +27,6 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   final _passwordController = TextEditingController();
   final _formKey = GlobalKey<FormState>();
   bool _isLoading = false;
-  bool _isPasswordVisible = false;
 
   @override
   void dispose() {
@@ -27,43 +35,38 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     super.dispose();
   }
 
+  void _showError(Object error) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(AuthErrorTranslator.translate(error)),
+        backgroundColor: Theme.of(context).colorScheme.error,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+      ),
+    );
+  }
+
   Future<void> _login() async {
     if (!_formKey.currentState!.validate()) return;
 
     setState(() => _isLoading = true);
 
     try {
-      final authRepo = ref.read(authRepositoryProvider);
-      await authRepo.signIn(
-        email: _emailController.text.trim(),
-        password: _passwordController.text.trim(),
-      );
-
+      await ref.read(authRepositoryProvider).signIn(
+            email: _emailController.text.trim(),
+            password: _passwordController.text.trim(),
+          );
       // AuthWrapper detecta automáticamente el cambio de sesión a través del notifier
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(AuthErrorTranslator.translate(e)),
-            backgroundColor: Theme.of(context).colorScheme.error,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(24),
-            ),
-          ),
-        );
-      }
+      if (mounted) _showError(e);
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   Future<void> _resetPassword(String email) async {
     try {
-      final authRepo = ref.read(authRepositoryProvider);
-      await authRepo.resetPassword(email);
+      await ref.read(authRepositoryProvider).resetPassword(email);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
@@ -73,170 +76,209 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         );
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(AuthErrorTranslator.translate(e)),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
-      }
+      if (mounted) _showError(e);
     }
   }
 
-  void _showRecoveryDialog() {
-    final emailController = TextEditingController();
-    showDialog(
+  Future<void> _showRecoveryDialog() async {
+    final email = await showDialog<String>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: const Text('Recuperar contraseña'),
-        content: TextField(
-          controller: emailController,
-          decoration: InputDecoration(
-            labelText: 'Correo electrónico',
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-          ),
-          keyboardType: TextInputType.emailAddress,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancelar', style: TextStyle(color: Colors.grey)),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (emailController.text.isNotEmpty) {
-                _resetPassword(emailController.text);
-                Navigator.pop(context);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.accentPurple,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-            ),
-            child: const Text('Enviar'),
-          ),
-        ],
-      ),
+      builder: (_) => _RecoveryDialog(initialEmail: _emailController.text),
     );
+    if (email != null && mounted) await _resetPassword(email);
   }
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
+    final keyboardOpen = MediaQuery.viewInsetsOf(context).bottom > 0;
+
     return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            physics: const ClampingScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
-            child: Form(
-              key: _formKey,
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+        child: AppResponsiveBody(
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              final domeHeight =
+                  (constraints.maxHeight * 0.26).clamp(120.0, 260.0);
+
+              return Column(
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 48, vertical: 8),
-                    child: Image.asset(
-                      'assets/images/logo_texto.png',
-                      height: 150,
-                      fit: BoxFit.contain,
-                    ),
-                  ).animate().scale(duration: AppTheme.animDurationSlow, curve: AppTheme.animCurveElastic).fadeIn(),
-
-                  const SizedBox(height: 24),
-
-                  // Formulario
-                  Column(
-                    children: [
-                      TextFormField(
-                        controller: _emailController,
-                        keyboardType: TextInputType.emailAddress,
-                        decoration: const InputDecoration(
-                          hintText: 'Tu email',
-                          prefixIcon: Icon(Icons.email_outlined),
+                  Expanded(
+                    child: Center(
+                      child: SingleChildScrollView(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 32,
+                          vertical: 24,
                         ),
-                        validator: (value) => 
-                          (value == null || value.isEmpty) ? 'Ingresa tu email' : null,
-                      ),
-                      const SizedBox(height: 16),
-                      TextFormField(
-                        controller: _passwordController,
-                        obscureText: !_isPasswordVisible,
-                        decoration: InputDecoration(
-                          hintText: 'Tu contraseña',
-                          helperText: 'Mínimo 6 caracteres',
-                          prefixIcon: const Icon(Icons.lock_outline),
-                          suffixIcon: IconButton(
-                            icon: Icon(
-                              _isPasswordVisible ? Icons.visibility : Icons.visibility_off,
+                        child: Form(
+                          key: _formKey,
+                          child: AutofillGroup(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              crossAxisAlignment: CrossAxisAlignment.stretch,
+                              children: [
+                                const AppWordmark(size: 72)
+                                    .animate()
+                                    .scale(
+                                      duration: AppTheme.animDurationSlow,
+                                      curve: AppTheme.animCurveElastic,
+                                    )
+                                    .fadeIn(),
+                                const SizedBox(height: 40),
+                                AppTextField(
+                                  controller: _emailController,
+                                  hint: 'Correo electrónico',
+                                  icon: Icons.mail_outline_rounded,
+                                  keyboardType: TextInputType.emailAddress,
+                                  textInputAction: TextInputAction.next,
+                                  autofillHints: const [AutofillHints.email],
+                                  validator: (v) => (v == null || v.trim().isEmpty)
+                                      ? 'Ingresa tu correo electrónico'
+                                      : null,
+                                ),
+                                const SizedBox(height: 16),
+                                AppTextField(
+                                  controller: _passwordController,
+                                  hint: 'Contraseña',
+                                  icon: Icons.lock_outline_rounded,
+                                  isPassword: true,
+                                  textInputAction: TextInputAction.done,
+                                  autofillHints: const [AutofillHints.password],
+                                  onSubmitted: (_) => _isLoading ? null : _login(),
+                                  validator: (v) => (v == null || v.isEmpty)
+                                      ? 'Ingresa tu contraseña'
+                                      : null,
+                                ),
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed: _showRecoveryDialog,
+                                    child: Text(
+                                      '¿Olvidaste tu contraseña?',
+                                      style: AppTypography.body(
+                                        size: 14,
+                                        weight: FontWeight.w300,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                                AppPrimaryButton(
+                                  label: 'Iniciar sesión',
+                                  onPressed: _login,
+                                  isLoading: _isLoading,
+                                ),
+                                const SizedBox(height: 12),
+                                Center(
+                                  child: AppTextAction(
+                                    label: 'Registrarme',
+                                    onPressed: _isLoading
+                                        ? null
+                                        : () => Navigator.of(context).push(
+                                              MaterialPageRoute(
+                                                builder: (_) =>
+                                                    const RegisterChoiceScreen(),
+                                              ),
+                                            ),
+                                  ),
+                                ),
+                              ]
+                                  .animate(interval: 80.ms)
+                                  .slideY(
+                                    begin: 0.1,
+                                    duration: AppTheme.animDurationQuick,
+                                    curve: AppTheme.animCurveStandard,
+                                  )
+                                  .fadeIn(),
                             ),
-                            onPressed: () => setState(() => _isPasswordVisible = !_isPasswordVisible),
                           ),
                         ),
-                        validator: (value) => 
-                          (value == null || value.isEmpty) ? 'Ingresa tu contraseña' : null,
                       ),
-                      Align(
-                        alignment: Alignment.centerRight,
-                        child: TextButton(
-                          onPressed: _showRecoveryDialog,
-                          child: const Text('¿Olvidaste tu contraseña?', style: TextStyle(color: AppTheme.accentPurple, fontSize: 13)),
-                        ),
-                      ),
-                    ],
-                  )
-                  .animate()
-                  .slideY(begin: 0.15, duration: AppTheme.animDurationSlow, curve: AppTheme.animCurveStandard, delay: 200.ms)
-                  .fadeIn(delay: 200.ms),
-
-                  const SizedBox(height: 32),
-
-                  // Botón Login
-                  SizedBox(
-                    width: double.infinity,
-                    child: ElevatedButton(
-                      onPressed: _isLoading ? null : _login,
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 24,
-                              width: 24,
-                              child: CircularProgressIndicator(strokeWidth: 3, color: Colors.white),
-                            )
-                          : const Text('Iniciar Sesión'),
                     ),
-                  )
-                  .animate()
-                  .scale(duration: 400.ms, curve: Curves.easeOutBack, delay: 500.ms)
-                  .fadeIn(delay: 500.ms),
-
-                  const SizedBox(height: 24),
-
-                  // Registro
-                  TextButton(
-                    onPressed: () {
-                      Navigator.of(context).push(
-                        MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                      );
-                    },
-                    child: const Text('¿No tienes cuenta? Regístrate'),
-                  )
-                  .animate()
-                  .fadeIn(delay: 600.ms),
-
-                  const SizedBox(height: 40),
+                  ),
+                  if (!keyboardOpen) FidoDome(height: domeHeight),
                 ],
-              ),
-            ),
+              );
+            },
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Diálogo de recuperación de contraseña. Es un widget propio para que el
+/// controlador del campo viva y se libere junto con el diálogo.
+class _RecoveryDialog extends StatefulWidget {
+  final String initialEmail;
+
+  const _RecoveryDialog({required this.initialEmail});
+
+  @override
+  State<_RecoveryDialog> createState() => _RecoveryDialogState();
+}
+
+class _RecoveryDialogState extends State<_RecoveryDialog> {
+  late final TextEditingController _controller =
+      TextEditingController(text: widget.initialEmail.trim());
+  final _formKey = GlobalKey<FormState>();
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  void _submit() {
+    if (_formKey.currentState!.validate()) {
+      Navigator.of(context).pop(_controller.text.trim());
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: AppColors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+      title: Text(
+        'RECUPERAR CONTRASEÑA',
+        textAlign: TextAlign.center,
+        style: AppTypography.display(size: 24),
+      ),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Te enviaremos un enlace para crear una nueva contraseña.',
+              textAlign: TextAlign.center,
+              style: AppTypography.body(size: 15, weight: FontWeight.w300),
+            ),
+            const SizedBox(height: 20),
+            AppTextField(
+              controller: _controller,
+              hint: 'Correo electrónico',
+              icon: Icons.mail_outline_rounded,
+              keyboardType: TextInputType.emailAddress,
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _submit(),
+              validator: AppValidators.validateEmail,
+            ),
+          ],
+        ),
+      ),
+      actionsAlignment: MainAxisAlignment.spaceBetween,
+      actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancelar'),
+        ),
+        ElevatedButton(
+          onPressed: _submit,
+          child: const Text('ENVIAR'),
+        ),
+      ],
     );
   }
 }
