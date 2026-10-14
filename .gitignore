@@ -10,3 +10,9 @@ supabase/.temp/
 FIDELITY_*.png
 Fidelity.pdf
 check_policies.sql
+
+# IDE
+.idea/
+
+# Reportes de build de Android (se regeneran)
+fidelity_app/android/build/

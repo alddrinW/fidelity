@@ -1,0 +1,9 @@
+# Dependencias y salida de compilación (se regeneran con npm install / npm run build)
+node_modules/
+dist/
+
+# Variables de entorno locales: nunca versionar secretos.
+# Copia .env.example a .env y completa los valores.
+.env
+.env.*
+!.env.example
