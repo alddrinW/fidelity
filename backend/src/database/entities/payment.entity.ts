@@ -28,7 +28,7 @@ export enum PaymentStatus {
 }
 
 export enum PaymentMethod {
-  /** Pago con tarjeta en la pasarela de pago (enlace configurado). */
+  /** Pago con tarjeta en PayPhone; lo confirma el servidor, no el dueño. */
   CARD = 'card',
   TRANSFER = 'transfer',
   DEPOSIT = 'deposit',
@@ -36,9 +36,10 @@ export enum PaymentMethod {
 }
 
 /**
- * Orden de pago por registrar un negocio o una sucursal. No hay pasarela de
- * pago: el dueño paga por fuera (transferencia, depósito, efectivo), lo
- * reporta y el administrador valida y activa la cuenta.
+ * Orden de pago por registrar un negocio o una sucursal. El dueño paga con
+ * tarjeta (PayPhone, confirmado por el servidor) o por transferencia (con foto
+ * del comprobante); el pago queda "reportado" y el administrador lo valida y
+ * activa la cuenta.
  */
 @Entity('payments')
 export class Payment {
@@ -94,6 +95,21 @@ export class Payment {
   /** Motivo del rechazo o comentario del administrador. */
   @Column({ name: 'admin_note', type: 'varchar', length: 300, nullable: true })
   adminNote: string | null;
+
+  /** Id único que se envía a PayPhone al iniciar el pago con tarjeta. */
+  @Column({ name: 'gateway_client_tx_id', type: 'varchar', length: 20, nullable: true, unique: true })
+  gatewayClientTxId: string | null;
+
+  /** Página de pago de PayPhone de este intento (a ella redirige nuestra pasarela). */
+  @Column({ name: 'gateway_pay_url', type: 'varchar', length: 300, nullable: true })
+  gatewayPayUrl: string | null;
+
+  /** Id de la transacción en PayPhone, una vez confirmado el cobro. */
+  @Column({ name: 'gateway_transaction_id', type: 'varchar', length: 40, nullable: true })
+  gatewayTransactionId: string | null;
+
+  @Column({ name: 'gateway_auth_code', type: 'varchar', length: 40, nullable: true })
+  gatewayAuthCode: string | null;
 
   @Column({ name: 'receipt_number', type: 'varchar', length: 30, nullable: true, unique: true })
   receiptNumber: string | null;

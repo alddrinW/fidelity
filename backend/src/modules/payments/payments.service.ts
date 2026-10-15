@@ -16,12 +16,16 @@ import {
   PaymentMethod,
   PaymentStatus,
 } from '../../database/entities/payment.entity';
+import { AppSetting } from '../../database/entities/app-setting.entity';
 import { BankAccountConfig } from '../../config/configuration';
 import { NotificationsService } from '../notifications/notifications.service';
-import { ReportPaymentDto } from './dto/payments.dto';
+import { ReportPaymentDto, UpdatePricesDto } from './dto/payments.dto';
+import { PAYPHONE_APPROVED, PayphoneService } from './payphone.service';
 
 /** Estados en los que un pago todavía espera resolverse. */
 export const OPEN_PAYMENT_STATUSES = [PaymentStatus.PENDING, PaymentStatus.REPORTED];
+
+const FEE_KEYS = { registration: 'registration_fee', branch: 'branch_fee' } as const;
 
 // Sin 0/O/1/I para que la referencia sea fácil de dictar.
 const REFERENCE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -42,19 +46,44 @@ export class PaymentsService {
   constructor(
     @InjectRepository(Payment)
     private readonly paymentRepository: Repository<Payment>,
+    @InjectRepository(AppSetting)
+    private readonly settingRepository: Repository<AppSetting>,
     private readonly configService: ConfigService,
     private readonly notificationsService: NotificationsService,
+    private readonly payphone: PayphoneService,
   ) {}
 
-  /** Precios vigentes para mostrar en el asistente "PAGA YA". */
-  getPlan() {
+  /**
+   * Precio vigente de un concepto: el que fijó el administrador y, si no hay
+   * ninguno, el de la configuración del servidor.
+   */
+  private async fees(): Promise<{ registrationFee: number; branchFee: number }> {
+    const saved = await this.settingRepository.find({
+      where: { key: In([FEE_KEYS.registration, FEE_KEYS.branch]) },
+    });
+    const value = (key: string, fallback: number) => {
+      const n = Number(saved.find((s) => s.key === key)?.value);
+      return Number.isFinite(n) && n > 0 ? n : fallback;
+    };
+    return {
+      registrationFee: value(
+        FEE_KEYS.registration,
+        this.configService.get<number>('payments.registrationFee') ?? 20,
+      ),
+      branchFee: value(
+        FEE_KEYS.branch,
+        this.configService.get<number>('payments.branchFee') ?? 10,
+      ),
+    };
+  }
+
+  /** Precios y métodos de pago vigentes para el asistente "PAGA YA". */
+  async getPlan() {
     const banks = this.configService.get<BankAccountConfig[]>('payments.bankAccounts') ?? [];
-    const cardPaymentUrl = this.configService.get<string>('payments.cardPaymentUrl');
 
     return {
       currency: this.configService.get<string>('payments.currency') ?? 'USD',
-      registrationFee: this.configService.get<number>('payments.registrationFee') ?? 20,
-      branchFee: this.configService.get<number>('payments.branchFee') ?? 10,
+      ...(await this.fees()),
       // Solo se ofrece un método de pago si está configurado.
       bankAccounts: banks.map((bank) => ({
         bank: bank.name || null,
@@ -63,13 +92,38 @@ export class PaymentsService {
         holder: bank.holder || null,
         taxId: bank.taxId || null,
       })),
-      cardPaymentUrl: cardPaymentUrl || null,
+      // El pago con tarjeta (PayPhone) solo se ofrece si está configurado.
+      cardEnabled: this.payphone.isConfigured(),
     };
   }
 
-  private feeFor(concept: PaymentConcept): number {
-    const plan = this.getPlan();
-    return concept === PaymentConcept.BRANCH ? plan.branchFee : plan.registrationFee;
+  /**
+   * El administrador fija los precios. Solo afecta a las órdenes que se creen
+   * desde ahora: las ya creadas conservan el monto con el que se emitieron.
+   */
+  async updatePrices(dto: UpdatePricesDto) {
+    const entries: AppSetting[] = [];
+    if (dto.registrationFee != null) {
+      entries.push(
+        this.settingRepository.create({
+          key: FEE_KEYS.registration,
+          value: String(dto.registrationFee),
+        }),
+      );
+    }
+    if (dto.branchFee != null) {
+      entries.push(
+        this.settingRepository.create({ key: FEE_KEYS.branch, value: String(dto.branchFee) }),
+      );
+    }
+    if (entries.length === 0) throw new BadRequestException('Indica al menos un precio');
+    await this.settingRepository.save(entries);
+    return this.getPlan();
+  }
+
+  private async feeFor(concept: PaymentConcept): Promise<number> {
+    const fees = await this.fees();
+    return concept === PaymentConcept.BRANCH ? fees.branchFee : fees.registrationFee;
   }
 
   /** Crea la orden de pago de un negocio recién registrado. */
@@ -81,8 +135,8 @@ export class PaymentsService {
       businessId: business.id,
       ownerId: business.ownerId,
       concept,
-      amount: this.feeFor(concept),
-      currency: this.getPlan().currency,
+      amount: await this.feeFor(concept),
+      currency: this.configService.get<string>('payments.currency') ?? 'USD',
       status: PaymentStatus.PENDING,
       reference: `FID-${randomCode(6)}`,
     });
@@ -147,6 +201,14 @@ export class PaymentsService {
       );
     }
 
+    // El pago con tarjeta lo confirma PayPhone al volver el cliente; si el dueño
+    // pudiera "reportarlo", cualquiera daría por pagado un cobro que no existe.
+    if (dto.method === PaymentMethod.CARD) {
+      throw new BadRequestException(
+        'El pago con tarjeta se confirma solo al pagar en PayPhone',
+      );
+    }
+
     // Una transferencia o un depósito se validan con la foto del comprobante.
     const needsProof = [PaymentMethod.TRANSFER, PaymentMethod.DEPOSIT].includes(dto.method);
     if (needsProof && !dto.proofUrl) {
@@ -169,6 +231,128 @@ export class PaymentsService {
       ),
     );
     return saved;
+  }
+
+  /**
+   * Inicia el pago con tarjeta: crea la página de pago en PayPhone y devuelve
+   * su dirección. Cada intento usa un identificador nuevo (PayPhone no admite
+   * repetirlo). El pago queda "reportado" cuando el cliente vuelve y el
+   * servidor confirma el cobro (ver confirmCardPayment).
+   */
+  async startCardPayment(paymentId: string, ownerId: string) {
+    if (!this.payphone.isConfigured()) {
+      throw new BadRequestException('El pago con tarjeta no está disponible por ahora');
+    }
+    const payment = await this.paymentRepository.findOne({
+      where: { id: paymentId },
+      relations: ['owner'],
+    });
+    if (!payment) throw new NotFoundException('Pago no encontrado');
+    if (payment.ownerId !== ownerId) {
+      throw new ForbiddenException('Este pago no te pertenece');
+    }
+    if (![PaymentStatus.PENDING, PaymentStatus.REJECTED].includes(payment.status)) {
+      throw new BadRequestException(
+        payment.status === PaymentStatus.PAID
+          ? 'Este pago ya fue validado'
+          : 'Este pago ya fue reportado y está en revisión',
+      );
+    }
+
+    const clientTransactionId = `${payment.reference}-${randomCode(4)}`;
+    const checkout = await this.payphone.prepare({
+      amountCents: Math.round(payment.amount * 100),
+      clientTransactionId,
+      reference: `Fidelity ${payment.reference}`,
+      email: payment.owner?.email,
+    });
+
+    payment.gatewayClientTxId = clientTransactionId;
+    payment.gatewayPayUrl = checkout.payWithCard;
+    await this.paymentRepository.save(payment);
+    return { payUrl: this.payphone.launchUrl(clientTransactionId) };
+  }
+
+  /**
+   * Página de PayPhone a la que lleva la pasarela propia, o `null` si el
+   * intento no existe, ya se pagó o la dirección guardada no es de PayPhone.
+   */
+  async getCardRedirect(clientTxId: string): Promise<string | null> {
+    const payment = await this.paymentRepository.findOne({
+      where: { gatewayClientTxId: clientTxId },
+    });
+    if (!payment || ![PaymentStatus.PENDING, PaymentStatus.REJECTED].includes(payment.status)) {
+      return null;
+    }
+    return this.payphone.isPayphoneUrl(payment.gatewayPayUrl) ? payment.gatewayPayUrl : null;
+  }
+
+  /**
+   * El cliente vuelve de PayPhone con `id` y `clientTransactionId`. Se confirma
+   * el cobro directamente con PayPhone (no se cree en lo que llegue por la
+   * dirección) y, si fue aprobado por el monto de la orden, el pago queda
+   * validado y la cuenta se activa sola, con sus datos de PayPhone.
+   */
+  async confirmCardPayment(
+    gatewayId: number,
+    clientTxId: string,
+  ): Promise<{ outcome: 'approved' | 'cancelled' | 'failed'; reference?: string }> {
+    const payment = await this.paymentRepository.findOne({
+      where: { gatewayClientTxId: clientTxId },
+      relations: ['business'],
+    });
+    if (!payment) throw new NotFoundException('Pago no encontrado');
+
+    // Si el cliente recarga la página de retorno, no se vuelve a confirmar.
+    if (
+      payment.gatewayTransactionId === String(gatewayId) &&
+      [PaymentStatus.REPORTED, PaymentStatus.PAID].includes(payment.status)
+    ) {
+      return { outcome: 'approved', reference: payment.reference };
+    }
+
+    const result = await this.payphone.confirm(gatewayId, clientTxId);
+    if (result.statusCode !== PAYPHONE_APPROVED) {
+      return { outcome: 'cancelled', reference: payment.reference };
+    }
+    if (
+      result.clientTransactionId !== clientTxId ||
+      Number(result.amount) !== Math.round(payment.amount * 100)
+    ) {
+      this.logger.error(
+        `PayPhone aprobó un cobro que no coincide con la orden ${payment.reference}: ` +
+          `${result.clientTransactionId} / ${result.amount}`,
+      );
+      return { outcome: 'failed', reference: payment.reference };
+    }
+
+    payment.method = PaymentMethod.CARD;
+    payment.gatewayTransactionId = String(result.transactionId ?? gatewayId);
+    payment.gatewayAuthCode = result.authorizationCode ?? null;
+    const card = [result.cardBrand, result.lastDigits && `•••• ${result.lastDigits}`]
+      .filter(Boolean)
+      .join(' ');
+    payment.note = [
+      'PayPhone',
+      result.authorizationCode && `aut. ${result.authorizationCode}`,
+      `trans. ${payment.gatewayTransactionId}`,
+      card,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+    payment.reportedAt = new Date();
+    // PayPhone ya cobró y el servidor lo verificó: no hace falta que un
+    // administrador lo valide (como sí ocurre con una transferencia).
+    await this.activate(payment, null);
+
+    await this.safely(() =>
+      this.notificationsService.broadcastToAdmins(
+        'Negocio activado con tarjeta',
+        `${payment.business?.name ?? 'Un negocio'} pagó con tarjeta (${payment.reference}) y su cuenta se activó sola.`,
+        '/admin_payments',
+      ),
+    );
+    return { outcome: 'approved', reference: payment.reference };
   }
 
   /**
@@ -220,8 +404,17 @@ export class PaymentsService {
       throw new BadRequestException('Este pago ya fue validado');
     }
 
+    return this.activate(payment, adminId);
+  }
+
+  /**
+   * Da el pago por validado: emite el comprobante, activa la cuenta y avisa al
+   * dueño. Lo usa el administrador (`validatedById` = su id) y el pago con
+   * tarjeta aprobado por PayPhone (sin administrador: `null`).
+   */
+  private async activate(payment: Payment, validatedById: string | null) {
     const saved = await this.paymentRepository.manager.transaction(async (manager) => {
-      this.markPaid(payment, adminId);
+      this.markPaid(payment, validatedById);
       const result = await manager.save(Payment, payment);
       await manager.update(Business, { id: payment.businessId }, { isActive: true });
       return result;
@@ -279,7 +472,7 @@ export class PaymentsService {
     return open.length;
   }
 
-  private markPaid(payment: Payment, adminId: string) {
+  private markPaid(payment: Payment, adminId: string | null) {
     payment.status = PaymentStatus.PAID;
     payment.paidAt = new Date();
     payment.validatedById = adminId;

@@ -22,6 +22,7 @@ import {
   CampaignBusiness,
   CampaignClaim,
   CampaignStamp,
+  AppSetting,
 } from './database/entities';
 
 // Feature Modules
@@ -76,6 +77,7 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
           CampaignBusiness,
           CampaignClaim,
           CampaignStamp,
+          AppSetting,
         ],
       }),
       inject: [ConfigService],

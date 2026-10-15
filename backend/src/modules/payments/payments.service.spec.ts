@@ -10,12 +10,17 @@ import {
   PaymentStatus,
 } from '../../database/entities/payment.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PayphoneService } from './payphone.service';
+import { Business } from '../../database/entities/business.entity';
+import { AppSetting } from '../../database/entities/app-setting.entity';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
   let paymentRepo: any;
   let manager: any;
   let notifications: any;
+  let payphone: any;
+  let settingRepo: any;
 
   const payment = (overrides: Partial<Payment> = {}): any => ({
     id: 'p1',
@@ -41,6 +46,22 @@ describe('PaymentsService', () => {
       count: jest.fn(),
       manager: { transaction: jest.fn((cb) => cb(manager)), findOne: jest.fn() },
     };
+    settingRepo = {
+      find: jest.fn().mockResolvedValue([]),
+      create: jest.fn((data) => data),
+      save: jest.fn((entries) => Promise.resolve(entries)),
+    };
+    payphone = {
+      isConfigured: jest.fn().mockReturnValue(true),
+      prepare: jest.fn().mockResolvedValue({
+        paymentId: 77,
+        payWithCard: 'https://pay.payphone/card/77',
+        payWithPayPhone: 'https://pay.payphone/app/77',
+      }),
+      confirm: jest.fn(),
+      launchUrl: jest.fn((id: string) => `https://api.test/pay/${id}`),
+      isPayphoneUrl: jest.fn((url: string) => !!url && url.startsWith('https://pay.payphone/')),
+    };
     notifications = {
       broadcastToAdmins: jest.fn().mockResolvedValue(undefined),
       sendToBusinessOwner: jest.fn().mockResolvedValue(true),
@@ -50,6 +71,7 @@ describe('PaymentsService', () => {
       providers: [
         PaymentsService,
         { provide: getRepositoryToken(Payment), useValue: paymentRepo },
+        { provide: getRepositoryToken(AppSetting), useValue: settingRepo },
         {
           provide: ConfigService,
           useValue: {
@@ -74,11 +96,11 @@ describe('PaymentsService', () => {
                     taxId: '1100000002',
                   },
                 ],
-                'payments.cardPaymentUrl': 'https://pay.example.com/c?ref={reference}&amount={amount}',
               })[key],
           },
         },
         { provide: NotificationsService, useValue: notifications },
+        { provide: PayphoneService, useValue: payphone },
       ],
     }).compile();
 
@@ -86,8 +108,8 @@ describe('PaymentsService', () => {
   });
 
   describe('getPlan', () => {
-    it('incluye todas las cuentas bancarias y el enlace de la pasarela', () => {
-      const plan = service.getPlan();
+    it('incluye todas las cuentas bancarias y si hay pago con tarjeta', async () => {
+      const plan = await service.getPlan();
 
       expect(plan.bankAccounts).toHaveLength(2);
       expect(plan.bankAccounts[0]).toEqual({
@@ -99,11 +121,70 @@ describe('PaymentsService', () => {
       });
       // Un dato vacío se informa como nulo.
       expect(plan.bankAccounts[1].accountType).toBeNull();
-      expect(plan.cardPaymentUrl).toContain('{reference}');
+      expect(plan.cardEnabled).toBe(true);
+    });
+
+    it('sin PayPhone configurado no se ofrece la tarjeta', async () => {
+      payphone.isConfigured.mockReturnValue(false);
+
+      expect((await service.getPlan()).cardEnabled).toBe(false);
+    });
+
+    it('sin precios guardados usa los de la configuración', async () => {
+      const plan = await service.getPlan();
+
+      expect(plan.registrationFee).toBe(25);
+      expect(plan.branchFee).toBe(12);
+    });
+
+    it('los precios que fijó el administrador mandan sobre la configuración', async () => {
+      settingRepo.find.mockResolvedValue([
+        { key: 'registration_fee', value: '35.5' },
+        { key: 'branch_fee', value: 'basura' },
+      ]);
+
+      const plan = await service.getPlan();
+
+      expect(plan.registrationFee).toBe(35.5);
+      // Un valor guardado que no sirve se ignora.
+      expect(plan.branchFee).toBe(12);
+    });
+  });
+
+  describe('updatePrices', () => {
+    it('guarda los precios y devuelve el plan', async () => {
+      settingRepo.find.mockResolvedValue([{ key: 'registration_fee', value: '40' }]);
+
+      const plan = await service.updatePrices({ registrationFee: 40, branchFee: 15 });
+
+      expect(settingRepo.save).toHaveBeenCalledWith([
+        { key: 'registration_fee', value: '40' },
+        { key: 'branch_fee', value: '15' },
+      ]);
+      expect(plan.registrationFee).toBe(40);
+    });
+
+    it('permite cambiar solo uno', async () => {
+      await service.updatePrices({ branchFee: 9.99 });
+
+      expect(settingRepo.save).toHaveBeenCalledWith([{ key: 'branch_fee', value: '9.99' }]);
+    });
+
+    it('exige al menos un precio', async () => {
+      await expect(service.updatePrices({})).rejects.toBeInstanceOf(BadRequestException);
+      expect(settingRepo.save).not.toHaveBeenCalled();
     });
   });
 
   describe('createOrder', () => {
+    it('una orden nueva usa el precio que fijó el administrador', async () => {
+      settingRepo.find.mockResolvedValue([{ key: 'registration_fee', value: '40' }]);
+
+      const order = await service.createOrder({ id: 'b1', ownerId: 'owner-1' });
+
+      expect(order.amount).toBe(40);
+    });
+
     it('crea una orden pendiente con el precio del registro y una referencia', async () => {
       const order = await service.createOrder({ id: 'b1', ownerId: 'owner-1' });
 
@@ -206,6 +287,183 @@ describe('PaymentsService', () => {
     });
   });
 
+  describe('pago con tarjeta (PayPhone)', () => {
+    const open = (overrides: any = {}) =>
+      payment({ amount: 25, owner: { email: 'ana@mail.com' }, ...overrides });
+    const approved = (overrides: any = {}) => ({
+      statusCode: 3,
+      transactionStatus: 'Approved',
+      transactionId: 9001,
+      clientTransactionId: 'FID-ABC234-X7K2',
+      authorizationCode: 'A1B2C3',
+      amount: 2500,
+      cardBrand: 'Visa',
+      lastDigits: '4242',
+      ...overrides,
+    });
+
+    describe('startCardPayment', () => {
+      it('prepara el cobro en centavos y guarda el identificador del intento', async () => {
+        paymentRepo.findOne.mockResolvedValue(open());
+
+        const result = await service.startCardPayment('p1', 'owner-1');
+
+        const args = payphone.prepare.mock.calls[0][0];
+        // La app abre la pasarela propia (que redirige a PayPhone), no PayPhone directo.
+        expect(result).toEqual({ payUrl: `https://api.test/pay/${args.clientTransactionId}` });
+        expect(args.amountCents).toBe(2500);
+        expect(args.clientTransactionId).toMatch(/^FID-ABC234-[2-9A-HJ-NP-Z]{4}$/);
+        expect(args.clientTransactionId.length).toBeLessThanOrEqual(15);
+        expect(args.email).toBe('ana@mail.com');
+        expect(paymentRepo.save).toHaveBeenCalledWith(
+          expect.objectContaining({
+            gatewayClientTxId: args.clientTransactionId,
+            gatewayPayUrl: 'https://pay.payphone/card/77',
+          }),
+        );
+      });
+
+      it('falla si PayPhone no está configurado', async () => {
+        payphone.isConfigured.mockReturnValue(false);
+
+        await expect(service.startCardPayment('p1', 'owner-1')).rejects.toBeInstanceOf(
+          BadRequestException,
+        );
+        expect(payphone.prepare).not.toHaveBeenCalled();
+      });
+
+      it('no sirve para pagos de otro dueño', async () => {
+        paymentRepo.findOne.mockResolvedValue(open({ ownerId: 'otro' }));
+
+        await expect(service.startCardPayment('p1', 'owner-1')).rejects.toBeInstanceOf(
+          ForbiddenException,
+        );
+      });
+
+      it('no se puede pagar de nuevo un pago reportado o validado', async () => {
+        for (const status of [PaymentStatus.REPORTED, PaymentStatus.PAID]) {
+          paymentRepo.findOne.mockResolvedValue(open({ status }));
+          await expect(service.startCardPayment('p1', 'owner-1')).rejects.toBeInstanceOf(
+            BadRequestException,
+          );
+        }
+        expect(payphone.prepare).not.toHaveBeenCalled();
+      });
+    });
+
+    describe('getCardRedirect', () => {
+      const attempt = (overrides: any = {}) =>
+        open({
+          gatewayClientTxId: 'FID-ABC234-X7K2',
+          gatewayPayUrl: 'https://pay.payphone/card/77',
+          ...overrides,
+        });
+
+      it('devuelve la página de PayPhone del intento', async () => {
+        paymentRepo.findOne.mockResolvedValue(attempt());
+
+        expect(await service.getCardRedirect('FID-ABC234-X7K2')).toBe('https://pay.payphone/card/77');
+      });
+
+      it('un intento desconocido no redirige', async () => {
+        paymentRepo.findOne.mockResolvedValue(null);
+
+        expect(await service.getCardRedirect('NOPE')).toBeNull();
+      });
+
+      it('un pago ya reportado o validado no vuelve a abrir PayPhone', async () => {
+        for (const status of [PaymentStatus.REPORTED, PaymentStatus.PAID]) {
+          paymentRepo.findOne.mockResolvedValue(attempt({ status }));
+          expect(await service.getCardRedirect('FID-ABC234-X7K2')).toBeNull();
+        }
+      });
+
+      it('una dirección que no es de PayPhone nunca se usa como destino', async () => {
+        paymentRepo.findOne.mockResolvedValue(attempt({ gatewayPayUrl: 'https://evil.example.com/x' }));
+
+        expect(await service.getCardRedirect('FID-ABC234-X7K2')).toBeNull();
+      });
+    });
+
+    describe('confirmCardPayment', () => {
+      it('un cobro aprobado valida el pago y activa la cuenta sin administrador', async () => {
+        paymentRepo.findOne.mockResolvedValue(open({ gatewayClientTxId: 'FID-ABC234-X7K2' }));
+        payphone.confirm.mockResolvedValue(approved());
+
+        const result = await service.confirmCardPayment(9001, 'FID-ABC234-X7K2');
+
+        expect(result).toEqual({ outcome: 'approved', reference: 'FID-ABC234' });
+        expect(payphone.confirm).toHaveBeenCalledWith(9001, 'FID-ABC234-X7K2');
+        const saved = manager.save.mock.calls[0][1];
+        expect(saved.status).toBe(PaymentStatus.PAID);
+        expect(saved.validatedById).toBeNull();
+        expect(saved.receiptNumber).toMatch(/^FID-R-/);
+        expect(saved.method).toBe(PaymentMethod.CARD);
+        expect(manager.update).toHaveBeenCalledWith(Business, { id: 'b1' }, { isActive: true });
+        expect(notifications.sendToBusinessOwner).toHaveBeenCalled();
+        expect(saved.gatewayTransactionId).toBe('9001');
+        expect(saved.gatewayAuthCode).toBe('A1B2C3');
+        expect(saved.note).toBe('PayPhone · aut. A1B2C3 · trans. 9001 · Visa •••• 4242');
+        expect(notifications.broadcastToAdmins).toHaveBeenCalled();
+      });
+
+      it('un cobro cancelado no cambia el pago', async () => {
+        paymentRepo.findOne.mockResolvedValue(open({ gatewayClientTxId: 'FID-ABC234-X7K2' }));
+        payphone.confirm.mockResolvedValue(approved({ statusCode: 2, transactionStatus: 'Canceled' }));
+
+        const result = await service.confirmCardPayment(9001, 'FID-ABC234-X7K2');
+
+        expect(result.outcome).toBe('cancelled');
+        expect(manager.save).not.toHaveBeenCalled();
+        expect(manager.update).not.toHaveBeenCalled();
+      });
+
+      it('un monto distinto al de la orden no se acepta', async () => {
+        paymentRepo.findOne.mockResolvedValue(open({ gatewayClientTxId: 'FID-ABC234-X7K2' }));
+        payphone.confirm.mockResolvedValue(approved({ amount: 100 }));
+
+        const result = await service.confirmCardPayment(9001, 'FID-ABC234-X7K2');
+
+        expect(result.outcome).toBe('failed');
+        expect(manager.save).not.toHaveBeenCalled();
+        expect(manager.update).not.toHaveBeenCalled();
+      });
+
+      it('un identificador de cliente distinto al enviado no se acepta', async () => {
+        paymentRepo.findOne.mockResolvedValue(open({ gatewayClientTxId: 'FID-ABC234-X7K2' }));
+        payphone.confirm.mockResolvedValue(approved({ clientTransactionId: 'OTRO' }));
+
+        expect((await service.confirmCardPayment(9001, 'FID-ABC234-X7K2')).outcome).toBe('failed');
+        expect(manager.update).not.toHaveBeenCalled();
+      });
+
+      it('recargar la página de retorno no vuelve a confirmar', async () => {
+        paymentRepo.findOne.mockResolvedValue(
+          open({
+            gatewayClientTxId: 'FID-ABC234-X7K2',
+            gatewayTransactionId: '9001',
+            status: PaymentStatus.REPORTED,
+          }),
+        );
+
+        const result = await service.confirmCardPayment(9001, 'FID-ABC234-X7K2');
+
+        expect(result.outcome).toBe('approved');
+        expect(payphone.confirm).not.toHaveBeenCalled();
+        expect(manager.update).not.toHaveBeenCalled();
+      });
+
+      it('un identificador desconocido no existe', async () => {
+        paymentRepo.findOne.mockResolvedValue(null);
+
+        await expect(service.confirmCardPayment(1, 'NOPE')).rejects.toBeInstanceOf(
+          NotFoundException,
+        );
+        expect(payphone.confirm).not.toHaveBeenCalled();
+      });
+    });
+  });
+
   describe('report', () => {
     const dto = {
       method: PaymentMethod.TRANSFER,
@@ -236,17 +494,13 @@ describe('PaymentsService', () => {
       expect(paymentRepo.save).not.toHaveBeenCalled();
     });
 
-    it('el pago con tarjeta se reporta sin comprobante', async () => {
+    it('el pago con tarjeta no se puede reportar a mano: lo confirma PayPhone', async () => {
       paymentRepo.findOne.mockResolvedValue(payment());
 
-      const result = await service.report('p1', 'owner-1', {
-        method: PaymentMethod.CARD,
-        note: 'Operacion 5521',
-      });
-
-      expect(result.status).toBe(PaymentStatus.REPORTED);
-      expect(result.method).toBe(PaymentMethod.CARD);
-      expect(result.proofUrl).toBeNull();
+      await expect(
+        service.report('p1', 'owner-1', { method: PaymentMethod.CARD, note: 'Operacion 5521' }),
+      ).rejects.toThrow('PayPhone');
+      expect(paymentRepo.save).not.toHaveBeenCalled();
     });
 
     it('un pago rechazado se puede reportar de nuevo y limpia el motivo', async () => {

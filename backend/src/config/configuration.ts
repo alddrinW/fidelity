@@ -61,9 +61,25 @@ export const configuration = () => ({
     // Cuentas bancarias para transferencias y depósitos (BANK_ACCOUNTS es una
     // lista en JSON). Sin cuentas, la app no ofrece el pago por transferencia.
     bankAccounts: parseBankAccounts(process.env.BANK_ACCOUNTS),
-    // Enlace de pago de la pasarela (Payphone, Datafast, Stripe...). Puede llevar
-    // {reference} y {amount}. Sin enlace, la app no ofrece el pago con tarjeta.
-    cardPaymentUrl: process.env.CARD_PAYMENT_URL || '',
+    // Pago con tarjeta por PayPhone (botón por redirección). Sin token, tienda
+    // y URL pública del backend, la app no ofrece el pago con tarjeta.
+    payphone: {
+      token: process.env.PAYPHONE_TOKEN || '',
+      storeId: process.env.PAYPHONE_STORE_ID || '',
+      apiUrl: process.env.PAYPHONE_API_URL || 'https://pay.payphonetodoesposible.com',
+      // Dirección del backend alcanzable desde el navegador del cliente: a ella
+      // vuelve PayPhone tras el pago (p. ej. https://api.midominio.com).
+      publicApiUrl: (process.env.PUBLIC_API_URL || '').replace(/\/+$/, ''),
+    },
+  },
+  // Correo saliente (recuperación de contraseña). Sin SMTP_HOST el código se
+  // escribe en el log del servidor, solo fuera de producción.
+  mail: {
+    host: process.env.SMTP_HOST || '',
+    port: parseInt(process.env.SMTP_PORT, 10) || 587,
+    user: process.env.SMTP_USER || '',
+    pass: process.env.SMTP_PASS || '',
+    from: process.env.MAIL_FROM || process.env.SMTP_USER || 'Fidelity <no-reply@fidelity.app>',
   },
   webhookSecret: process.env.WEBHOOK_SECRET || 'fidelity_webhook_secure_secret_2026',
 });

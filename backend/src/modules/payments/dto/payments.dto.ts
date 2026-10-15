@@ -1,4 +1,13 @@
-import { IsEnum, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+} from 'class-validator';
 import { PaymentMethod } from '../../../database/entities/payment.entity';
 import { IsImageSource } from '../../../common/validators/is-image-source.validator';
 
@@ -26,4 +35,19 @@ export class RejectPaymentDto {
 export class CreateOrderDto {
   @IsUUID()
   businessId: string;
+}
+
+/** Precios del registro que fija el administrador (en la moneda del plan). */
+export class UpdatePricesDto {
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El precio debe tener máximo 2 decimales' })
+  @Min(0.5, { message: 'El precio mínimo es 0.50' })
+  @Max(10000, { message: 'El precio máximo es 10000' })
+  registrationFee?: number;
+
+  @IsOptional()
+  @IsNumber({ maxDecimalPlaces: 2 }, { message: 'El precio debe tener máximo 2 decimales' })
+  @Min(0.5, { message: 'El precio mínimo es 0.50' })
+  @Max(10000, { message: 'El precio máximo es 10000' })
+  branchFee?: number;
 }

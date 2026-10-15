@@ -15,3 +15,4 @@ export * from './campaign.entity';
 export * from './campaign-business.entity';
 export * from './campaign-claim.entity';
 export * from './campaign-stamp.entity';
+export * from './app-setting.entity';

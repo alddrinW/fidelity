@@ -11,7 +11,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
-import { CreateOrderDto, RejectPaymentDto, ReportPaymentDto } from './dto/payments.dto';
+import {
+  CreateOrderDto,
+  RejectPaymentDto,
+  ReportPaymentDto,
+  UpdatePricesDto,
+} from './dto/payments.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { RolesGuard } from '../../common/guards/roles.guard';
 import { Roles } from '../../common/decorators/roles.decorator';
@@ -32,6 +37,13 @@ export class PaymentsController {
     return this.paymentsService.getPlan();
   }
 
+  /** El administrador fija los precios del registro y de las sucursales. */
+  @Patch('plan')
+  @Roles(UserRole.ADMIN)
+  updatePrices(@Body() dto: UpdatePricesDto) {
+    return this.paymentsService.updatePrices(dto);
+  }
+
   @Get('mine')
   @Roles(UserRole.BUSINESS, UserRole.ADMIN)
   listMine(@CurrentUser() user: AuthenticatedUser) {
@@ -46,6 +58,16 @@ export class PaymentsController {
     @Body() dto: CreateOrderDto,
   ) {
     return this.paymentsService.ensureOrder(dto.businessId, user.id);
+  }
+
+  /** Inicia el pago con tarjeta: devuelve la página de pago de PayPhone. */
+  @Post(':id/card')
+  @Roles(UserRole.BUSINESS, UserRole.ADMIN)
+  startCard(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.paymentsService.startCardPayment(id, user.id);
   }
 
   @Post(':id/report')
