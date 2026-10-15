@@ -6,7 +6,8 @@ import { BusinessCategory } from '../../database/entities/business-category.enti
 import { LoyaltyCard } from '../../database/entities/loyalty-card.entity';
 import { Scan } from '../../database/entities/scan.entity';
 import { Reward } from '../../database/entities/reward.entity';
-import { Profile } from '../../database/entities/profile.entity';
+import { Profile, UserRole } from '../../database/entities/profile.entity';
+import { ForbiddenException, NotFoundException } from '@nestjs/common';
 import { NotificationsService } from '../notifications/notifications.service';
 import { PaymentsService } from '../payments/payments.service';
 import { BusinessAccessService } from './business-access.service';
@@ -352,6 +353,108 @@ describe('BusinessesService - sucursales y matriz', () => {
           customers: 0, scansToday: 0, scansTotal: 0, pendingScans: 0, approvers: 0,
         },
       ]);
+    });
+  });
+});
+
+describe('BusinessesService - datos publicos', () => {
+  let service: BusinessesService;
+  let businessRepo: any;
+
+  const stored = (overrides: any = {}): any => ({
+    id: 'b1',
+    ownerId: 'owner-1',
+    name: 'Cafe Aurora',
+    description: 'Cafeteria',
+    taxId: '1790012345001',
+    phone: '0991234567',
+    isActive: true,
+    pointsRequired: 10,
+    categoryRef: { id: 1, name: 'Cafeterias' },
+    owner: { id: 'owner-1', email: 'ana@mail.com', phone: '0987654321', fcmToken: 'tok-secret' },
+    loyaltyCards: [{ id: 'c1', user: { id: 'u1', email: 'cliente@mail.com', fcmToken: 'tok-cliente' } }],
+    ...overrides,
+  });
+
+  beforeEach(async () => {
+    businessRepo = {
+      find: jest.fn().mockResolvedValue([stored()]),
+      findOne: jest.fn().mockResolvedValue(stored()),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        BusinessesService,
+        { provide: getRepositoryToken(BusinessCategory), useValue: {} },
+        { provide: getRepositoryToken(Business), useValue: businessRepo },
+        { provide: getRepositoryToken(LoyaltyCard), useValue: {} },
+        { provide: getRepositoryToken(Scan), useValue: {} },
+        { provide: getRepositoryToken(Reward), useValue: {} },
+        { provide: getRepositoryToken(Profile), useValue: {} },
+        { provide: NotificationsService, useValue: {} },
+        { provide: PaymentsService, useValue: {} },
+        { provide: BusinessAccessService, useValue: {} },
+        { provide: getRepositoryToken(BusinessMember), useValue: {} },
+      ],
+    }).compile();
+    service = module.get(BusinessesService);
+  });
+
+  describe('listFor', () => {
+    it('un usuario normal solo ve negocios activos y sin datos privados', async () => {
+      const [business] = (await service.listFor(UserRole.CLIENT, false)) as any[];
+
+      expect(businessRepo.find).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { isActive: true } }),
+      );
+      expect(business.name).toBe('Cafe Aurora');
+      expect(business.categoryRef.name).toBe('Cafeterias');
+      expect(business.owner).toBeUndefined();
+      expect(business.loyaltyCards).toBeUndefined();
+      expect(business.taxId).toBeUndefined();
+      expect(business.phone).toBeUndefined();
+      expect(JSON.stringify(business)).not.toContain('tok-');
+      expect(JSON.stringify(business)).not.toContain('@mail.com');
+    });
+
+    it('pedir todos (all=true) está prohibido para quien no es administrador', async () => {
+      for (const role of [UserRole.CLIENT, UserRole.BUSINESS, UserRole.APPROVER]) {
+        await expect(service.listFor(role, true)).rejects.toBeInstanceOf(ForbiddenException);
+      }
+      expect(businessRepo.find).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('findByIdFor', () => {
+    it('otro usuario recibe solo los datos publicos', async () => {
+      const business: any = await service.findByIdFor('b1', 'otro', UserRole.CLIENT);
+
+      expect(business.name).toBe('Cafe Aurora');
+      expect(business.owner).toBeUndefined();
+      expect(business.taxId).toBeUndefined();
+      expect(JSON.stringify(business)).not.toContain('ana@mail.com');
+    });
+
+    it('el dueño ve su negocio completo, sin el token de notificaciones', async () => {
+      const business: any = await service.findByIdFor('b1', 'owner-1', UserRole.BUSINESS);
+
+      expect(business.taxId).toBe('1790012345001');
+      expect(business.owner.email).toBe('ana@mail.com');
+      expect(business.owner.fcmToken).toBeUndefined();
+    });
+
+    it('el administrador ve todo, sin tokens de notificaciones', async () => {
+      const business: any = await service.findByIdFor('b1', 'admin-1', UserRole.ADMIN);
+
+      expect(business.taxId).toBe('1790012345001');
+      expect(business.owner.fcmToken).toBeUndefined();
+    });
+
+    it('un negocio inexistente es un 404', async () => {
+      businessRepo.findOne.mockResolvedValue(null);
+
+      await expect(service.findByIdFor('nope', 'u', UserRole.CLIENT)).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
     });
   });
 });

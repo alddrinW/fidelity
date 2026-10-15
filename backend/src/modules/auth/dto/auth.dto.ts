@@ -1,4 +1,14 @@
-import { IsEmail, IsNotEmpty, IsOptional, IsString, MinLength, IsEnum, IsBoolean } from 'class-validator';
+import {
+  IsEmail,
+  IsNotEmpty,
+  IsOptional,
+  IsString,
+  Matches,
+  MaxLength,
+  MinLength,
+  IsEnum,
+  IsBoolean,
+} from 'class-validator';
 import { UserRole } from '../../../database/entities/profile.entity';
 import { IsImageSource } from '../../../common/validators/is-image-source.validator';
 
@@ -48,7 +58,23 @@ export class LoginDto {
   fcmToken?: string;
 }
 
+/** Paso 1: pedir el código de recuperación. */
+export class ForgotPasswordDto {
+  @IsEmail({}, { message: 'El correo electronico debe ser valido' })
+  email: string;
+}
+
+/** Paso 2: crear la nueva contraseña con el código recibido. */
 export class ResetPasswordDto {
   @IsEmail({}, { message: 'El correo electronico debe ser valido' })
   email: string;
+
+  @IsString()
+  @Matches(/^\d{6}$/, { message: 'El código debe tener 6 dígitos' })
+  code: string;
+
+  @IsString()
+  @MinLength(6, { message: 'La contrasena debe tener al menos 6 caracteres' })
+  @MaxLength(72, { message: 'La contrasena es demasiado larga' })
+  newPassword: string;
 }

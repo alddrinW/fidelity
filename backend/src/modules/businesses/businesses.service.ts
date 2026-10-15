@@ -39,6 +39,36 @@ export const DEFAULT_CATEGORIES: ReadonlyArray<{ name: string; icon: string }> =
   { name: 'Servicios & Entretenimiento', icon: 'local_activity' },
 ];
 
+/**
+ * Datos de un negocio que puede ver cualquier usuario con sesión. Deja fuera
+ * al dueño (su perfil completo), los clientes con tarjeta y la cédula/RUC.
+ */
+const PUBLIC_BUSINESS_FIELDS = [
+  'id',
+  'name',
+  'description',
+  'category',
+  'categoryId',
+  'categoryRef',
+  'logoUrl',
+  'address',
+  'latitude',
+  'longitude',
+  'rewardDescription',
+  'rewardLongDescription',
+  'pointsRequired',
+  'isActive',
+  'parentId',
+  'createdAt',
+] as const;
+
+/** Un perfil sin el token de notificaciones push (nadie debe leerlo). */
+function withoutPushToken<T extends { fcmToken?: unknown } | null | undefined>(profile: T): T {
+  if (!profile) return profile;
+  const { fcmToken: _omit, ...rest } = profile as any;
+  return rest as T;
+}
+
 @Injectable()
 export class BusinessesService implements OnModuleInit {
   private readonly logger = new Logger(BusinessesService.name);
@@ -156,6 +186,7 @@ export class BusinessesService implements OnModuleInit {
     return Object.assign(saved, { payment });
   }
 
+  /** Vista completa para el administrador (con dueño y clientes). */
   async findAll(activeOnly: boolean = true) {
     const query = this.businessRepository
       .createQueryBuilder('business')
@@ -169,7 +200,36 @@ export class BusinessesService implements OnModuleInit {
       query.where('business.isActive = :isActive', { isActive: true });
     }
 
-    return query.getMany();
+    const businesses = await query.getMany();
+    return businesses.map((b) => ({
+      ...b,
+      owner: withoutPushToken(b.owner),
+      loyaltyCards: b.loyaltyCards?.map((c) => ({ ...c, user: withoutPushToken(c.user) })),
+    }));
+  }
+
+  /** Datos que puede ver cualquier usuario con sesión. */
+  toPublic(business: Business) {
+    const view: Record<string, unknown> = {};
+    for (const field of PUBLIC_BUSINESS_FIELDS) view[field] = business[field];
+    return view;
+  }
+
+  /**
+   * Listado de negocios. El administrador ve todo (y, con `all`, también los
+   * inactivos); el resto solo los activos y con los datos públicos.
+   */
+  async listFor(role: UserRole, all: boolean) {
+    if (role === UserRole.ADMIN) return this.findAll(!all);
+    if (all) {
+      throw new ForbiddenException('Solo los administradores pueden ver todos los negocios');
+    }
+    const businesses = await this.businessRepository.find({
+      where: { isActive: true },
+      relations: ['categoryRef'],
+      order: { createdAt: 'DESC' },
+    });
+    return businesses.map((b) => this.toPublic(b));
   }
 
   async findById(id: string) {
@@ -181,6 +241,18 @@ export class BusinessesService implements OnModuleInit {
       throw new NotFoundException('Negocio no encontrado');
     }
     return business;
+  }
+
+  /**
+   * Un negocio para quien lo consulta: el administrador y el dueño ven todos
+   * sus datos; los demás, solo los públicos.
+   */
+  async findByIdFor(id: string, userId: string, role: UserRole) {
+    const business = await this.findById(id);
+    if (role === UserRole.ADMIN || business.ownerId === userId) {
+      return { ...business, owner: withoutPushToken(business.owner) };
+    }
+    return this.toPublic(business);
   }
 
   async findByOwner(ownerId: string) {

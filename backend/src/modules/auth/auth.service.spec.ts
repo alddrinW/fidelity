@@ -4,7 +4,8 @@ import { JwtService } from '@nestjs/jwt';
 import { AuthService } from './auth.service';
 import { Profile, UserRole } from '../../database/entities/profile.entity';
 import { NotificationsService } from '../notifications/notifications.service';
-import { ConflictException, UnauthorizedException } from '@nestjs/common';
+import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
+import { MailService } from '../mail/mail.service';
 import * as bcrypt from 'bcrypt';
 
 describe('AuthService', () => {
@@ -12,6 +13,7 @@ describe('AuthService', () => {
   let profileRepo: any;
   let jwtService: any;
   let notificationsService: any;
+  let mailService: any;
 
   beforeEach(async () => {
     profileRepo = {
@@ -29,6 +31,9 @@ describe('AuthService', () => {
       broadcastToAdmins: jest.fn().mockResolvedValue(undefined),
     };
 
+    mailService = { send: jest.fn().mockResolvedValue(true) };
+    profileRepo.update = jest.fn().mockResolvedValue(undefined);
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         AuthService,
@@ -44,6 +49,7 @@ describe('AuthService', () => {
           provide: NotificationsService,
           useValue: notificationsService,
         },
+        { provide: MailService, useValue: mailService },
       ],
     }).compile();
 
@@ -94,5 +100,115 @@ describe('AuthService', () => {
         fullName: 'Juan Perez',
       }),
     ).rejects.toThrow(ConflictException);
+  });
+  it('no permite registrarse directamente como aprobador', async () => {
+    profileRepo.findOne.mockResolvedValue(null);
+
+    const result = await service.register({
+      email: 'x@mail.com',
+      password: 'secret123',
+      fullName: 'X',
+      role: UserRole.APPROVER,
+    });
+
+    expect(result.user.role).toBe(UserRole.CLIENT);
+  });
+
+  describe('recuperación de contraseña', () => {
+    const codeFromMail = () => /Tu código es: (\d{6})/.exec(mailService.send.mock.calls[0][2])![1];
+
+    it('envía un código de 6 dígitos y guarda solo su hash', async () => {
+      profileRepo.findOne.mockResolvedValue({ id: 'u1', email: 'ana@mail.com', fullName: 'Ana', resetCodeExpiresAt: null });
+
+      const result = await service.forgotPassword({ email: ' ANA@mail.com ' });
+
+      expect(result.message).toContain('Si el correo está registrado');
+      const code = codeFromMail();
+      expect(code).toMatch(/^\d{6}$/);
+      const update = profileRepo.update.mock.calls[0][1];
+      expect(update.resetCodeHash).not.toContain(code);
+      expect(await bcrypt.compare(code, update.resetCodeHash)).toBe(true);
+      expect(update.resetCodeExpiresAt.getTime()).toBeGreaterThan(Date.now() + 14 * 60000);
+      expect(update.resetAttempts).toBe(0);
+    });
+
+    it('responde igual si el correo no existe (no revela cuentas) y no envía nada', async () => {
+      profileRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.forgotPassword({ email: 'nadie@mail.com' });
+
+      expect(result.message).toContain('Si el correo está registrado');
+      expect(mailService.send).not.toHaveBeenCalled();
+      expect(profileRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('no reenvía otro código antes de un minuto', async () => {
+      // Emitido hace 10 segundos: vence en 15 min - 10 s.
+      profileRepo.findOne.mockResolvedValue({
+        id: 'u1',
+        email: 'ana@mail.com',
+        resetCodeExpiresAt: new Date(Date.now() + 15 * 60000 - 10000),
+      });
+
+      await service.forgotPassword({ email: 'ana@mail.com' });
+
+      expect(mailService.send).not.toHaveBeenCalled();
+    });
+
+    const withCode = async (overrides: any = {}) => ({
+      id: 'u1',
+      resetCodeHash: await bcrypt.hash('123456', 4),
+      resetCodeExpiresAt: new Date(Date.now() + 5 * 60000),
+      resetAttempts: 0,
+      ...overrides,
+    });
+
+    it('con el código correcto cambia la contraseña y borra el código', async () => {
+      profileRepo.findOne.mockResolvedValue(await withCode());
+
+      const result = await service.resetPassword({ email: 'ana@mail.com', code: '123456', newPassword: 'nueva-clave' });
+
+      expect(result.message).toContain('actualizada');
+      const update = profileRepo.update.mock.calls[0][1];
+      expect(await bcrypt.compare('nueva-clave', update.passwordHash)).toBe(true);
+      expect(update.resetCodeHash).toBeNull();
+      expect(update.resetCodeExpiresAt).toBeNull();
+    });
+
+    it('un código incorrecto se rechaza y suma un intento', async () => {
+      profileRepo.findOne.mockResolvedValue(await withCode({ resetAttempts: 2 }));
+
+      await expect(
+        service.resetPassword({ email: 'ana@mail.com', code: '000000', newPassword: 'nueva-clave' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+
+      expect(profileRepo.update).toHaveBeenCalledWith({ id: 'u1' }, { resetAttempts: 3 });
+    });
+
+    it('tras 5 intentos fallidos el código ya no sirve, ni siquiera el correcto', async () => {
+      profileRepo.findOne.mockResolvedValue(await withCode({ resetAttempts: 5 }));
+
+      await expect(
+        service.resetPassword({ email: 'ana@mail.com', code: '123456', newPassword: 'nueva-clave' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+      expect(profileRepo.update).not.toHaveBeenCalled();
+    });
+
+    it('un código vencido se rechaza', async () => {
+      profileRepo.findOne.mockResolvedValue(await withCode({ resetCodeExpiresAt: new Date(Date.now() - 1000) }));
+
+      await expect(
+        service.resetPassword({ email: 'ana@mail.com', code: '123456', newPassword: 'nueva-clave' }),
+      ).rejects.toBeInstanceOf(BadRequestException);
+    });
+
+    it('sin código pedido o con correo desconocido da el mismo error', async () => {
+      for (const found of [null, { id: 'u1', resetCodeHash: null, resetCodeExpiresAt: null, resetAttempts: 0 }]) {
+        profileRepo.findOne.mockResolvedValue(found);
+        await expect(
+          service.resetPassword({ email: 'ana@mail.com', code: '123456', newPassword: 'nueva-clave' }),
+        ).rejects.toThrow('Código inválido o vencido');
+      }
+    });
   });
 });

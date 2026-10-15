@@ -48,6 +48,17 @@ export class Profile {
   @Column({ name: 'is_demo', type: 'boolean', default: false })
   isDemo: boolean;
 
+  /** Código de recuperación de contraseña (solo su hash) y cuándo vence. */
+  @Column({ name: 'reset_code_hash', type: 'varchar', length: 100, nullable: true, select: false })
+  resetCodeHash: string | null;
+
+  @Column({ name: 'reset_code_expires_at', type: 'timestamptz', nullable: true, select: false })
+  resetCodeExpiresAt: Date | null;
+
+  /** Intentos fallidos con el código vigente. */
+  @Column({ name: 'reset_attempts', type: 'int', default: 0, select: false })
+  resetAttempts: number;
+
   @CreateDateColumn({ name: 'created_at' })
   createdAt: Date;
 

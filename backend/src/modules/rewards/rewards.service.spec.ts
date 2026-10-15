@@ -6,7 +6,7 @@ import { Reward, RewardStatus } from '../../database/entities/reward.entity';
 import { RewardTransferHistory } from '../../database/entities/reward-transfer-history.entity';
 import { Business } from '../../database/entities/business.entity';
 import { LoyaltyCard } from '../../database/entities/loyalty-card.entity';
-import { Profile } from '../../database/entities/profile.entity';
+import { Profile, UserRole } from '../../database/entities/profile.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { BusinessAccessService } from '../businesses/business-access.service';
@@ -67,11 +67,21 @@ describe('RewardsService', () => {
   });
 
   it('should reject transferring a reward to oneself', async () => {
+    profileRepo.findOne.mockResolvedValueOnce({ id: 'user-1', role: UserRole.CLIENT });
+
     await expect(
       service.transferReward('user-1', {
         rewardId: 'reward-1',
         toUserId: 'user-1',
       }),
+    ).rejects.toThrow(BadRequestException);
+  });
+
+  it('should reject transferring a reward to a business account', async () => {
+    profileRepo.findOne.mockResolvedValueOnce({ id: 'user-2', role: UserRole.BUSINESS });
+
+    await expect(
+      service.transferReward('user-1', { rewardId: 'reward-1', toUserId: 'user-2' }),
     ).rejects.toThrow(BadRequestException);
   });
 
@@ -88,7 +98,7 @@ describe('RewardsService', () => {
 
   it('should throw ForbiddenException if sender is not the owner of the reward', async () => {
     profileRepo.findOne
-      .mockResolvedValueOnce({ id: 'user-2', fullName: 'Recipient' })
+      .mockResolvedValueOnce({ id: 'user-2', fullName: 'Recipient', role: UserRole.CLIENT })
       .mockResolvedValueOnce({ id: 'user-1', fullName: 'Sender' });
 
     rewardRepo.findOne.mockResolvedValueOnce({

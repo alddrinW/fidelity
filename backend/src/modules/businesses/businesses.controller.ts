@@ -7,6 +7,7 @@ import {
   Delete,
   Body,
   Param,
+  ParseUUIDPipe,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -50,11 +51,14 @@ export class BusinessesController {
   }
 
   // Businesses CRUD
-  @Public()
+  /**
+   * Listado de negocios. Requiere sesión: el administrador ve todo (y con
+   * `all=true` también los inactivos); los demás, solo los activos y con los
+   * datos públicos.
+   */
   @Get()
-  async getBusinesses(@Query('all') all?: string) {
-    const activeOnly = all !== 'true';
-    return this.businessesService.findAll(activeOnly);
+  async getBusinesses(@CurrentUser() user: AuthenticatedUser, @Query('all') all?: string) {
+    return this.businessesService.listFor(user.role, all === 'true');
   }
 
   @Get('my-businesses')
@@ -70,10 +74,12 @@ export class BusinessesController {
     return this.businessesService.getOverview(user.id);
   }
 
-  @Public()
   @Get(':id')
-  async getBusinessById(@Param('id') id: string) {
-    return this.businessesService.findById(id);
+  async getBusinessById(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.businessesService.findByIdFor(id, user.id, user.role);
   }
 
   @Post()
