@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
+import '../l10n/tr_text.dart';
 
 /// Círculo para elegir una imagen (foto de perfil, logo de negocio) con su
 /// leyenda debajo. Sin imagen muestra un "+" gris; con imagen la muestra y,

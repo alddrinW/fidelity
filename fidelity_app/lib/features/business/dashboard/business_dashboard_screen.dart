@@ -1,29 +1,48 @@
-import 'dart:convert';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 
+import '../../../core/l10n/language_selector.dart';
+import '../../../core/layout/breakpoints.dart';
+import '../../../core/services/api_client.dart';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/image_source.dart';
+import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_empty_state.dart';
+import '../../../core/widgets/app_message_dialog.dart';
+import '../../../core/widgets/app_pill_tab_bar.dart';
+import '../../../core/widgets/app_responsive_body.dart';
+import '../../auth/data/auth_repository.dart';
+import '../../auth/providers/auth_provider.dart';
+import '../../campaigns/campaigns_tab.dart';
+import '../../campaigns/widgets/redeem_code_card.dart';
+import '../../feedback/data/feedback_repository.dart';
+import '../../feedback/feedback_inbox_screen.dart';
+import '../branches/my_businesses_screen.dart';
+import '../create_business_screen.dart';
+import '../profile/business_profile_screen.dart';
 import '../qr_management/qr_management_screen.dart';
 import '../rewards/rewards_management_screen.dart';
-import '../profile/business_profile_screen.dart';
-import '../create_business_screen.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/services/api_client.dart';
-
 import 'providers/dashboard_provider.dart';
 import 'widgets/dashboard_animated_toast.dart';
+import 'widgets/pending_reward_notice.dart';
 import 'widgets/tabs/tab_customers.dart';
 import 'widgets/tabs/tab_pending_scans.dart';
 import 'widgets/tabs/tab_statistics.dart';
-import '../../auth/providers/auth_provider.dart';
-import '../../auth/data/auth_repository.dart';
-import '../../../core/utils/image_source.dart';
+import '../../../core/l10n/tr_text.dart';
 
 class BusinessDashboardScreen extends ConsumerStatefulWidget {
   final int initialIndex;
-  const BusinessDashboardScreen({super.key, this.initialIndex = 0});
+
+  /// Vista del **aprobador** (supervisor del local): solo escaneos pendientes,
+  /// premios y opiniones. El dueño ve el panel completo.
+  final bool approverMode;
+
+  const BusinessDashboardScreen({
+    super.key,
+    this.initialIndex = 0,
+    this.approverMode = false,
+  });
 
   /// Canal para que servicios externos (ej. el push de notificaciones) pidan
   /// que el dashboard raíz —que ya está vivo— salte a una pestaña concreta.
@@ -36,7 +55,8 @@ class BusinessDashboardScreen extends ConsumerStatefulWidget {
   ConsumerState<BusinessDashboardScreen> createState() => _BusinessDashboardScreenState();
 }
 
-class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScreen> with WidgetsBindingObserver, TickerProviderStateMixin {
+class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScreen>
+    with WidgetsBindingObserver, TickerProviderStateMixin {
   static bool _welcomeShown = false;
 
   late final TabController _tabController;
@@ -46,7 +66,11 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
     super.initState();
     WidgetsBinding.instance.addObserver(this);
 
-    _tabController = TabController(length: 5, vsync: this, initialIndex: widget.initialIndex);
+    _tabController = TabController(
+      length: widget.approverMode ? 4 : 6,
+      vsync: this,
+      initialIndex: widget.initialIndex,
+    );
     BusinessDashboardScreen.tabRequest.addListener(_onTabRequest);
 
     // El provider ya carga en su build() y se suscribe al realtime con canales
@@ -54,14 +78,17 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
     // volver de una notificación push) y resolvemos la pestaña pedida.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(dashboardProvider.notifier).reloadIfStale();
-      _checkWelcomeMessage();
+      if (!widget.approverMode) _checkWelcomeMessage();
       _onTabRequest();
     });
   }
 
   void _onTabRequest() {
-    final requested = BusinessDashboardScreen.tabRequest.value;
+    var requested = BusinessDashboardScreen.tabRequest.value;
     if (requested == null) return;
+    // Los pedidos usan los índices del panel del dueño (1 = Pendientes,
+    // 2 = Premios); el aprobador no tiene la pestaña "Clientes".
+    if (widget.approverMode) requested -= 1;
     if (mounted && requested >= 0 && requested < _tabController.length) {
       _tabController.animateTo(requested);
     }
@@ -87,6 +114,13 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
     }
   }
 
+  /// Nombre y primer apellido del dueño, para el saludo.
+  String _ownerDisplayName(String ownerName) {
+    if (ownerName.isEmpty) return '';
+    final parts = ownerName.trim().split(RegExp(r'\s+'));
+    return parts.length >= 2 ? '${parts[0]} ${parts[1]}' : parts[0];
+  }
+
   void _checkWelcomeMessage() async {
     if (_welcomeShown) return;
     final user = ref.read(authRepositoryProvider).currentUser;
@@ -108,209 +142,50 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
   }
 
   void _showWelcomeDialog() {
-    final state = ref.read(dashboardProvider);
-    String ownerDisplayName = '';
-    if (state.ownerName.isNotEmpty) {
-      final parts = state.ownerName.trim().split(RegExp(r'\s+'));
-      ownerDisplayName = parts.length >= 2 ? '${parts[0]} ${parts[1]}' : parts[0];
-    }
-    showDialog(
+    final name = _ownerDisplayName(ref.read(dashboardProvider).ownerName);
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-        title: Column(
-          children: [
-            const Icon(Icons.storefront_rounded, color: AppTheme.accentPurple, size: 48),
-            const SizedBox(height: 16),
-            Text(
-              '¡Bienvenido a Fidelity!',
-              style: GoogleFonts.anton(
-                fontSize: 24,
-                color: AppTheme.accentPurple,
-                letterSpacing: 1,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ],
-        ),
-        content: Text(
-          '¡Hola $ownerDisplayName, tu negocio ha sido registrado y activado exitosamente!\n\nDesde aquí podrás administrar tus clientes, aprobar escaneos y gestionar los premios.',
-          textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 16, color: Colors.black87),
-        ),
-        actions: [
-          Center(
-            child: ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.accentPurple,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
-              ),
-              child: const Text('¡Comenzar!'),
-            ),
-          ),
-        ],
-      ).animate().scale(duration: 400.ms, curve: Curves.easeOutBack),
-    );
-  }
-
-  Future<void> _pickAndUploadLogo(Map<String, dynamic> business) async {
-    final ImagePicker picker = ImagePicker();
-
-    final source = await showModalBottomSheet<dynamic>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      builder: (_) => Container(
-        decoration: const BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.vertical(top: Radius.circular(40)),
-        ),
-        padding: const EdgeInsets.symmetric(vertical: 24, horizontal: 20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(height: 5, width: 40, decoration: BoxDecoration(color: Colors.black.withValues(alpha: 0.05), borderRadius: BorderRadius.circular(10))),
-            const SizedBox(height: 32),
-            const Text('FOTO DE PERFIL', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1)),
-            const SizedBox(height: 32),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: AppTheme.accentPurple.withValues(alpha: 0.1), shape: BoxShape.circle),
-                child: const Icon(Icons.photo_library_rounded, color: AppTheme.accentPurple),
-              ),
-              title: const Text('ELEGIR DE GALERÍA', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
-              onTap: () => Navigator.pop(context, ImageSource.gallery),
-            ),
-            const SizedBox(height: 8),
-            ListTile(
-              leading: Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(color: AppTheme.accentYellow.withValues(alpha: 0.1), shape: BoxShape.circle),
-                child: const Icon(Icons.camera_alt_rounded, color: AppTheme.accentYellow),
-              ),
-              title: const Text('TOMAR FOTO', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13)),
-              onTap: () => Navigator.pop(context, ImageSource.camera),
-            ),
-            if (business['logo_url'] != null) ...[
-              const SizedBox(height: 8),
-              ListTile(
-                leading: Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(color: AppTheme.accentPink.withValues(alpha: 0.1), shape: BoxShape.circle),
-                  child: const Icon(Icons.delete_rounded, color: AppTheme.accentPink),
-                ),
-                title: const Text('ELIMINAR FOTO', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 13, color: AppTheme.accentPink)),
-                onTap: () => Navigator.pop(context, 'delete'),
-              ),
-            ],
-            const SizedBox(height: 32),
-          ],
-        ),
+      builder: (_) => AppMessageDialog(
+        icon: Icons.storefront_outlined,
+        title: '¡Bienvenido a Fidelity!',
+        message: '${name.isEmpty ? '¡Hola!' : '¡Hola $name!'} Tu negocio fue registrado y activado. '
+            'Desde aquí podrás administrar tus clientes, aprobar escaneos y entregar premios.',
+        primaryLabel: '¡Comenzar!',
       ),
     );
+  }
 
-    if (source == null) return;
-
-    final businessId = business['id'];
-
-    if (source == 'delete') {
-      try {
-        await ApiClient().put('businesses/$businessId', body: {'logoUrl': ''});
-
-        if (mounted) {
-          ref.read(dashboardProvider.notifier).loadData(silent: true);
-          DashboardAnimatedToast.show(context, 'Foto eliminada exitosamente', AppTheme.accentGreen, Icons.check_circle_rounded);
-        }
-      } catch (e) {
-        if (mounted) {
-          DashboardAnimatedToast.show(context, 'Error al eliminar foto', AppTheme.accentPink, Icons.error_outline_rounded);
-        }
-      }
-      return;
-    }
-
-    try {
-      final XFile? pickedFile = await picker.pickImage(
-        source: source as ImageSource,
-        maxWidth: 800,
-        maxHeight: 800,
-        imageQuality: 80,
-      );
-
-      if (pickedFile == null || !mounted) return;
-
-      showDialog(
-        context: context,
-        barrierDismissible: false,
-        builder: (context) => const Center(
-          child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(AppTheme.accentPurple)),
-        ),
-      );
-
-      final fileBytes = await pickedFile.readAsBytes();
-      final fileExt = pickedFile.name.split('.').last.toLowerCase();
-      String mimeType = 'image/jpeg';
-      if (fileExt == 'png') { mimeType = 'image/png'; }
-      else if (fileExt == 'webp') { mimeType = 'image/webp'; }
-      else if (fileExt == 'gif') { mimeType = 'image/gif'; }
-
-      final base64Image = base64Encode(fileBytes);
-      final newLogoUrl = 'data:$mimeType;base64,$base64Image';
-
-      await ApiClient().put('businesses/$businessId', body: {'logoUrl': newLogoUrl});
-
-      if (mounted) {
-        Navigator.pop(context); // close dialog
-        ref.read(dashboardProvider.notifier).loadData(silent: true);
-        DashboardAnimatedToast.show(context, 'Logo actualizado exitosamente', AppTheme.accentGreen, Icons.check_circle_rounded);
-      }
-    } catch (e) {
-      if (mounted) {
-        Navigator.pop(context); // close dialog
-        DashboardAnimatedToast.show(context, 'Error al cambiar logo', AppTheme.accentPink, Icons.error_outline_rounded);
-      }
+  void _openMyBusiness(Map<String, dynamic> business) async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => BusinessProfileScreen(business: business)),
+    );
+    if (result == true && mounted) {
+      // Recarga silenciosa: evita el parpadeo de reconstruir todo el dashboard.
+      ref.read(dashboardProvider.notifier).loadData(silent: true);
     }
   }
 
-  void _showPendingRewardOverlay() {
-    showDialog(
+  Widget _feedbackTab(String businessId) {
+    final repository = ref.read(feedbackRepositoryProvider);
+    return FeedbackInboxBody(
+      load: () => repository.listForBusiness(businessId),
+      onResolve: repository.resolve,
+      showUser: true,
+      showBusiness: false,
+    );
+  }
+
+  void _confirmLogout() {
+    showDialog<void>(
       context: context,
-      barrierColor: Colors.black.withValues(alpha: 0.4),
-      builder: (ctx) => Dialog(
-        backgroundColor: Colors.transparent,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 28),
-        child: Container(
-          padding: const EdgeInsets.all(32),
-          decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(36)),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(20),
-                decoration: BoxDecoration(color: AppTheme.accentYellow.withValues(alpha: 0.12), shape: BoxShape.circle),
-                child: const Icon(Icons.emoji_events_rounded, size: 48, color: AppTheme.accentYellow),
-              ),
-              const SizedBox(height: 20),
-              const Text('¡PREMIO PENDIENTE!', style: TextStyle(fontWeight: FontWeight.w900, fontSize: 16, letterSpacing: 1), textAlign: TextAlign.center),
-              const SizedBox(height: 12),
-              const Text('Este cliente ya ganó un premio. No podés agregar más puntos hasta que lo retires y lo marques como entregado.', style: TextStyle(color: Colors.black54, fontWeight: FontWeight.w600, height: 1.5), textAlign: TextAlign.center),
-              const SizedBox(height: 24),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(ctx),
-                  style: ElevatedButton.styleFrom(backgroundColor: Colors.black, padding: const EdgeInsets.symmetric(vertical: 16), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20))),
-                  child: const Text('ENTENDIDO', style: TextStyle(fontWeight: FontWeight.w900, letterSpacing: 1)),
-                ),
-              ),
-            ],
-          ),
-        ),
+      builder: (_) => AppMessageDialog(
+        icon: Icons.logout_rounded,
+        title: '¿Cerrar sesión?',
+        message: '¿Estás seguro de que deseas salir de tu cuenta?',
+        primaryLabel: 'Cerrar sesión',
+        onPrimary: () => ref.read(authStateProvider.notifier).logout(),
+        secondaryLabel: 'Cancelar',
       ),
     );
   }
@@ -322,60 +197,64 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
     ref.listen<DashboardState>(dashboardProvider, (previous, next) {
       if (next.toastMessage != null && next.toastMessage != previous?.toastMessage) {
         if (next.toastMessage == 'ERROR_PENDING_REWARD') {
-          _showPendingRewardOverlay();
+          showPendingRewardNotice(context);
         } else {
-          DashboardAnimatedToast.show(
-            context,
-            next.toastMessage!,
-            next.toastIsError ? AppTheme.accentPink : AppTheme.accentGreen,
-            next.toastIsError ? Icons.error_outline_rounded : Icons.check_circle_rounded,
-          );
+          DashboardAnimatedToast.show(context, next.toastMessage!, isError: next.toastIsError);
         }
       }
     });
 
     if (state.isLoading && state.business == null) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(AppTheme.accentPurple)),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     final business = state.business;
 
+    if (business == null && widget.approverMode) {
+      return Scaffold(
+        body: SafeArea(
+          child: AppResponsiveBody(
+            child: Column(
+              children: [
+                const Expanded(
+                  child: AppEmptyState(
+                    title: 'Sin local asignado',
+                    message: 'Todavía no tienes un local asignado. Pídele al dueño que te agregue a su equipo.',
+                  ),
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(48, 8, 48, 32),
+                  child: AppPrimaryButton(label: 'Cerrar sesión', onPressed: _confirmLogout),
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+    }
+
     if (business == null) {
       return Scaffold(
-        appBar: AppBar(
-          title: const Text('Mi Negocio'),
-          backgroundColor: Colors.white,
-          elevation: 0,
-          iconTheme: const IconThemeData(color: Colors.black),
-        ),
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 40),
+        body: SafeArea(
+          child: AppResponsiveBody(
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(48),
-                  decoration: BoxDecoration(color: AppTheme.accentPurple.withValues(alpha: 0.05), shape: BoxShape.circle),
-                  child: const Icon(Icons.storefront_rounded, size: 80, color: AppTheme.accentPurple),
+                const Expanded(
+                  child: AppEmptyState(
+                    title: 'Sin negocio',
+                    message: 'Registra tu local para empezar a fidelizar a tus clientes con puntos y premios.',
+                  ),
                 ),
-                const SizedBox(height: 40),
-                Text('SIN NEGOCIO', style: GoogleFonts.anton(fontSize: 24, fontWeight: FontWeight.w400, letterSpacing: 2), textAlign: TextAlign.center),
-                const SizedBox(height: 12),
-                const Text('Registra tu local para empezar a fidelizar a tus clientes con puntos y premios.', textAlign: TextAlign.center, style: TextStyle(fontSize: 14, fontWeight: FontWeight.w700, color: Colors.black38)),
-                const SizedBox(height: 48),
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(48, 8, 48, 32),
+                  child: AppPrimaryButton(
+                    label: 'Registrar mi local',
                     onPressed: () async {
-                      await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const CreateBusinessScreen()));
+                      await Navigator.of(context).push(
+                        MaterialPageRoute(builder: (_) => const CreateBusinessScreen()),
+                      );
                       ref.read(dashboardProvider.notifier).loadData();
                     },
-                    child: const Text('REGISTRAR MI LOCAL'),
                   ),
                 ),
               ],
@@ -385,146 +264,378 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
       );
     }
 
-    String ownerDisplayName = '';
-    if (state.ownerName.isNotEmpty) {
-      final parts = state.ownerName.trim().split(RegExp(r'\s+'));
-      ownerDisplayName = parts.length >= 2 ? '${parts[0]} ${parts[1]}' : parts[0];
+    final ownerName = _ownerDisplayName(state.ownerName);
+
+    final labels = widget.approverMode
+        ? const ['Pendientes', 'Premios', 'Opiniones', 'Canjear']
+        : const ['Clientes', 'Pendientes', 'Premios', 'Métricas', 'QR', 'Campañas'];
+    final icons = widget.approverMode
+        ? const [
+            Icons.pending_actions_rounded,
+            Icons.card_giftcard_rounded,
+            Icons.forum_outlined,
+            Icons.qr_code_2_rounded,
+          ]
+        : const [
+            Icons.people_alt_outlined,
+            Icons.pending_actions_rounded,
+            Icons.card_giftcard_rounded,
+            Icons.bar_chart_rounded,
+            Icons.qr_code_2_rounded,
+            Icons.campaign_outlined,
+          ];
+    final badges = widget.approverMode
+        ? [state.pendingScans.length, state.pendingRewards.length, 0, 0]
+        : [0, state.pendingScans.length, state.pendingRewards.length, 0, 0, 0];
+    final views = widget.approverMode
+        ? <Widget>[
+            const TabPendingScans(),
+            RewardsManagementScreen(businessId: business['id']),
+            _feedbackTab(business['id'].toString()),
+            ListView(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
+              children: const [RedeemCodeCard()],
+            ),
+          ]
+        : <Widget>[
+            const TabCustomers(),
+            const TabPendingScans(),
+            RewardsManagementScreen(businessId: business['id']),
+            const TabStatistics(),
+            QRManagementScreen(businessId: business['id']),
+            const CampaignsTab(),
+          ];
+
+    // En pantallas anchas (navegador en PC) el menú pasa a una barra lateral.
+    if (context.isDesktop) {
+      return Scaffold(
+        body: SafeArea(
+          child: Row(
+            children: [
+              _DashboardSidebar(
+                logoUrl: business['logo_url']?.toString(),
+                businessName: business['name'].toString(),
+                greeting: ownerName.isEmpty
+                    ? null
+                    : (widget.approverMode ? 'Hola, $ownerName · Aprobador' : 'Hola, $ownerName'),
+                subtitle: widget.approverMode ? null : '${state.customers.length} clientes activos',
+                controller: _tabController,
+                labels: labels,
+                icons: icons,
+                badges: badges,
+                onProfile: widget.approverMode ? null : () => _openMyBusiness(business),
+                onBusinesses: widget.approverMode
+                    ? null
+                    : () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const MyBusinessesScreen()),
+                        ),
+                onLogout: _confirmLogout,
+              ),
+              const VerticalDivider(width: 1, thickness: 1, color: AppColors.black),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.topCenter,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1000),
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 24),
+                      child: TabBarView(controller: _tabController, children: views),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      );
     }
 
     return Scaffold(
-        backgroundColor: Colors.white,
-        appBar: AppBar(
-          toolbarHeight: 90,
-          leadingWidth: 90,
-          leading: Padding(
-            padding: const EdgeInsets.only(left: 16.0),
-            child: GestureDetector(
-              onTap: () async {
-                final result = await Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (context) => BusinessProfileScreen(business: business)),
-                );
-                if (result == true) {
-                  // Recarga silenciosa: evita el parpadeo de reconstruir todo el dashboard.
-                  ref.read(dashboardProvider.notifier).loadData(silent: true);
-                }
-              },
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  Hero(
-                    tag: 'business_logo',
-                    child: CircleAvatar(
-                      radius: 28,
-                      backgroundColor: Colors.white,
-                      backgroundImage: imageProviderFromUrl(business['logo_url']?.toString()),
-                      child: business['logo_url'] == null ? const Icon(Icons.store, color: Colors.black, size: 28) : null,
-                    ),
-                  ),
-                  Positioned(
-                    right: 4,
-                    bottom: 4,
-                    child: GestureDetector(
-                      onTap: () => _pickAndUploadLogo(business),
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(colors: [AppTheme.accentPurple, AppTheme.accentPink], begin: Alignment.topLeft, end: Alignment.bottomRight),
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 2),
+      body: SafeArea(
+        child: AppResponsiveBody(
+          maxWidth: 640,
+          adaptive: true,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(24, 20, 12, 12),
+                child: Row(
+                  children: [
+                    Semantics(
+                      button: true,
+                      label: 'Mi negocio',
+                      child: GestureDetector(
+                        onTap: widget.approverMode ? null : () => _openMyBusiness(business),
+                        child: Hero(
+                          tag: 'business_logo',
+                          child: _BusinessLogo(logoUrl: business['logo_url']?.toString()),
                         ),
-                        child: const Icon(Icons.edit_rounded, size: 14, color: Colors.white),
-                      ).animate(onPlay: (c) => c.repeat(reverse: true)).scale(duration: const Duration(seconds: 1), begin: const Offset(1, 1), end: const Offset(1.15, 1.15), curve: Curves.easeInOut).shimmer(duration: const Duration(seconds: 3), color: Colors.white.withValues(alpha: 0.5)),
+                      ),
+                    ),
+                    const SizedBox(width: 16),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (ownerName.isNotEmpty)
+                            Text(
+                              widget.approverMode ? 'Hola, $ownerName · Aprobador' : 'Hola, $ownerName',
+                              style: AppTypography.body(size: 14, weight: FontWeight.w300),
+                            ),
+                          FittedBox(
+                            fit: BoxFit.scaleDown,
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              business['name'].toString().toUpperCase(),
+                              style: AppTypography.display(size: 30),
+                            ),
+                          ),
+                          if (!widget.approverMode)
+                            Text(
+                              '${state.customers.length} clientes activos',
+                              style: AppTypography.body(
+                                size: 13,
+                                weight: FontWeight.w300,
+                                color: AppColors.textSecondary,
+                              ),
+                            ),
+                        ],
+                      ),
+                    ),
+                    if (!widget.approverMode)
+                      IconButton(
+                        tooltip: 'Mis negocios',
+                        icon: const Icon(Icons.store_mall_directory_outlined),
+                        onPressed: () => Navigator.of(context).push(
+                          MaterialPageRoute(builder: (_) => const MyBusinessesScreen()),
+                        ),
+                      ),
+                    IconButton(
+                      tooltip: 'Cerrar sesión',
+                      icon: const Icon(Icons.logout_rounded),
+                      onPressed: _confirmLogout,
+                    ),
+                  ],
+                ),
+              ),
+              AppPillTabBar(controller: _tabController, labels: labels, badges: badges),
+              const SizedBox(height: 16),
+              Expanded(child: TabBarView(controller: _tabController, children: views)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Menú lateral del panel en pantallas anchas: negocio, pestañas con sus
+/// avisos y accesos a "Mis negocios", idioma y cierre de sesión.
+class _DashboardSidebar extends StatelessWidget {
+  final String? logoUrl;
+  final String businessName;
+  final String? greeting;
+  final String? subtitle;
+  final TabController controller;
+  final List<String> labels;
+  final List<IconData> icons;
+  final List<int> badges;
+  final VoidCallback? onProfile;
+  final VoidCallback? onBusinesses;
+  final VoidCallback onLogout;
+
+  const _DashboardSidebar({
+    required this.logoUrl,
+    required this.businessName,
+    required this.greeting,
+    required this.subtitle,
+    required this.controller,
+    required this.labels,
+    required this.icons,
+    required this.badges,
+    required this.onProfile,
+    required this.onBusinesses,
+    required this.onLogout,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: 280,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 28, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                MouseRegion(
+                  cursor: onProfile == null ? MouseCursor.defer : SystemMouseCursors.click,
+                  child: GestureDetector(
+                    onTap: onProfile,
+                    child: _BusinessLogo(logoUrl: logoUrl),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                if (greeting != null)
+                  Text(greeting!, style: AppTypography.body(size: 14, weight: FontWeight.w300)),
+                Text(
+                  businessName.toUpperCase(),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.display(size: 28),
+                ),
+                if (subtitle != null)
+                  Text(
+                    subtitle!,
+                    style: AppTypography.body(
+                      size: 13,
+                      weight: FontWeight.w300,
+                      color: AppColors.textSecondary,
                     ),
                   ),
-                ],
-              ),
+              ],
             ),
           ),
-          title: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (ownerDisplayName.isNotEmpty)
-                Text('Hola, $ownerDisplayName', style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: Colors.black45)),
-              Text(business['name'].toString().toUpperCase(), style: GoogleFonts.anton(fontSize: 18, fontWeight: FontWeight.w400, letterSpacing: 0.5)),
-              Row(
-                children: [
-                  Container(width: 8, height: 8, decoration: const BoxDecoration(color: AppTheme.accentGreen, shape: BoxShape.circle)),
-                  const SizedBox(width: 6),
-                  Text('${state.customers.length} CLIENTES ACTIVOS', style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: Colors.black45)),
-                ],
-              ),
-            ],
-          ),
-          actions: [
-            IconButton(
-              icon: const Icon(Icons.logout_rounded),
-              onPressed: () async {
-                await ref.read(authStateProvider.notifier).logout();
+          Expanded(
+            child: AnimatedBuilder(
+              animation: controller.animation ?? controller,
+              builder: (context, _) {
+                final selected = controller.index;
+                return ListView(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  children: [
+                    for (var i = 0; i < labels.length; i++)
+                      _SidebarItem(
+                        icon: icons[i],
+                        label: labels[i],
+                        badge: badges[i],
+                        selected: i == selected,
+                        onTap: () => controller.animateTo(i),
+                      ),
+                  ],
+                );
               },
             ),
-            const SizedBox(width: 8),
-          ],
-          bottom: TabBar(
-            controller: _tabController,
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            labelStyle: const TextStyle(fontWeight: FontWeight.w900, fontSize: 11, letterSpacing: 0.8),
-            indicatorWeight: 4,
-            indicatorSize: TabBarIndicatorSize.label,
-            indicatorColor: Colors.black,
-            unselectedLabelColor: Colors.black38,
-            isScrollable: true,
-            tabs: [
-              const Tab(text: 'CLIENTES'),
-              Tab(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('PENDIENTES'),
-                    if (state.pendingScans.isNotEmpty) ...[
-                      const SizedBox(width: 4),
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(color: AppTheme.accentPink, shape: BoxShape.circle),
-                        child: Text('${state.pendingScans.length}', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900)),
-                      ),
-                    ],
-                  ],
+          ),
+          const Divider(height: 1, color: AppColors.black),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(12, 8, 12, 16),
+            child: Column(
+              children: [
+                if (onBusinesses != null)
+                  _SidebarItem(
+                    icon: Icons.store_mall_directory_outlined,
+                    label: 'Mis negocios',
+                    badge: 0,
+                    selected: false,
+                    onTap: onBusinesses!,
+                  ),
+                const Align(alignment: Alignment.centerLeft, child: LanguageButton()),
+                _SidebarItem(
+                  icon: Icons.logout_rounded,
+                  label: 'Cerrar sesión',
+                  badge: 0,
+                  selected: false,
+                  onTap: onLogout,
                 ),
-              ),
-              Tab(
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Text('PREMIOS'),
-                    if (state.pendingRewards.isNotEmpty) ...[
-                      const SizedBox(width: 4),
-                      Container(
-                        padding: const EdgeInsets.all(4),
-                        decoration: const BoxDecoration(color: AppTheme.accentPurple, shape: BoxShape.circle),
-                        child: Text('${state.pendingRewards.length}', style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.w900)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _SidebarItem extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final int badge;
+  final bool selected;
+  final VoidCallback onTap;
+
+  const _SidebarItem({
+    required this.icon,
+    required this.label,
+    required this.badge,
+    required this.selected,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = selected ? AppColors.white : AppColors.black;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Semantics(
+        button: true,
+        selected: selected,
+        label: label,
+        excludeSemantics: true,
+        child: Material(
+          color: selected ? AppColors.black : Colors.transparent,
+          shape: const StadiumBorder(),
+          child: InkWell(
+            customBorder: const StadiumBorder(),
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+              child: Row(
+                children: [
+                  Icon(icon, size: 22, color: foreground),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      label.toUpperCase(),
+                      style: AppTypography.label(size: 13, tracking: 2.5, color: foreground),
+                    ),
+                  ),
+                  if (badge > 0)
+                    Container(
+                      constraints: const BoxConstraints(minWidth: 22),
+                      padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: AppColors.pink,
+                        borderRadius: BorderRadius.circular(999),
                       ),
-                    ],
-                  ],
-                ),
+                      child: Text(
+                        badge > 99 ? '99+' : '$badge',
+                        textAlign: TextAlign.center,
+                        style: AppTypography.label(size: 11, tracking: 0, color: AppColors.black),
+                      ),
+                    ),
+                ],
               ),
-              const Tab(text: 'MÉTRICAS'),
-              const Tab(text: 'QR CODES'),
-            ],
+            ),
           ),
         ),
-        body: SafeArea(
-          child: TabBarView(
-            controller: _tabController,
-            children: [
-              const TabCustomers(),
-              const TabPendingScans(),
-              RewardsManagementScreen(businessId: business['id']),
-              const TabStatistics(),
-              QRManagementScreen(businessId: business['id']),
-            ],
-          ),
-        ),
+      ),
+    );
+  }
+}
+
+/// Logo del negocio en el encabezado; sin logo, un círculo negro con tienda.
+class _BusinessLogo extends StatelessWidget {
+  final String? logoUrl;
+
+  const _BusinessLogo({required this.logoUrl});
+
+  @override
+  Widget build(BuildContext context) {
+    final image = imageProviderFromUrl(logoUrl);
+    return Container(
+      width: 64,
+      height: 64,
+      decoration: BoxDecoration(
+        color: image == null ? AppColors.black : AppColors.surfaceMuted,
+        shape: BoxShape.circle,
+        image: image == null ? null : DecorationImage(image: image, fit: BoxFit.cover),
+      ),
+      child: image == null
+          ? const Icon(Icons.storefront_outlined, color: AppColors.white, size: 30)
+          : null,
     );
   }
 }

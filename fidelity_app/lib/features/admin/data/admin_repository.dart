@@ -5,17 +5,70 @@ final adminRepositoryProvider = Provider<AdminRepository>((ref) {
   return AdminRepository();
 });
 
+/// Métricas del panel. El backend responde con objetos anidados
+/// (`businesses: {total, inactive}`...); [fromJson] las aplana.
+class AdminDashboardStats {
+  final int clients;
+  final int businesses;
+  final int inactiveBusinesses;
+  final int scans;
+  final int pendingScans;
+  final int rewards;
+  final int pendingRewards;
+  final int claimedRewards;
+
+  /// Pagos de registro que esperan validación del administrador.
+  final int openPayments;
+
+  /// Sugerencias y reclamos sin resolver.
+  final int openFeedback;
+
+  const AdminDashboardStats({
+    this.clients = 0,
+    this.businesses = 0,
+    this.inactiveBusinesses = 0,
+    this.scans = 0,
+    this.pendingScans = 0,
+    this.rewards = 0,
+    this.pendingRewards = 0,
+    this.claimedRewards = 0,
+    this.openPayments = 0,
+    this.openFeedback = 0,
+  });
+
+  factory AdminDashboardStats.fromJson(Map<String, dynamic> json) {
+    int read(String group, String key) {
+      final section = json[group];
+      if (section is! Map) return 0;
+      return (section[key] as num?)?.toInt() ?? 0;
+    }
+
+    return AdminDashboardStats(
+      clients: read('users', 'clients'),
+      businesses: read('businesses', 'total'),
+      inactiveBusinesses: read('businesses', 'inactive'),
+      scans: read('scans', 'total'),
+      pendingScans: read('scans', 'pending'),
+      rewards: read('rewards', 'total'),
+      pendingRewards: read('rewards', 'pending'),
+      claimedRewards: read('rewards', 'claimed'),
+      openPayments: read('payments', 'open'),
+      openFeedback: read('feedback', 'open'),
+    );
+  }
+}
+
 class AdminRepository {
   final ApiClient _api = ApiClient();
 
   AdminRepository();
 
-  Future<Map<String, dynamic>> getDashboardStats() async {
+  Future<AdminDashboardStats> getDashboardStats() async {
     final response = await _api.get('admin/stats');
     if (response is Map<String, dynamic>) {
-      return response;
+      return AdminDashboardStats.fromJson(response);
     }
-    return {};
+    return const AdminDashboardStats();
   }
 
   Future<List<Map<String, dynamic>>> getUsers({String? role, String? search}) async {

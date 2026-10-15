@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/models/business_category.dart';
@@ -10,11 +10,16 @@ import '../../../core/widgets/app_nav_row.dart';
 import '../../../core/widgets/app_page_header.dart';
 import '../../../core/widgets/app_photo_picker.dart';
 import '../../../core/widgets/app_responsive_body.dart';
+import '../../feedback/data/feedback_repository.dart';
+import '../../feedback/feedback_inbox_screen.dart';
+import '../../payments/my_payments_screen.dart';
 import '../../profile/user_profile_screen.dart';
 import '../data/business_repository.dart';
+import '../team/team_screen.dart';
 import '../widgets/business_form_fields.dart';
 import '../widgets/location_picker_page.dart';
 import 'campaign_settings_screen.dart';
+import '../../../core/l10n/tr_text.dart';
 
 /// "Mi negocio": edición de los datos del negocio, con accesos a los ajustes
 /// de campaña y a los datos personales del dueño.
@@ -167,6 +172,44 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen> {
     if (saved == true) _changed = true;
   }
 
+  void _openTeam() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => TeamScreen(
+          businessId: widget.business['id'].toString(),
+          businessName: _nameController.text.trim().isEmpty
+              ? _text(widget.business['name'])
+              : _nameController.text.trim(),
+        ),
+      ),
+    );
+  }
+
+  void _openFeedback() {
+    final repository = ref.read(feedbackRepositoryProvider);
+    final businessId = widget.business['id'].toString();
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FeedbackInboxScreen(
+          title: 'Opiniones',
+          load: () => repository.listForBusiness(businessId),
+          onResolve: repository.resolve,
+          showUser: true,
+          showBusiness: false,
+        ),
+      ),
+    );
+  }
+
+  void _openPayments() {
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => const MyPaymentsScreen()),
+    );
+  }
+
   void _openOwnerData() {
     Navigator.push(
       context,
@@ -251,6 +294,24 @@ class _BusinessProfileScreenState extends ConsumerState<BusinessProfileScreen> {
                             icon: Icons.savings_outlined,
                             label: 'Ajustar mi campaña',
                             onTap: _openCampaign,
+                          ),
+                          const SizedBox(height: 16),
+                          AppNavRow(
+                            icon: Icons.groups_outlined,
+                            label: 'Mi equipo (aprobadores)',
+                            onTap: _openTeam,
+                          ),
+                          const SizedBox(height: 16),
+                          AppNavRow(
+                            icon: Icons.forum_outlined,
+                            label: 'Opiniones de clientes',
+                            onTap: _openFeedback,
+                          ),
+                          const SizedBox(height: 16),
+                          AppNavRow(
+                            icon: Icons.receipt_long_outlined,
+                            label: 'Mis pagos y comprobantes',
+                            onTap: _openPayments,
                           ),
                           const SizedBox(height: 16),
                           AppNavRow(

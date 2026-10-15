@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../theme/app_colors.dart';
+import '../l10n/translator.dart';
 import '../theme/app_typography.dart';
 
 /// Campo de texto de marca: píldora con contorno negro, icono a la izquierda
@@ -80,8 +81,8 @@ class _AppTextFieldState extends State<AppTextField> {
       style: AppTypography.body(size: 17, weight: FontWeight.w300),
       cursorColor: AppColors.black,
       decoration: InputDecoration(
-        hintText: widget.hint,
-        helperText: widget.helperText,
+        hintText: context.tr(widget.hint),
+        helperText: widget.helperText == null ? null : context.tr(widget.helperText!),
         prefixIcon: Padding(
           padding: const EdgeInsetsDirectional.only(start: 20, end: 12),
           child: Icon(widget.icon, size: 24),
@@ -89,7 +90,7 @@ class _AppTextFieldState extends State<AppTextField> {
         prefixIconConstraints: const BoxConstraints(minWidth: 0, minHeight: 0),
         suffixIcon: widget.isPassword
             ? IconButton(
-                tooltip: _obscured ? 'Mostrar contraseña' : 'Ocultar contraseña',
+                tooltip: context.tr(_obscured ? 'Mostrar contraseña' : 'Ocultar contraseña'),
                 icon: Icon(
                   _obscured
                       ? Icons.visibility_off_outlined

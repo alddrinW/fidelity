@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
@@ -9,6 +9,7 @@ import '../../core/widgets/app_message_dialog.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import 'providers/scanner_provider.dart';
 import 'scan_success_screen.dart';
+import '../../core/l10n/tr_text.dart';
 
 class ScannerScreen extends ConsumerStatefulWidget {
   const ScannerScreen({super.key});
@@ -39,6 +40,20 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
         message: message,
         hint: 'Pero puedes escanear en otros locales ahora mismo.',
         primaryLabel: 'Vale',
+        onPrimary: cameraController.start,
+      ),
+    );
+  }
+
+  void _showPendingScanDialog(String message) {
+    showDialog(
+      context: context,
+      builder: (_) => AppMessageDialog(
+        icon: Icons.pending_actions_rounded,
+        title: 'Escaneo pendiente',
+        message: message,
+        hint: 'Cuando el local lo apruebe, sumarás tu punto.',
+        primaryLabel: 'Entendido',
         onPrimary: cameraController.start,
       ),
     );
@@ -105,6 +120,8 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
         );
       } else if (next.cooldownMessage != null) {
         _showCooldownDialog(next.cooldownMessage!);
+      } else if (next.pendingScanMessage != null) {
+        _showPendingScanDialog(next.pendingScanMessage!);
       } else if (next.hasPendingReward) {
         _showPendingRewardDialog();
       } else if (next.error != null) {

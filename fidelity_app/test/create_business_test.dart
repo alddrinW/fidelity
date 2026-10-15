@@ -1,10 +1,11 @@
 // ignore_for_file: depend_on_referenced_packages
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:fidelity_app/features/business/create_business_screen.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'spanish_app.dart';
 
 void main() {
   setUpAll(() async {
@@ -17,8 +18,8 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
-      const ProviderScope(
-        child: MaterialApp(home: CreateBusinessScreen()),
+      ProviderScope(
+        child: spanishApp(const CreateBusinessScreen()),
       ),
     );
 
@@ -34,8 +35,8 @@ void main() {
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
-      const ProviderScope(
-        child: MaterialApp(home: CreateBusinessScreen()),
+      ProviderScope(
+        child: spanishApp(const CreateBusinessScreen()),
       ),
     );
 

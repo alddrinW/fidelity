@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import '../../../core/utils/date_utils.dart';
 import '../../../core/theme/app_theme.dart';
 import '../../../core/services/api_client.dart';
+import '../../../core/l10n/tr_text.dart';
 
 class BusinessHistoryScreen extends StatefulWidget {
   final String businessId;

@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/l10n/language_selector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_typography.dart';
@@ -14,6 +15,7 @@ import '../../core/widgets/app_wordmark.dart';
 import '../../core/widgets/fido_dome.dart';
 import 'data/auth_repository.dart';
 import 'register_choice_screen.dart';
+import '../../core/l10n/tr_text.dart';
 
 class LoginScreen extends ConsumerStatefulWidget {
   const LoginScreen({super.key});
@@ -71,7 +73,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('Revisa tu correo para recuperar la contraseña.'),
-            backgroundColor: AppTheme.accentGreen,
+            backgroundColor: AppColors.black,
           ),
         );
       }
@@ -116,6 +118,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.stretch,
                               children: [
+                                const Align(
+                                  alignment: Alignment.centerRight,
+                                  child: LanguageButton(),
+                                ),
                                 const AppWordmark(size: 72)
                                     .animate()
                                     .scale(

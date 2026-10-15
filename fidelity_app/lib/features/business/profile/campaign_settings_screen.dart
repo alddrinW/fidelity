@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/theme/app_colors.dart';
@@ -7,6 +7,7 @@ import '../../../core/widgets/app_page_header.dart';
 import '../../../core/widgets/app_responsive_body.dart';
 import '../data/business_repository.dart';
 import '../widgets/campaign_form_fields.dart';
+import '../../../core/l10n/tr_text.dart';
 
 /// "Mi campaña": premio que entrega el negocio y puntos necesarios.
 /// Cierra devolviendo `true` si se guardaron cambios.

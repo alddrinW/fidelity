@@ -1,9 +1,14 @@
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:confetti/confetti.dart';
-import '../theme/app_theme.dart';
+import 'package:flutter/material.dart' hide Text;
+import 'package:flutter_animate/flutter_animate.dart';
 
+import '../theme/app_colors.dart';
+import '../theme/app_typography.dart';
+import 'app_button.dart';
+import '../l10n/tr_text.dart';
+
+/// Celebración a pantalla de diálogo (premio ganado, premio transferido): Fido
+/// con los brazos arriba y confeti rosa y negro.
 class GlobalCelebrationDialog extends StatefulWidget {
   final String title;
   final String message;
@@ -20,7 +25,12 @@ class GlobalCelebrationDialog extends StatefulWidget {
   // el push y el realtime disparan casi juntos). Solo se muestra uno.
   static bool _isOpen = false;
 
-  static Future<void> show(BuildContext context, {required String title, required String message, String iconType = 'reward'}) async {
+  static Future<void> show(
+    BuildContext context, {
+    required String title,
+    required String message,
+    String iconType = 'reward',
+  }) async {
     if (_isOpen) return;
     _isOpen = true;
     try {
@@ -43,12 +53,12 @@ class GlobalCelebrationDialog extends StatefulWidget {
 }
 
 class _GlobalCelebrationDialogState extends State<GlobalCelebrationDialog> {
-  late ConfettiController _confettiController;
+  late final ConfettiController _confettiController =
+      ConfettiController(duration: const Duration(seconds: 3));
 
   @override
   void initState() {
     super.initState();
-    _confettiController = ConfettiController(duration: const Duration(seconds: 5));
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _confettiController.play();
     });
@@ -63,8 +73,10 @@ class _GlobalCelebrationDialogState extends State<GlobalCelebrationDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      backgroundColor: Colors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(48)),
+      backgroundColor: AppColors.white,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+      contentPadding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+      actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
       content: Stack(
         clipBehavior: Clip.none,
         alignment: Alignment.center,
@@ -73,85 +85,45 @@ class _GlobalCelebrationDialogState extends State<GlobalCelebrationDialog> {
             confettiController: _confettiController,
             blastDirectionality: BlastDirectionality.explosive,
             emissionFrequency: 0.05,
-            numberOfParticles: 30,
-            maxBlastForce: 100,
-            minBlastForce: 80,
-            gravity: 0.1,
-            colors: const [
-              AppTheme.accentPurple,
-              AppTheme.accentGreen,
-              AppTheme.accentYellow,
-              AppTheme.accentPink,
-            ],
+            numberOfParticles: 24,
+            maxBlastForce: 60,
+            minBlastForce: 30,
+            gravity: 0.15,
+            colors: const [AppColors.pink, AppColors.black],
           ),
-          Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 20),
-              Container(
-                padding: const EdgeInsets.all(24),
-                decoration: BoxDecoration(
-                  color: AppTheme.accentGreen.withValues(alpha: 0.1),
-                  shape: BoxShape.circle,
+          SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Image.asset(
+                  'assets/images/fido_celebra.png',
+                  height: 170,
+                  fit: BoxFit.contain,
+                  semanticLabel: 'Fido celebrando',
+                ).animate().scale(
+                      begin: const Offset(0.7, 0.7),
+                      duration: 600.ms,
+                      curve: const Cubic(0.34, 1.56, 0.64, 1),
+                    ),
+                const SizedBox(height: 16),
+                Text(
+                  widget.title.toUpperCase(),
+                  textAlign: TextAlign.center,
+                  style: AppTypography.display(size: 30),
                 ),
-                child: Icon(
-                  widget.iconType == 'transfer' ? Icons.swap_horiz_rounded : Icons.celebration_rounded,
-                  size: 64,
-                  color: AppTheme.accentGreen,
+                const SizedBox(height: 10),
+                Text(
+                  widget.message,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.body(size: 16, weight: FontWeight.w400),
                 ),
-              )
-              .animate(onPlay: (c) => c.repeat())
-              .scale(
-                begin: const Offset(0.8, 0.8),
-                end: const Offset(1.2, 1.2),
-                duration: 600.ms,
-                curve: Curves.elasticOut,
-              )
-              .then()
-              .scale(
-                begin: const Offset(1.2, 1.2),
-                end: const Offset(0.8, 0.8),
-              ),
-              const SizedBox(height: 32),
-              Text(
-                widget.title,
-                style: GoogleFonts.anton(
-                  fontSize: 24,
-                  fontWeight: FontWeight.w400,
-                  letterSpacing: 2,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 16),
-              Text(
-                widget.message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontWeight: FontWeight.w600,
-                  color: Colors.black45,
-                  fontSize: 16,
-                ),
-              ),
-              const SizedBox(height: 24),
-            ],
+              ],
+            ),
           ),
         ],
       ),
       actions: [
-        Center(
-          child: ElevatedButton(
-            onPressed: () => Navigator.pop(context),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.black,
-              padding: const EdgeInsets.symmetric(
-                horizontal: 48,
-                vertical: 16,
-              ),
-            ),
-            child: const Text('ENTENDIDO', style: TextStyle(fontWeight: FontWeight.bold)),
-          ),
-        ),
-        const SizedBox(height: 16),
+        AppPrimaryButton(label: 'Entendido', onPressed: () => Navigator.pop(context)),
       ],
     );
   }

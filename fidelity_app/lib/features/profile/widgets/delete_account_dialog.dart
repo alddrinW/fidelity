@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
+import '../../../core/l10n/tr_text.dart';
 
 /// Confirmación para eliminar la cuenta: exige escribir "ELIMINAR".
 /// Cierra con `true` solo si el usuario confirma.

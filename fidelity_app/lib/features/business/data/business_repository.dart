@@ -1,10 +1,19 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/models/business_category.dart';
+import '../../payments/data/payments_repository.dart';
 
 final businessRepositoryProvider = Provider<BusinessRepository>((ref) {
   return BusinessRepository();
 });
+
+/// Resultado de crear un negocio: su id y la orden de pago que se generó.
+class CreatedBusiness {
+  final String id;
+  final PaymentOrder? payment;
+
+  const CreatedBusiness({required this.id, this.payment});
+}
 
 class BusinessRepository {
   final ApiClient _api = ApiClient();
@@ -19,7 +28,7 @@ class BusinessRepository {
 
   /// Crea el negocio. [logoDataUri] es la imagen como data URI base64
   /// (ver `image_source.dart`).
-  Future<String> createBusiness({
+  Future<CreatedBusiness> createBusiness({
     required String name,
     required String phone,
     required String taxId,
@@ -32,8 +41,11 @@ class BusinessRepository {
     required String rewardDescription,
     String? rewardLongDescription,
     required int pointsRequired,
+    String? parentId,
+    bool selectAsCurrent = true,
   }) async {
     final response = await _api.post('businesses', body: {
+      if (parentId != null) 'parentId': parentId,
       'name': name.trim(),
       'phone': phone.trim(),
       'taxId': taxId.trim(),
@@ -53,13 +65,25 @@ class BusinessRepository {
     if (response is Map<String, dynamic>) {
       final businessId = response['id']?.toString() ?? '';
 
-      // Actualizar información local del usuario
-      final current = Map<String, dynamic>.from(_api.currentUser ?? {});
-      current['role'] = 'business';
-      current['business_id'] = businessId;
-      await _api.updateUser(current);
+      // Un negocio nuevo pasa a ser el actual; una sucursal no cambia el
+      // negocio con el que se está trabajando.
+      if (selectAsCurrent) {
+        final current = Map<String, dynamic>.from(_api.currentUser ?? {});
+        current['role'] = 'business';
+        current['business_id'] = businessId;
+        await _api.updateUser(current);
+      }
 
-      return businessId;
+      final payment = response['payment'];
+      return CreatedBusiness(
+        id: businessId,
+        payment: payment is Map
+            ? PaymentOrder.fromJson({
+                ...Map<String, dynamic>.from(payment),
+                'business': {'name': name.trim()},
+              })
+            : null,
+      );
     }
     throw ApiException('Error al crear negocio');
   }

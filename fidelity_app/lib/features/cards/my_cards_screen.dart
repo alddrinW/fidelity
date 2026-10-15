@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:confetti/confetti.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,6 +12,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/image_source.dart';
 import '../../core/widgets/app_button.dart';
+import '../../core/widgets/app_chip.dart';
 import '../../core/widgets/app_message_dialog.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../../core/widgets/global_celebration_dialog.dart';
@@ -20,7 +21,10 @@ import '../auth/data/auth_repository.dart';
 import '../profile/user_profile_screen.dart';
 import '../scanner/scanner_screen.dart';
 import 'card_history_screen.dart';
+import '../campaigns/data/campaigns_repository.dart';
+import '../campaigns/widgets/campaigns_carousel.dart';
 import 'providers/my_cards_provider.dart';
+import '../../core/l10n/tr_text.dart';
 
 class MyCardsScreen extends ConsumerStatefulWidget {
   const MyCardsScreen({super.key});
@@ -92,7 +96,7 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          'Punto aprobado. Sumaste 1 punto.',
+          'El local aprobó tu escaneo. ¡Sumaste 1 punto!',
           style: AppTypography.body(
             size: 15,
             weight: FontWeight.w600,
@@ -146,7 +150,7 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
     GlobalCelebrationDialog.show(
       context,
       title: '¡FELICIDADES!',
-      message: '¡Felicidades! Espera o acércate al local para que aprueben tu premio.',
+      message: '¡Ganaste un premio! Acércate al local para reclamarlo.',
       iconType: 'reward',
     );
   }
@@ -286,6 +290,7 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
         Scaffold(
           body: SafeArea(
             child: AppResponsiveBody(
+              adaptive: true,
               child: Column(
                 children: [
                   _buildHeader(state, displayName),
@@ -387,13 +392,18 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
       children: [
         RefreshIndicator(
           color: AppColors.black,
-          onRefresh: () => ref.read(myCardsProvider.notifier).refreshCards(),
+          onRefresh: () {
+            ref.invalidate(campaignFeedProvider);
+            return ref.read(myCardsProvider.notifier).refreshCards();
+          },
           child: ListView.builder(
             // Espacio inferior para que la última tarjeta no quede bajo el botón.
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 140),
-            itemCount: state.cards.length + 1,
+            itemCount: state.cards.length + 2,
             itemBuilder: (context, index) {
-              if (index == 0) {
+              // Novedades de los locales (eventos, tarjetas de regalo, rutas).
+              if (index == 0) return const CampaignsCarousel();
+              if (index == 1) {
                 return Padding(
                   padding: const EdgeInsets.only(left: 4, bottom: 16),
                   child: Semantics(
@@ -405,10 +415,10 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
                   ),
                 );
               }
-              final card = state.cards[index - 1];
+              final card = state.cards[index - 2];
               return _LoyaltyCardItem(
                 card: card,
-                index: index - 1,
+                index: index - 2,
                 sessionLastViewedAt: state.sessionLastViewedAt,
                 onTap: () => _openCard(card),
               );
@@ -523,6 +533,9 @@ class _LoyaltyCardItem extends StatelessWidget {
     final unclaimedCount =
         rewardsList.where((r) => (r as Map)['status'] == 'pending').length;
 
+    // Escaneos que el negocio aún no aprueba: el punto todavía no se suma.
+    final pendingScans = (card['pending_scans'] as int?) ?? 0;
+
     return Semantics(
       button: true,
       label: 'Tarjeta de $name, $currentPoints de $pointsRequired puntos',
@@ -572,21 +585,23 @@ class _LoyaltyCardItem extends StatelessWidget {
                             ),
                           ),
                         ],
-                        if (unclaimedCount > 0 || _isRecentlyUpdated) ...[
+                        if (unclaimedCount > 0 || pendingScans > 0 || _isRecentlyUpdated) ...[
                           const SizedBox(height: 10),
                           Wrap(
                             spacing: 8,
                             runSpacing: 6,
                             children: [
                               if (unclaimedCount > 0)
-                                _StatusChip(
+                                AppChip(
                                   label: unclaimedCount > 1
                                       ? '$unclaimedCount PREMIOS LISTOS'
                                       : 'PREMIO LISTO',
-                                  dark: true,
+                                  style: AppChipStyle.dark,
                                 ),
-                              if (_isRecentlyUpdated)
-                                const _StatusChip(label: 'NUEVO'),
+                              if (pendingScans > 0)
+                                const AppChip(label: 'PENDIENTE')
+                              else if (_isRecentlyUpdated)
+                                const AppChip(label: 'NUEVO'),
                             ],
                           ),
                         ],
@@ -658,28 +673,3 @@ class _BusinessLogo extends StatelessWidget {
   }
 }
 
-class _StatusChip extends StatelessWidget {
-  final String label;
-  final bool dark;
-
-  const _StatusChip({required this.label, this.dark = false});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-      decoration: BoxDecoration(
-        color: dark ? AppColors.black : AppColors.pink,
-        borderRadius: BorderRadius.circular(999),
-      ),
-      child: Text(
-        label,
-        style: AppTypography.label(
-          size: 10,
-          tracking: 1.5,
-          color: dark ? AppColors.white : AppColors.black,
-        ),
-      ),
-    );
-  }
-}

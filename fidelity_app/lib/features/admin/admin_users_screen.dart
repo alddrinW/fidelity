@@ -1,10 +1,20 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_animate/flutter_animate.dart';
-import '../../core/theme/app_theme.dart';
-import '../../core/utils/date_utils.dart';
+
 import '../../core/services/api_client.dart';
 import '../../core/services/export_service.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/utils/date_utils.dart';
+import '../../core/widgets/app_card.dart';
+import '../../core/widgets/app_chip.dart';
+import '../../core/widgets/app_empty_state.dart';
+import '../../core/widgets/person_avatar.dart';
+import '../business/dashboard/widgets/dashboard_animated_toast.dart';
+import 'data/admin_date_filter.dart';
+import 'widgets/admin_widgets.dart';
 import 'widgets/export_preview_dialog.dart';
+import '../../core/l10n/tr_text.dart';
 
 class AdminUsersScreen extends StatefulWidget {
   const AdminUsersScreen({super.key});
@@ -13,113 +23,60 @@ class AdminUsersScreen extends StatefulWidget {
   State<AdminUsersScreen> createState() => _AdminUsersScreenState();
 }
 
-enum DateRangeFilter {
-  all('Todas', 0),
-  today('Hoy', 1),
-  week('Semana', 7),
-  month('Mes', 30),
-  year('Año', 365),
-  custom('Personalizado', -1);
-
-  final String label;
-  final int days;
-
-  const DateRangeFilter(this.label, this.days);
-}
-
 class _AdminUsersScreenState extends State<AdminUsersScreen> {
+  final TextEditingController _searchController = TextEditingController();
+
   bool _isLoading = true;
   List<Map<String, dynamic>> _users = [];
-  String _selectedRoleFilter = 'all';
-  DateRangeFilter _selectedFilter = DateRangeFilter.all;
-  DateTime? _customStartDate;
-  DateTime? _customEndDate;
-  final TextEditingController _searchController = TextEditingController();
+  String _roleFilter = 'all';
   String _searchQuery = '';
+  AdminDateFilter _filter = AdminDateFilter.all;
+  DateTimeRange? _customRange;
 
-  final ScrollController _scrollController = ScrollController();
-  bool _isFetchingMore = false;
-  bool _hasMore = true;
-  int _currentPage = 0;
-  static const int _pageSize = 20;
+  static const _roleOptions = <(String, String)>[
+    ('all', 'Todos'),
+    ('business', 'Negocios'),
+    ('client', 'Clientes'),
+  ];
 
   @override
   void initState() {
     super.initState();
     _loadUsers();
-    _scrollController.addListener(() {
-      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 && 
-          !_isFetchingMore && 
-          _hasMore) {
-        _fetchMoreUsers();
-      }
-    });
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  (DateTime start, DateTime end)? _getDateRange() {
-    final startOfDay = EcuadorDateUtils.getStartOfDayEcuadorUtc();
-    final nowUtc = DateTime.now().toUtc();
-
-    switch (_selectedFilter) {
-      case DateRangeFilter.all:
-        return null;
-      case DateRangeFilter.today:
-        return (startOfDay, EcuadorDateUtils.getEndOfDayEcuadorUtc());
-      case DateRangeFilter.week:
-        final start = startOfDay.subtract(const Duration(days: 7));
-        return (start, nowUtc);
-      case DateRangeFilter.month:
-        final start = startOfDay.subtract(const Duration(days: 30));
-        return (start, nowUtc);
-      case DateRangeFilter.year:
-        final start = startOfDay.subtract(const Duration(days: 365));
-        return (start, nowUtc);
-      case DateRangeFilter.custom:
-        if (_customStartDate != null && _customEndDate != null) {
-          final cStart = DateTime.utc(_customStartDate!.year, _customStartDate!.month, _customStartDate!.day, 5, 0, 0);
-          final cEnd = DateTime.utc(_customEndDate!.year, _customEndDate!.month, _customEndDate!.day, 5, 0, 0).add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
-          return (cStart, cEnd);
-        }
-        return (startOfDay, EcuadorDateUtils.getEndOfDayEcuadorUtc());
-    }
-  }
-
   Future<void> _loadUsers() async {
-    setState(() {
-      _isLoading = true;
-      _currentPage = 0;
-      _hasMore = true;
-      _users = [];
-    });
+    setState(() => _isLoading = true);
     try {
       final response = await ApiClient().get('admin/users', queryParams: {
-        if (_selectedRoleFilter != 'all') 'role': _selectedRoleFilter,
-        if (_searchQuery.isNotEmpty) 'search': _searchQuery,
+        if (_roleFilter != 'all') 'role': _roleFilter,
       });
+
+      final users = response is List
+          ? response
+              .map<Map<String, dynamic>>((u) => {
+                    'id': u['id'],
+                    'full_name': u['fullName'] ?? u['full_name'],
+                    'email': u['email'],
+                    'phone': u['phone'],
+                    'avatar_url': u['avatarUrl'] ?? u['avatar_url'],
+                    'role': u['role'],
+                    'is_demo': u['isDemo'] ?? u['is_demo'] ?? false,
+                    'created_at': u['createdAt'] ?? u['created_at'],
+                    'businesses': u['businesses'] ?? [],
+                  })
+              .toList()
+          : <Map<String, dynamic>>[];
 
       if (mounted) {
         setState(() {
-          if (response is List) {
-            _users = response.map((u) => {
-              'id': u['id'],
-              'full_name': u['fullName'] ?? u['full_name'],
-              'email': u['email'],
-              'phone': u['phone'],
-              'role': u['role'],
-              'is_demo': u['isDemo'] ?? u['is_demo'] ?? false,
-              'created_at': u['createdAt'] ?? u['created_at'],
-              'businesses': u['businesses'] ?? [],
-            }).toList();
-          } else {
-            _users = [];
-          }
-          _hasMore = false;
+          _users = users;
           _isLoading = false;
         });
       }
@@ -127,477 +84,208 @@ class _AdminUsersScreenState extends State<AdminUsersScreen> {
       debugPrint('Error loading users: $e');
       if (mounted) {
         setState(() => _isLoading = false);
+        DashboardAnimatedToast.show(context, 'Error al cargar usuarios', isError: true);
       }
     }
   }
 
-  Future<void> _fetchMoreUsers() async {
-    // Already fetched all in get
-  }
-
+  /// Búsqueda y periodo se aplican aquí: el backend solo filtra por rol.
   List<Map<String, dynamic>> get _filteredUsers {
-    if (_searchQuery.isEmpty) return _users;
+    final range = AdminDateRange.resolve(_filter, custom: _customRange);
+    final query = _searchQuery.toLowerCase();
+
     return _users.where((u) {
+      if (range != null) {
+        final created = DateTime.tryParse('${u['created_at'] ?? ''}');
+        if (created == null || !range.contains(created)) return false;
+      }
+      if (query.isEmpty) return true;
       final name = (u['full_name'] ?? '').toString().toLowerCase();
       final email = (u['email'] ?? '').toString().toLowerCase();
-      final query = _searchQuery.toLowerCase();
       return name.contains(query) || email.contains(query);
     }).toList();
   }
 
-  String _getRoleLabel(String? role) {
-    if (role == 'admin') return 'Administrador';
-    if (role == 'business') return 'Negocio';
-    return 'Cliente';
-  }
-
-  Color _getRoleColor(String? role) {
-    if (role == 'admin') return AppTheme.accentPink;
-    if (role == 'business') return AppTheme.accentPurple;
-    return AppTheme.accentYellow;
-  }
-
-  void _showExportDialog() {
+  void _showExportDialog(List<Map<String, dynamic>> users) {
     showDialog(
       context: context,
-      builder: (context) => ExportPreviewDialog(
-        data: _filteredUsers,
+      builder: (_) => ExportPreviewDialog(
+        data: users,
         entity: ExportEntity.users,
         exportService: AppExportService(),
       ),
     );
   }
 
-  Future<void> _showCustomDatePicker() async {
-    final now = EcuadorDateUtils.nowEcuador();
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: now.subtract(const Duration(days: 365 * 5)),
-      lastDate: now,
-      initialDateRange: _customStartDate != null && _customEndDate != null
-          ? DateTimeRange(start: _customStartDate!, end: _customEndDate!)
-          : DateTimeRange(
-              start: now.subtract(const Duration(days: 7)),
-              end: now,
-            ),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: AppTheme.accentPurple,
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: Colors.black,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (picked != null) {
-      setState(() {
-        _customStartDate = picked.start;
-        _customEndDate = picked.end;
-        _selectedFilter = DateRangeFilter.custom;
-      });
-      _loadUsers();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Usuarios Registrados'),
-        backgroundColor: Colors.white,
-        elevation: 0,
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showExportDialog,
-        icon: const Icon(Icons.download),
-        label: const Text('Exportar'),
-        backgroundColor: AppTheme.accentPurple,
-        foregroundColor: Colors.white,
+    final users = _filteredUsers;
+
+    return AdminPageFrame(
+      title: 'Usuarios',
+      bottom: AdminExportButton(
+        onPressed: _isLoading || users.isEmpty ? null : () => _showExportDialog(users),
       ),
       body: RefreshIndicator(
         onRefresh: _loadUsers,
-        color: Colors.black,
+        color: AppColors.black,
         child: CustomScrollView(
-          controller: _scrollController,
           slivers: [
             SliverToBoxAdapter(
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Barra de Búsqueda
                   Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.grey[100],
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                      child: TextField(
-                        controller: _searchController,
-                        onChanged: (value) {
-                          setState(() {
-                            _searchQuery = value;
-                          });
-                        },
-                        decoration: InputDecoration(
-                          hintText: 'Buscar por nombre o email...',
-                          hintStyle: TextStyle(color: Colors.grey[500], fontSize: 14),
-                  prefixIcon: const Icon(Icons.search, color: AppTheme.accentPurple),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.close, size: 20),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                    child: AdminSearchField(
+                      controller: _searchController,
+                      hint: 'Nombre o correo',
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                    ),
+                  ),
+                  SizedBox(
+                    height: 40,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      itemCount: _roleOptions.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (context, index) {
+                        final (value, label) = _roleOptions[index];
+                        return AdminFilterPill(
+                          label: label,
+                          selected: _roleFilter == value,
+                          onTap: () {
+                            setState(() => _roleFilter = value);
+                            _loadUsers();
                           },
-                        )
-                      : null,
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                ),
+                        );
+                      },
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  AdminDateFilterBar(
+                    selected: _filter,
+                    customRange: _customRange,
+                    onChanged: (filter, range) => setState(() {
+                      _filter = filter;
+                      _customRange = range;
+                    }),
+                  ),
+                  if (!_isLoading)
+                    AdminCountLabel(
+                      '${users.length} ${users.length == 1 ? 'usuario' : 'usuarios'}',
+                    ),
+                ],
               ),
             ),
-          ),
-          // Filtros
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: Colors.white,
+            if (_isLoading)
+              const SliverFillRemaining(hasScrollBody: false, child: AdminLoading())
+            else if (users.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: AppEmptyState(
+                  title: _searchQuery.isEmpty ? 'Sin usuarios' : 'Sin resultados',
+                  message: _searchQuery.isEmpty
+                      ? 'No hay usuarios registrados con estos filtros.'
+                      : 'Ningún usuario coincide con tu búsqueda.',
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                sliver: SliverList.separated(
+                  itemCount: users.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 16),
+                  itemBuilder: (context, index) => _UserCard(user: users[index])
+                      .animate(delay: Duration(milliseconds: 40 * (index.clamp(0, 8))))
+                      .fadeIn(duration: 300.ms)
+                      .slideY(begin: 0.06),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _UserCard extends StatelessWidget {
+  final Map<String, dynamic> user;
+
+  const _UserCard({required this.user});
+
+  static String _roleLabel(String? role) => switch (role) {
+        'admin' => 'Administrador',
+        'business' => 'Negocio',
+        _ => 'Cliente',
+      };
+
+  @override
+  Widget build(BuildContext context) {
+    final name = (user['full_name'] ?? 'Sin nombre').toString();
+    final role = user['role'] as String?;
+    final phone = user['phone']?.toString();
+    final businesses = (user['businesses'] as List?) ?? const [];
+    final created = user['created_at']?.toString() ?? '';
+
+    return AppCard(
+      padding: const EdgeInsets.all(20),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          PersonAvatar(name: name, avatarUrl: user['avatar_url']?.toString()),
+          const SizedBox(width: 16),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                Text(
+                  name.toUpperCase(),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.display(size: 22),
+                ),
+                const SizedBox(height: 6),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
                   children: [
-                    Expanded(
-                      child: Text(
-                        '${_filteredUsers.length} usuarios',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          color: Colors.black,
-                          fontSize: 14,
-                        ),
-                        overflow: TextOverflow.ellipsis,
-                      ),
+                    AppChip(
+                      label: _roleLabel(role),
+                      style: role == 'admin'
+                          ? AppChipStyle.dark
+                          : role == 'business'
+                              ? AppChipStyle.pink
+                              : AppChipStyle.outline,
                     ),
-                    DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _selectedRoleFilter,
-                        icon: const Icon(
-                          Icons.people_alt_rounded,
-                          color: Colors.black,
-                          size: 20,
-                        ),
-                        alignment: Alignment.centerRight,
-                        items: const [
-                          DropdownMenuItem(
-                            value: 'all',
-                            child: Text(
-                              'Todos',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'business',
-                            child: Text(
-                              'Negocios',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                          DropdownMenuItem(
-                            value: 'client',
-                            child: Text(
-                              'Clientes',
-                              style: TextStyle(
-                                fontWeight: FontWeight.w600,
-                                fontSize: 13,
-                              ),
-                            ),
-                          ),
-                        ],
-                        onChanged: (value) {
-                          if (value != null) {
-                            setState(() {
-                              _selectedRoleFilter = value;
-                            });
-                            _loadUsers();
-                          }
-                        },
-                      ),
-                    ),
+                    if (user['is_demo'] == true)
+                      const AppChip(label: 'Demo', style: AppChipStyle.dark),
                   ],
                 ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: DateRangeFilter.values.map((filter) {
-                    final isSelected = _selectedFilter == filter;
-                    return InkWell(
-                      onTap: filter == DateRangeFilter.custom
-                          ? _showCustomDatePicker
-                          : () {
-                              setState(() => _selectedFilter = filter);
-                              _loadUsers();
-                            },
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected ? AppTheme.accentPurple : AppTheme.surface,
-                          borderRadius: BorderRadius.circular(20),
-                          border: isSelected ? null : Border.all(color: Colors.black12),
-                        ),
-                        child: Text(
-                          filter.label,
-                          style: TextStyle(
-                            color: isSelected ? Colors.white : Colors.black87,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
+                const SizedBox(height: 8),
+                AdminInfoLine(
+                  icon: Icons.mail_outline_rounded,
+                  text: (user['email'] ?? 'Sin correo').toString(),
                 ),
-                if (_selectedFilter == DateRangeFilter.custom &&
-                    _customStartDate != null &&
-                    _customEndDate != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '${_formatDate(_customStartDate!)} - ${_formatDate(_customEndDate!)}',
-                    style: const TextStyle(color: Color(0xFF666666), fontSize: 12),
+                if (phone != null && phone.isNotEmpty)
+                  AdminInfoLine(icon: Icons.phone_outlined, text: phone),
+                if (role == 'business' && businesses.isNotEmpty)
+                  AdminInfoLine(
+                    icon: Icons.storefront_rounded,
+                    text: 'Dueño de ${businesses.first['name']}',
+                    strong: true,
                   ),
-                ],
+                if (created.isNotEmpty)
+                  AdminInfoLine(
+                    icon: Icons.calendar_today_rounded,
+                    text: 'Registro ${EcuadorDateUtils.formatEcuadorTime(created)}',
+                  ),
               ],
             ),
           ),
         ],
       ),
-    ),
-    if (_isLoading)
-          const SliverFillRemaining(
-            child: Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation(AppTheme.accentPurple),
-              ),
-            ),
-          )
-        else if (_filteredUsers.isEmpty)
-          SliverFillRemaining(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(Icons.search_off_rounded, size: 48, color: Colors.grey[300]),
-                  const SizedBox(height: 16),
-                  Text(
-                    _searchQuery.isEmpty 
-                        ? 'No hay usuarios registrados' 
-                        : 'No se encontraron usuarios',
-                    style: TextStyle(color: Colors.grey[500]),
-                  ),
-                ],
-              ),
-            ),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                        if (index == _filteredUsers.length) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 16),
-                            child: Center(
-                              child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(AppTheme.accentPurple)),
-                            ),
-                          );
-                        }
-                        final user = _filteredUsers[index];
-                        final role = user['role'] as String?;
-                        final roleColor = _getRoleColor(role);
-
-                        return Card(
-                              margin: const EdgeInsets.only(bottom: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              elevation: 0,
-                              color: Colors.white,
-                              child: ListTile(
-                                contentPadding: const EdgeInsets.all(16),
-                                leading: CircleAvatar(
-                                  backgroundColor: roleColor.withValues(alpha: 0.1),
-                                  child: Icon(
-                                    role == 'business'
-                                        ? Icons.store
-                                        : (role == 'admin'
-                                              ? Icons.security
-                                              : Icons.person),
-                                    color: roleColor,
-                                  ),
-                                ),
-                                title: Row(
-                                  children: [
-                                    Expanded(
-                                      child: Text(
-                                        user['full_name'] ?? 'Sin nombre',
-                                        style: const TextStyle(
-                                          fontWeight: FontWeight.bold,
-                                          fontSize: 15,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                    if (user['is_demo'] == true)
-                                      Container(
-                                        margin: const EdgeInsets.only(left: 8),
-                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                        decoration: BoxDecoration(
-                                          color: Colors.amber.withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(4),
-                                          border: Border.all(color: Colors.amber, width: 0.5),
-                                        ),
-                                        child: const Text(
-                                          'DEMO',
-                                          style: TextStyle(
-                                            color: Colors.amber,
-                                            fontSize: 8,
-                                            fontWeight: FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        horizontal: 8,
-                                        vertical: 2,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: roleColor.withValues(alpha: 0.1),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        _getRoleLabel(role),
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight: FontWeight.bold,
-                                          color: roleColor,
-                                        ),
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                subtitle: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    const SizedBox(height: 6),
-                                    Row(
-                                      children: [
-                                        const Icon(Icons.email_outlined, size: 14, color: Colors.black45),
-                                        const SizedBox(width: 4),
-                                        Expanded(
-                                          child: Text(
-                                            user['email'] ?? 'Sin correo',
-                                            style: const TextStyle(fontSize: 12, color: Colors.black54),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                    if (user['phone'] != null) ...[
-                                      const SizedBox(height: 2),
-                                      Row(
-                                        children: [
-                                          const Icon(Icons.phone_android_outlined, size: 14, color: Colors.black45),
-                                          const SizedBox(width: 4),
-                                          Expanded(
-                                            child: Text(
-                                              user['phone'],
-                                              style: const TextStyle(fontSize: 12, color: Colors.black54),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                    if (role == 'business' &&
-                                        (user['businesses'] as List?)?.isNotEmpty == true) ...[
-                                      const SizedBox(height: 8),
-                                      Container(
-                                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                        decoration: BoxDecoration(
-                                          color: AppTheme.accentPurple.withValues(alpha: 0.1),
-                                          borderRadius: BorderRadius.circular(6),
-                                        ),
-                                        child: Row(
-                                          mainAxisSize: MainAxisSize.min,
-                                          children: [
-                                            const Icon(Icons.storefront, size: 12, color: AppTheme.accentPurple),
-                                            const SizedBox(width: 4),
-                                            Flexible(
-                                              child: Text(
-                                                'Dueño de: ${user['businesses'][0]['name']}',
-                                                style: const TextStyle(
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: AppTheme.accentPurple,
-                                                ),
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    ],
-                                    const SizedBox(height: 8),
-                                    Text(
-                                      'Registro: ${EcuadorDateUtils.formatEcuadorTime(user['created_at'] ?? '')}',
-                                      style: const TextStyle(
-                                        fontSize: 10,
-                                        color: Colors.black26,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            )
-                            .animate(delay: AppTheme.animDelayStaggered(index))
-                            .fadeIn(duration: AppTheme.animDurationStandard)
-                            .slideY(
-                              begin: AppTheme.animSlideYBegin,
-                              curve: AppTheme.animCurveStandard,
-                            );
-                      },
-                    ),
-                  ),
-          ),
-        ],
-      ),
-      ),
     );
-  }
-
-  String _formatDate(DateTime date) {
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final year = date.year;
-    return '$day/$month/$year';
   }
 }

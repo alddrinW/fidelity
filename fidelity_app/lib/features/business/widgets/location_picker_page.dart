@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_page_header.dart';
 import 'location_picker_map.dart';
+import '../../../core/l10n/tr_text.dart';
 
 /// Ubicación elegida en el mapa.
 class LocationSelection {

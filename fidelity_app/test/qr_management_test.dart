@@ -1,36 +1,34 @@
-// ignore_for_file: depend_on_referenced_packages, avoid_print
+// ignore_for_file: depend_on_referenced_packages
+import 'package:fidelity_app/features/business/qr_management/qr_management_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:fidelity_app/features/business/qr_management/qr_management_screen.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'spanish_app.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
   setUpAll(() async {
     SharedPreferences.setMockInitialValues({});
+    // Sin red en los tests: no intentar descargar las fuentes.
+    GoogleFonts.config.allowRuntimeFetching = false;
   });
 
-  testWidgets('QR Management Screen smoke test', (WidgetTester tester) async {
+  testWidgets('QR: muestra la carga y, sin códigos, ofrece generar el primero', (tester) async {
     await tester.pumpWidget(
-      const MaterialApp(
-        home: QRManagementScreen(businessId: 'test-business-id'),
-      ),
+      spanishApp(const Scaffold(body: QRManagementScreen(businessId: 'test-business-id'))),
     );
 
-    // Verify loading state or empty state
+    // Al abrir carga los códigos del negocio.
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
 
-    expect(find.byType(FloatingActionButton), findsOneWidget);
-    expect(find.text('Nuevo QR'), findsOneWidget);
-
-    // Tap the button
-    await tester.tap(find.byType(FloatingActionButton));
+    // En los tests toda llamada HTTP responde 400: la lista queda vacía.
     await tester.pumpAndSettle();
 
-    // Verify dialog appears
-    expect(find.text('Generar nuevo QR'), findsOneWidget);
-    expect(find.text('Etiqueta (ej: Caja 1)'), findsOneWidget);
-    expect(find.text('Generar'), findsOneWidget);
+    expect(find.byType(CircularProgressIndicator), findsNothing);
+    expect(find.text('SIN CÓDIGOS QR'), findsOneWidget);
+    expect(find.text('GENERAR MI QR'), findsOneWidget);
   });
 }

@@ -1,7 +1,17 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
+import 'package:flutter_animate/flutter_animate.dart';
+
 import '../../core/services/api_client.dart';
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_typography.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/widgets/app_card.dart';
+import '../../core/widgets/app_chip.dart';
+import '../../core/widgets/app_empty_state.dart';
+import '../business/dashboard/widgets/dashboard_animated_toast.dart';
+import 'data/admin_date_filter.dart';
+import 'widgets/admin_widgets.dart';
+import '../../core/l10n/tr_text.dart';
 
 class AdminActivityScreen extends StatefulWidget {
   const AdminActivityScreen({super.key});
@@ -11,17 +21,21 @@ class AdminActivityScreen extends StatefulWidget {
 }
 
 class _AdminActivityScreenState extends State<AdminActivityScreen> {
+  static const int _pageSize = 20;
+
   final ApiClient _apiClient = ApiClient();
-  bool _isLoading = true;
-  List<Map<String, dynamic>> _activities = [];
-  List<Map<String, dynamic>> _businessesList = [];
-  String _selectedFilter = 'all';
-  String _selectedBusinessId = 'all';
   final ScrollController _scrollController = ScrollController();
+
+  bool _isLoading = true;
   bool _isFetchingMore = false;
   bool _hasMore = true;
   int _currentPage = 0;
-  static const int _pageSize = 20;
+  List<Map<String, dynamic>> _activities = [];
+  List<Map<String, dynamic>> _businessesList = [];
+
+  AdminDateFilter _filter = AdminDateFilter.all;
+  DateTimeRange? _customRange;
+  String _selectedBusinessId = 'all';
 
   @override
   void initState() {
@@ -29,8 +43,10 @@ class _AdminActivityScreenState extends State<AdminActivityScreen> {
     _loadBusinesses();
     _loadActivity();
     _scrollController.addListener(() {
-      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 && 
-          !_isFetchingMore && 
+      final position = _scrollController.position;
+      if (position.pixels >= position.maxScrollExtent - 200 &&
+          !_isFetchingMore &&
+          !_isLoading &&
           _hasMore) {
         _fetchMoreActivity();
       }
@@ -47,27 +63,40 @@ class _AdminActivityScreenState extends State<AdminActivityScreen> {
     try {
       final response = await _apiClient.get('businesses', queryParams: {'all': 'true'});
       if (mounted && response is List) {
-        setState(() {
-          _businessesList = List<Map<String, dynamic>>.from(response);
-        });
+        setState(() => _businessesList = List<Map<String, dynamic>>.from(response));
       }
     } catch (e) {
       debugPrint('Error loading businesses: $e');
     }
   }
 
-  (String?, String?) _getDateFilterRange() {
-    final startOfDayUtc = EcuadorDateUtils.getStartOfDayEcuadorUtc();
-    if (_selectedFilter == 'today') {
-      return (startOfDayUtc.toIso8601String(), null);
-    } else if (_selectedFilter == 'week') {
-      final startOfWeek = startOfDayUtc.subtract(const Duration(days: 7));
-      return (startOfWeek.toIso8601String(), null);
-    } else if (_selectedFilter == 'month') {
-      final startOfMonth = startOfDayUtc.subtract(const Duration(days: 30));
-      return (startOfMonth.toIso8601String(), null);
-    }
-    return (null, null);
+  /// El backend no pagina por cursor: pide los primeros [limit] registros.
+  Future<List<Map<String, dynamic>>> _fetch(int limit) async {
+    final range = AdminDateRange.resolve(_filter, custom: _customRange);
+    final response = await _apiClient.get('admin/activity', queryParams: {
+      'limit': '$limit',
+      if (range != null) 'startDate': range.start.toIso8601String(),
+      if (range != null) 'endDate': range.end.toIso8601String(),
+      if (_selectedBusinessId != 'all') 'businessId': _selectedBusinessId,
+    });
+    final list = response is List
+        ? List<Map<String, dynamic>>.from(response)
+        : <Map<String, dynamic>>[];
+    return list.map(_normalize).toList();
+  }
+
+  Map<String, dynamic> _normalize(Map<String, dynamic> s) {
+    final user = (s['user'] ?? s['profiles'] ?? {}) as Map;
+    final business = (s['business'] ?? s['businesses'] ?? {}) as Map;
+    return {
+      'date': s['scannedAt'] ?? s['scanned_at'],
+      'user_name': user['fullName'] ?? user['full_name'] ?? user['email'],
+      'business_name': business['name'],
+      'status': s['status'] ?? 'pending',
+      'is_demo': s['isDemo'] ?? s['is_demo'] ?? false,
+      // Un escaneo sin código QR fue un punto regalado por el dueño del local.
+      'is_gifted': (s['qrCodeId'] ?? s['qr_code_id']) == null,
+    };
   }
 
   Future<void> _loadActivity() async {
@@ -78,35 +107,11 @@ class _AdminActivityScreenState extends State<AdminActivityScreen> {
       _activities = [];
     });
     try {
-      final (startDate, endDate) = _getDateFilterRange();
-      final queryParams = <String, String>{
-        'limit': '$_pageSize',
-      };
-      if (startDate != null) queryParams['startDate'] = startDate;
-      if (endDate != null) queryParams['endDate'] = endDate;
-      if (_selectedBusinessId != 'all') queryParams['businessId'] = _selectedBusinessId;
-
-      final response = await _apiClient.get('admin/activity', queryParams: queryParams);
-      final list = response is List ? List<Map<String, dynamic>>.from(response) : <Map<String, dynamic>>[];
-
-      List<Map<String, dynamic>> combined = [];
-      for (var s in list) {
-        combined.add({
-          'type': 'scan',
-          'date': s['scannedAt'] ?? s['scanned_at'],
-          'profiles': s['user'] ?? s['profiles'] ?? {},
-          'businesses': s['business'] ?? s['businesses'] ?? {},
-          'status': s['status'],
-          'is_demo': s['isDemo'] ?? s['is_demo'] ?? false,
-          'qr_code_id': s['qrCodeId'] ?? s['qr_code_id'],
-          ...s,
-        });
-      }
-
+      final items = await _fetch(_pageSize);
       if (mounted) {
         setState(() {
-          _activities = combined;
-          _hasMore = combined.length == _pageSize;
+          _activities = items;
+          _hasMore = items.length == _pageSize;
           _isLoading = false;
         });
       }
@@ -114,6 +119,7 @@ class _AdminActivityScreenState extends State<AdminActivityScreen> {
       debugPrint('Error loading activities: $e');
       if (mounted) {
         setState(() => _isLoading = false);
+        DashboardAnimatedToast.show(context, 'Error al cargar la actividad', isError: true);
       }
     }
   }
@@ -121,232 +127,188 @@ class _AdminActivityScreenState extends State<AdminActivityScreen> {
   Future<void> _fetchMoreActivity() async {
     setState(() => _isFetchingMore = true);
     try {
-      _currentPage++;
-      final totalToFetch = (_currentPage + 1) * _pageSize;
-
-      final (startDate, endDate) = _getDateFilterRange();
-      final queryParams = <String, String>{
-        'limit': '$totalToFetch',
-      };
-      if (startDate != null) queryParams['startDate'] = startDate;
-      if (endDate != null) queryParams['endDate'] = endDate;
-      if (_selectedBusinessId != 'all') queryParams['businessId'] = _selectedBusinessId;
-
-      final response = await _apiClient.get('admin/activity', queryParams: queryParams);
-      final list = response is List ? List<Map<String, dynamic>>.from(response) : <Map<String, dynamic>>[];
-
-      List<Map<String, dynamic>> allItems = [];
-      for (var s in list) {
-        allItems.add({
-          'type': 'scan',
-          'date': s['scannedAt'] ?? s['scanned_at'],
-          'profiles': s['user'] ?? s['profiles'] ?? {},
-          'businesses': s['business'] ?? s['businesses'] ?? {},
-          'status': s['status'],
-          'is_demo': s['isDemo'] ?? s['is_demo'] ?? false,
-          'qr_code_id': s['qrCodeId'] ?? s['qr_code_id'],
-          ...s,
-        });
-      }
-
+      final nextPage = _currentPage + 1;
+      final totalToFetch = (nextPage + 1) * _pageSize;
+      final items = await _fetch(totalToFetch);
       if (mounted) {
         setState(() {
-          _activities = allItems;
-          _hasMore = list.length == totalToFetch;
+          _currentPage = nextPage;
+          _activities = items;
+          _hasMore = items.length == totalToFetch;
           _isFetchingMore = false;
         });
       }
     } catch (e) {
       debugPrint('Error loading more activities: $e');
-      if (mounted) {
-        setState(() => _isFetchingMore = false);
-      }
+      if (mounted) setState(() => _isFetchingMore = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Actividad Global'),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        foregroundColor: Colors.black,
-      ),
+    return AdminPageFrame(
+      title: 'Actividad',
       body: RefreshIndicator(
         onRefresh: _loadActivity,
-        color: Colors.black,
+        color: AppColors.black,
         child: CustomScrollView(
           controller: _scrollController,
+          physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(
-              child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: Colors.white,
-            child: Column(
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text('${_activities.length} registros', style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.black)),
-                    DropdownButtonHideUnderline(
-                      child: DropdownButton<String>(
-                        value: _selectedFilter,
-                        icon: const Icon(Icons.filter_list, color: Colors.black),
-                        items: const [
-                          DropdownMenuItem(value: 'all', child: Text('Todos')),
-                          DropdownMenuItem(value: 'today', child: Text('Hoy')),
-                          DropdownMenuItem(value: 'week', child: Text('Esta Semana')),
-                          DropdownMenuItem(value: 'month', child: Text('Este Mes')),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const SizedBox(height: 8),
+                  AdminDateFilterBar(
+                    selected: _filter,
+                    customRange: _customRange,
+                    onChanged: (filter, range) {
+                      setState(() {
+                        _filter = filter;
+                        _customRange = range;
+                      });
+                      _loadActivity();
+                    },
+                  ),
+                  if (_businessesList.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 16, 24, 0),
+                      child: AdminSelectField(
+                        icon: Icons.storefront_rounded,
+                        title: 'Local',
+                        selected: _selectedBusinessId,
+                        options: [
+                          ('all', 'Todos los locales'),
+                          for (final b in _businessesList)
+                            ('${b['id']}', '${b['name'] ?? 'Desconocido'}'),
                         ],
                         onChanged: (value) {
-                          if (value != null) {
-                            setState(() => _selectedFilter = value);
-                            _loadActivity();
-                          }
+                          setState(() => _selectedBusinessId = value);
+                          _loadActivity();
                         },
                       ),
                     ),
-                  ],
-                ),
-                if (_businessesList.isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Local:', style: TextStyle(color: Colors.black54, fontSize: 14, fontWeight: FontWeight.w600)),
-                      DropdownButtonHideUnderline(
-                        child: DropdownButton<String>(
-                          value: _selectedBusinessId,
-                          icon: const Icon(Icons.store, color: Colors.black, size: 18),
-                          style: const TextStyle(fontSize: 14, color: Colors.black),
-                          items: [
-                            const DropdownMenuItem(value: 'all', child: Text('Todos los locales')),
-                            ..._businessesList.map((b) {
-                              return DropdownMenuItem(
-                                value: b['id'] as String,
-                                child: Text(b['name'] != null ? (b['name'].toString().length > 20 ? '${b['name'].toString().substring(0, 20)}...' : b['name']) : 'Desconocido'),
-                              );
-                            }),
-                          ],
-                          onChanged: (value) {
-                            if (value != null) {
-                              setState(() => _selectedBusinessId = value);
-                              _loadActivity();
-                            }
-                          },
-                        ),
-                      ),
-                    ],
-                  ),
+                  if (!_isLoading)
+                    AdminCountLabel(
+                      '${_activities.length} ${_activities.length == 1 ? 'registro' : 'registros'}',
+                    ),
                 ],
+              ),
+            ),
+            if (_isLoading)
+              const SliverFillRemaining(hasScrollBody: false, child: AdminLoading())
+            else if (_activities.isEmpty)
+              const SliverFillRemaining(
+                hasScrollBody: false,
+                child: AppEmptyState(
+                  title: 'Sin actividad',
+                  message: 'No hay escaneos en este periodo.',
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
+                sliver: SliverList.separated(
+                  itemCount: _activities.length + (_isFetchingMore ? 1 : 0),
+                  separatorBuilder: (_, __) => const SizedBox(height: 12),
+                  itemBuilder: (context, index) {
+                    if (index == _activities.length) {
+                      return const Padding(
+                        padding: EdgeInsets.symmetric(vertical: 16),
+                        child: AdminLoading(),
+                      );
+                    }
+                    return _ActivityCard(activity: _activities[index])
+                        .animate(delay: Duration(milliseconds: 30 * (index % 8)))
+                        .fadeIn(duration: 250.ms);
+                  },
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _ActivityCard extends StatelessWidget {
+  final Map<String, dynamic> activity;
+
+  const _ActivityCard({required this.activity});
+
+  @override
+  Widget build(BuildContext context) {
+    final isGifted = activity['is_gifted'] == true;
+    final status = activity['status'] as String;
+    final date = activity['date']?.toString();
+    final userName = activity['user_name'] ?? 'Usuario desconocido';
+    final action = isGifted ? 'recibió un punto de regalo' : 'escaneó QR';
+
+    return AppCard(
+      radius: 28,
+      padding: const EdgeInsets.all(16),
+      child: Row(
+        children: [
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: isGifted ? AppColors.pink : AppColors.surfaceMuted,
+              shape: BoxShape.circle,
+            ),
+            child: Icon(
+              isGifted ? Icons.redeem_rounded : Icons.qr_code_scanner_rounded,
+              color: AppColors.black,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  '$userName $action',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.body(size: 15, weight: FontWeight.w500),
+                ),
+                AdminInfoLine(
+                  icon: Icons.storefront_rounded,
+                  text: '${activity['business_name'] ?? 'Negocio desconocido'}',
+                ),
+                AdminInfoLine(
+                  icon: Icons.schedule_rounded,
+                  text: date == null || date.isEmpty
+                      ? 'Fecha desconocida'
+                      : EcuadorDateUtils.formatEcuadorTime(date),
+                ),
               ],
             ),
           ),
-        ),
-        if (_isLoading)
-          const SliverFillRemaining(
-            child: Center(
-              child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(AppTheme.accentPurple)),
-            ),
-          )
-        else if (_activities.isEmpty)
-          const SliverFillRemaining(
-            child: Center(child: Text('No hay actividad en este período')),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                        if (index == _activities.length) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 16),
-                            child: Center(
-                              child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(AppTheme.accentPurple)),
-                            ),
-                          );
-                        }
-                        final activity = _activities[index];
-                        final business = activity['businesses'] ?? {};
-                        final businessName = business['name'] ?? 'Negocio Desconocido';
-                        final dateStr = activity['date'] != null ? EcuadorDateUtils.formatEcuadorTime(activity['date']) : 'Fecha desconocida';
-
-                        // Escaneo normal
-                        final profile = activity['profiles'] ?? {};
-                        final userName = profile['full_name'] ?? profile['email'] ?? 'Usuario Desconocido';
-                        final status = activity['status'] ?? 'pending';
-
-                        // Un escaneo sin qr_code_id fue un punto otorgado a mano
-                        // por el dueño del local (regalo); con qr_code_id vino de un
-                        // escaneo real del QR.
-                        final bool isGifted = activity['qr_code_id'] == null;
-                        final String actionText =
-                            isGifted ? 'recibió un punto de regalo' : 'escaneó QR';
-                        final Color originColor =
-                            isGifted ? AppTheme.accentPurple : AppTheme.accentPink;
-
-                        return Card(
-                          margin: const EdgeInsets.only(bottom: 12),
-                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                          elevation: 0,
-                          color: Colors.white,
-                          child: ListTile(
-                            contentPadding: const EdgeInsets.all(16),
-                            leading: CircleAvatar(
-                              backgroundColor: originColor.withValues(alpha: 0.1),
-                              child: Icon(
-                                isGifted ? Icons.redeem_rounded : Icons.qr_code_scanner_rounded,
-                                color: originColor,
-                              ),
-                            ),
-                            title: Row(
-                              children: [
-                                Expanded(child: Text('$userName $actionText', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13))),
-                                if (activity['is_demo'] == true)
-                                  Container(
-                                    margin: const EdgeInsets.only(left: 8),
-                                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                    decoration: BoxDecoration(color: Colors.amber.withValues(alpha: 0.1), borderRadius: BorderRadius.circular(4), border: Border.all(color: Colors.amber, width: 0.5)),
-                                    child: const Text('DEMO', style: TextStyle(color: Colors.amber, fontSize: 8, fontWeight: FontWeight.bold)),
-                                  ),
-                              ],
-                            ),
-                            subtitle: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                const SizedBox(height: 4),
-                                Text('En: $businessName', style: const TextStyle(color: Colors.black54, fontSize: 13)),
-                                const SizedBox(height: 2),
-                                Text(dateStr, style: const TextStyle(fontSize: 11, color: Colors.grey)),
-                              ],
-                            ),
-                            trailing: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                              decoration: BoxDecoration(
-                                color: status == 'approved' ? AppTheme.accentGreen.withValues(alpha: 0.1) : (status == 'rejected' ? const Color(0xFFF44336).withValues(alpha: 0.1) : const Color(0xFFFFA000).withValues(alpha: 0.1)),
-                                borderRadius: BorderRadius.circular(20),
-                              ),
-                              child: Text(
-                                status == 'approved' ? 'Aprobado' : (status == 'rejected' ? 'Rechazado' : 'Pendiente'),
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                  color: status == 'approved' ? AppTheme.accentGreen : (status == 'rejected' ? const Color(0xFFF44336) : const Color(0xFFFFA000)),
-                                ),
-                              ),
-                            ),
-                          ),
-                        );
-                      },
-                      childCount: _activities.length + (_isFetchingMore ? 1 : 0),
-                    ),
-                  ),
+          const SizedBox(width: 8),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              AppChip(
+                label: switch (status) {
+                  'approved' => 'Aprobado',
+                  'rejected' => 'Rechazado',
+                  _ => 'Pendiente',
+                },
+                style: switch (status) {
+                  'approved' => AppChipStyle.dark,
+                  'rejected' => AppChipStyle.outline,
+                  _ => AppChipStyle.pink,
+                },
+              ),
+              if (activity['is_demo'] == true) ...[
+                const SizedBox(height: 6),
+                const AppChip(label: 'Demo', style: AppChipStyle.outline),
+              ],
+            ],
           ),
         ],
-      ),
       ),
     );
   }

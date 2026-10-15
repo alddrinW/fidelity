@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 
 import '../../../core/models/business_category.dart';
@@ -6,6 +6,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/validators/app_validators.dart';
 import '../../../core/widgets/app_text_field.dart';
+import '../../../core/l10n/tr_text.dart';
 
 /// Campos de "Mi negocio": nombre, teléfono de atención, cédula o RUC,
 /// dirección (se elige en el mapa) y categoría. Los usan la creación del

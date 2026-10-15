@@ -53,6 +53,7 @@ class MyCardsRepository {
           'points_required': business['pointsRequired'] ?? business['points_required'] ?? 10,
           'logo_url': business['logoUrl'] ?? business['logo_url'],
         },
+        'pending_scans': (raw['pendingScans'] as num?)?.toInt() ?? 0,
         'rewards': raw['rewards'] ?? [],
       };
     }).toList();

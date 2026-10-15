@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../auth/data/auth_repository.dart';
+import '../../payments/data/payments_repository.dart';
 import '../data/business_repository.dart';
 
 class CreateBusinessState {
@@ -7,21 +8,27 @@ class CreateBusinessState {
   final String? error;
   final bool isSuccess;
 
+  /// Orden de pago del negocio recién creado (para abrir PAGA YA).
+  final PaymentOrder? createdPayment;
+
   CreateBusinessState({
     this.isLoading = false,
     this.error,
     this.isSuccess = false,
+    this.createdPayment,
   });
 
   CreateBusinessState copyWith({
     bool? isLoading,
     String? error,
     bool? isSuccess,
+    PaymentOrder? createdPayment,
   }) {
     return CreateBusinessState(
       isLoading: isLoading ?? this.isLoading,
       error: error,
       isSuccess: isSuccess ?? this.isSuccess,
+      createdPayment: createdPayment ?? this.createdPayment,
     );
   }
 }
@@ -47,6 +54,7 @@ class CreateBusinessNotifier extends Notifier<CreateBusinessState> {
     required String rewardDescription,
     String? rewardLongDescription,
     required int pointsRequired,
+    String? parentId,
   }) async {
     final authUser = ref.read(authRepositoryProvider).currentUser;
 
@@ -61,7 +69,7 @@ class CreateBusinessNotifier extends Notifier<CreateBusinessState> {
       final businessRepo = ref.read(businessRepositoryProvider);
 
       // 1. Crear el negocio
-      final businessId = await businessRepo.createBusiness(
+      final created = await businessRepo.createBusiness(
         name: businessName,
         phone: phone,
         taxId: taxId,
@@ -73,15 +81,22 @@ class CreateBusinessNotifier extends Notifier<CreateBusinessState> {
         rewardDescription: rewardDescription,
         rewardLongDescription: rewardLongDescription,
         pointsRequired: pointsRequired,
+        parentId: parentId,
+        selectAsCurrent: parentId == null,
       );
 
       // 2. Crear QR inicial
-      await businessRepo.generateInitialQrCode(businessId);
+      await businessRepo.generateInitialQrCode(created.id);
 
-      // 3. Refrescar el perfil de autenticación
+      // 3. Refrescar el perfil de autenticación (un negocio nuevo lleva a la
+      // pantalla de activación; una sucursal conserva el negocio actual)
       await ref.read(authRepositoryProvider).refreshProfile();
 
-      state = state.copyWith(isLoading: false, isSuccess: true);
+      state = state.copyWith(
+        isLoading: false,
+        isSuccess: true,
+        createdPayment: created.payment,
+      );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());
     }

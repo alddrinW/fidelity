@@ -1,7 +1,8 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
+import '../l10n/tr_text.dart';
 
 /// Logotipo tipográfico "FIDELITY" (sin mascota).
 class AppWordmark extends StatelessWidget {

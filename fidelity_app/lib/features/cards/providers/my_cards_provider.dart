@@ -142,6 +142,16 @@ class MyCardsNotifier extends Notifier<MyCardsState> {
     _scansSub = RealtimeSyncService().onScansChanged.listen((newData) {
       if (newData == null) return;
       scheduleRefresh();
+
+      // El negocio aprobó un escaneo del cliente: se celebra el punto o,
+      // si completó la tarjeta, el premio.
+      if (newData['status'] == 'approved') {
+        if (newData['rewardCompleted'] == true) {
+          onCardCompleted?.call();
+        } else {
+          onPointEarned?.call();
+        }
+      }
     });
   }
 }

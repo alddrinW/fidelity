@@ -1,11 +1,12 @@
 // lib/features/business/widgets/location_picker_map.dart
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
 import 'package:geolocator/geolocator.dart';
 import 'dart:convert';
 import 'package:http/http.dart' as http;
 import 'dart:async';
+import '../../../core/l10n/tr_text.dart';
 
 class LocationPickerMap extends StatefulWidget {
   final Function(double latitude, double longitude, String address)

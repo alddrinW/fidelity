@@ -1,25 +1,34 @@
-import 'package:flutter/foundation.dart' show kIsWeb;
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:qr_flutter/qr_flutter.dart';
-import 'package:uuid/uuid.dart';
+import 'dart:async';
 import 'dart:io';
 import 'dart:ui' as ui;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/material.dart' hide Text;
+import 'package:flutter_animate/flutter_animate.dart';
+import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:pdf/pdf.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:flutter/services.dart' show rootBundle;
-import 'package:flutter_animate/flutter_animate.dart';
-import 'package:gal/gal.dart';
-import '../../../core/theme/app_theme.dart';
-import '../../../core/utils/date_utils.dart';
-import '../../../core/utils/file_download.dart';
+import 'package:qr_flutter/qr_flutter.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:uuid/uuid.dart';
+
 import '../../../core/services/api_client.dart';
 import '../../../core/services/realtime_sync_service.dart';
-import 'dart:async';
+import '../../../core/theme/app_colors.dart';
+import '../../../core/theme/app_typography.dart';
+import '../../../core/utils/date_utils.dart';
+import '../../../core/utils/file_download.dart';
+import '../../../core/widgets/app_button.dart';
+import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/app_empty_state.dart';
+import '../../../core/widgets/app_message_dialog.dart';
+import '../dashboard/widgets/dashboard_animated_toast.dart';
+import '../../../core/l10n/tr_text.dart';
 
+/// Códigos QR del negocio: ver, descargar como imagen o PDF para imprimir y,
+/// si un código quedó dañado, regenerarlo.
 class QRManagementScreen extends StatefulWidget {
   final String businessId;
   const QRManagementScreen({super.key, required this.businessId});
@@ -93,21 +102,11 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
       });
       await _loadQRCodes();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Código QR generado exitosamente'),
-            backgroundColor: AppTheme.accentGreen,
-          ),
-        );
+        DashboardAnimatedToast.show(context, 'Código QR generado');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al generar QR: $e'),
-            backgroundColor: AppTheme.accentPink,
-          ),
-        );
+        DashboardAnimatedToast.show(context, 'Error al generar QR: $e', isError: true);
       }
     } finally {
       if (mounted) {
@@ -116,6 +115,8 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
     }
   }
 
+  String _cleanLabel(String label) =>
+      label.replaceAll(RegExp(r'[^\w\s]+'), '').replaceAll(' ', '_');
 
   Future<void> _shareQRImage(String code, String label) async {
     ScaffoldMessenger.of(context).showSnackBar(
@@ -126,45 +127,39 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
     );
 
     try {
-
       final painter = QrPainter(
         data: code,
         version: QrVersions.auto,
         gapless: true,
         errorCorrectionLevel: QrErrorCorrectLevel.H,
         eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
-        dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Colors.black),
+        dataModuleStyle: const QrDataModuleStyle(
+          dataModuleShape: QrDataModuleShape.square,
+          color: Colors.black,
+        ),
       );
 
       final picRecorder = ui.PictureRecorder();
       final canvas = Canvas(picRecorder);
-      
-      // Dibujar fondo blanco (900x900)
-      final paint = Paint()..color = Colors.white;
-      canvas.drawRect(const Rect.fromLTWH(0, 0, 900, 900), paint);
-      
-      // Dibujar el código QR con algo de padding en el centro
+
+      // Fondo blanco (900x900) y el QR con margen en el centro.
+      canvas.drawRect(const Rect.fromLTWH(0, 0, 900, 900), Paint()..color = Colors.white);
       canvas.translate(50, 50);
       painter.paint(canvas, const Size(800, 800));
 
       final image = await picRecorder.endRecording().toImage(900, 900);
-
       final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
       final pngBytes = byteData!.buffer.asUint8List();
-
-      final cleanLabel = label
-          .replaceAll(RegExp(r'[^\w\s]+'), '')
-          .replaceAll(' ', '_');
+      final cleanLabel = _cleanLabel(label);
 
       // En el navegador no hay galería ni carpeta temporal: se descarga el PNG.
       if (kIsWeb) {
         downloadBytesInBrowser(pngBytes, 'qr_$cleanLabel.png', 'image/png');
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Imagen descargada. Búscala en tu carpeta de descargas.'),
-            ),
+          DashboardAnimatedToast.show(
+            context,
+            'Imagen descargada. Búscala en tu carpeta de descargas.',
           );
         }
         return;
@@ -174,7 +169,7 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
       final file = await File('${tempDir.path}/qr_$cleanLabel.png').create();
       await file.writeAsBytes(pngBytes);
 
-      // Guardar en galería explícitamente primero
+      // Guardar en la galería primero
       try {
         final hasAccess = await Gal.hasAccess(toAlbum: true);
         if (!hasAccess) {
@@ -183,68 +178,13 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
         await Gal.putImage(file.path, album: 'Fidelity');
         if (mounted) {
           ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          showDialog(
+          showDialog<void>(
             context: context,
-            barrierDismissible: false,
-            builder: (context) => AlertDialog(
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-              ),
-              title: Column(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: AppTheme.accentGreen.withValues(alpha: 0.1),
-                      shape: BoxShape.circle,
-                    ),
-                    child: const Icon(
-                      Icons.check_circle_rounded,
-                      color: AppTheme.accentGreen,
-                      size: 48,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    '¡CÓDIGO GUARDADO!',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w900,
-                      fontSize: 20,
-                    ),
-                    textAlign: TextAlign.center,
-                  ),
-                ],
-              ),
-              content: const Text(
-                'La imagen del código QR se ha guardado correctamente en tu galería de fotos.',
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: Colors.black54,
-                ),
-              ),
-              actions: [
-                Center(
-                  child: ElevatedButton(
-                    onPressed: () => Navigator.pop(context),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.accentGreen,
-                      minimumSize: const Size(double.infinity, 50),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(16),
-                      ),
-                    ),
-                    child: const Text(
-                      'LISTO',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: 1,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
+            builder: (_) => const AppMessageDialog(
+              icon: Icons.check_circle_outline_rounded,
+              title: '¡Código guardado!',
+              message: 'La imagen del código QR se guardó en tu galería de fotos.',
+              primaryLabel: 'Listo',
             ),
           );
         }
@@ -262,9 +202,7 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error al compartir imagen: $e')),
-        );
+        DashboardAnimatedToast.show(context, 'Error al compartir imagen: $e', isError: true);
       }
     }
   }
@@ -290,17 +228,16 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
                 children: [
                   pw.Text(
                     label,
-                    style: pw.TextStyle(
-                      fontSize: 40,
-                      fontWeight: pw.FontWeight.bold,
-                    ),
+                    style: pw.TextStyle(fontSize: 40, fontWeight: pw.FontWeight.bold),
                   ),
                   pw.SizedBox(height: 32),
                   pw.Stack(
                     alignment: pw.Alignment.center,
                     children: [
                       pw.BarcodeWidget(
-                        barcode: pw.Barcode.qrCode(errorCorrectLevel: pw.BarcodeQRCorrectionLevel.high),
+                        barcode: pw.Barcode.qrCode(
+                          errorCorrectLevel: pw.BarcodeQRCorrectionLevel.high,
+                        ),
                         data: code,
                         width: 300,
                         height: 300,
@@ -310,10 +247,7 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
                   pw.SizedBox(height: 16),
                   pw.Text(
                     code,
-                    style: const pw.TextStyle(
-                      fontSize: 12,
-                      color: PdfColors.grey700,
-                    ),
+                    style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700),
                   ),
                   pw.SizedBox(height: 32),
                   pw.Text(
@@ -328,115 +262,99 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
       );
 
       final bytes = await doc.save();
-      final cleanLabel = label
-          .replaceAll(RegExp(r'[^\w\s]+'), '')
-          .replaceAll(' ', '_');
 
       if (mounted) {
         ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ PDF generado. Selecciona "Guardar en Archivos" para enviarlo a Documentos.'),
-            backgroundColor: AppTheme.accentGreen,
-            duration: Duration(seconds: 4),
-          ),
+        DashboardAnimatedToast.show(
+          context,
+          'PDF generado. Guárdalo o compártelo para imprimirlo.',
         );
       }
 
-      // sharePdf abre nativamente "Guardar en Archivos" o "Compartir por WhatsApp"
-      await Printing.sharePdf(
-        bytes: bytes,
-        filename: 'qr_$cleanLabel.pdf',
-      );
+      // sharePdf abre "Guardar en Archivos" o "Compartir" en el teléfono, y
+      // descarga el archivo en el navegador.
+      await Printing.sharePdf(bytes: bytes, filename: 'qr_${_cleanLabel(label)}.pdf');
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error al generar PDF: $e')));
+        DashboardAnimatedToast.show(context, 'Error al generar PDF: $e', isError: true);
       }
     }
   }
 
   void _showQRDialog(String code, String label) {
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (context) => Dialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(48)),
-        child: Padding(
-          padding: const EdgeInsets.all(32),
+      builder: (dialogContext) => Dialog(
+        backgroundColor: AppColors.white,
+        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(28),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
                 label.toUpperCase(),
                 textAlign: TextAlign.center,
-                style: GoogleFonts.anton(fontSize: 18, fontWeight: FontWeight.w400, letterSpacing: 1),
+                style: AppTypography.display(size: 30),
               ),
               const SizedBox(height: 16),
               Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(32),
-                  boxShadow: [
-                    BoxShadow(color: Colors.black.withValues(alpha: 0.05), blurRadius: 20, offset: const Offset(0, 10)),
-                  ],
+                  color: AppColors.white,
+                  borderRadius: BorderRadius.circular(24),
+                  border: Border.all(color: AppColors.black, width: 1.2),
                 ),
                 child: QrImageView(
                   data: code,
                   version: QrVersions.auto,
-                  size: 200.0,
+                  size: 220,
                   eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
-                  dataModuleStyle: const QrDataModuleStyle(dataModuleShape: QrDataModuleShape.square, color: Colors.black),
+                  dataModuleStyle: const QrDataModuleStyle(
+                    dataModuleShape: QrDataModuleShape.square,
+                    color: Colors.black,
+                  ),
                 ),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               SelectableText(
                 code,
                 textAlign: TextAlign.center,
-                style: const TextStyle(fontSize: 10, color: Colors.black26, fontWeight: FontWeight.w700),
+                style: AppTypography.body(
+                  size: 11,
+                  weight: FontWeight.w400,
+                  color: AppColors.textSecondary,
+                ),
               ),
-              const SizedBox(height: 24),
+              const SizedBox(height: 20),
               Row(
                 children: [
                   Expanded(
-                    child: OutlinedButton.icon(
+                    child: _QrActionButton(
+                      icon: Icons.image_outlined,
+                      label: 'Imagen',
                       onPressed: () {
-                        Navigator.pop(context);
+                        Navigator.pop(dialogContext);
                         _shareQRImage(code, label);
                       },
-                      icon: const Icon(Icons.photo_rounded, size: 16),
-                      label: const Text('IMAGEN', style: TextStyle(fontSize: 12, letterSpacing: 0)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-                      ),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: 10),
                   Expanded(
-                    child: OutlinedButton.icon(
+                    child: _QrActionButton(
+                      icon: Icons.picture_as_pdf_outlined,
+                      label: 'PDF',
                       onPressed: () {
-                        Navigator.pop(context);
+                        Navigator.pop(dialogContext);
                         _shareQRPdf(code, label);
                       },
-                      icon: const Icon(Icons.picture_as_pdf_rounded, size: 16),
-                      label: const Text('PDF', style: TextStyle(fontSize: 12, letterSpacing: 0)),
-                      style: OutlinedButton.styleFrom(
-                        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 12),
-                      ),
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              SizedBox(
-                width: double.infinity,
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: const Text('LISTO'),
-                ),
-              ),
+              const SizedBox(height: 14),
+              AppPrimaryButton(label: 'Listo', onPressed: () => Navigator.pop(dialogContext)),
             ],
           ),
         ),
@@ -444,175 +362,149 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
     );
   }
 
-  Future<void> _confirmRegenerateQR(int index, String label) async {
-    final confirmed = await showDialog<bool>(
+  void _confirmRegenerateQR(int index, String label) {
+    showDialog<void>(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: Colors.white,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(48)),
-        title: const Text('REGENERAR QR', textAlign: TextAlign.center),
-        content: const Text(
-          'EL CÓDIGO ACTUAL DEJARÁ DE FUNCIONAR. ¿ESTÁS SEGURO?',
-          textAlign: TextAlign.center,
-          style: TextStyle(fontWeight: FontWeight.w700, fontSize: 13, color: Colors.black54),
-        ),
-        actions: [
-          Row(
-            children: [
-              Expanded(
-                child: TextButton(
-                  onPressed: () => Navigator.pop(context, false),
-                  child: const Text('CANCELAR', style: TextStyle(fontWeight: FontWeight.w900, color: Colors.black26)),
-                ),
-              ),
-              Expanded(
-                child: ElevatedButton(
-                  onPressed: () => Navigator.pop(context, true),
-                  style: ElevatedButton.styleFrom(backgroundColor: AppTheme.accentPink),
-                  child: const Text('REGENERAR'),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-        ],
+      builder: (_) => AppMessageDialog(
+        icon: Icons.refresh_rounded,
+        title: 'Regenerar QR',
+        message: 'El código actual dejará de funcionar. ¿Estás seguro?',
+        primaryLabel: 'Regenerar',
+        onPrimary: () => _regenerateQR(index, label),
+        secondaryLabel: 'Cancelar',
       ),
     );
+  }
 
-    if (confirmed != true) return;
-
+  Future<void> _regenerateQR(int index, String label) async {
     try {
       final newCode = const Uuid().v4();
       final qrId = _qrCodes[index]['id'];
 
       if (qrId == null) throw Exception('ID de QR no encontrado');
 
-      // Update DB
       await ApiClient().patch('qr-codes/$qrId', body: {'qrCode': newCode});
 
-      // Update Local State transparently
       setState(() {
         _qrCodes[index]['qr_code'] = newCode;
       });
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('✅ QR regenerado correctamente')),
-        );
+        DashboardAnimatedToast.show(context, 'QR regenerado correctamente');
         _showQRDialog(newCode, label);
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al regenerar: $e'),
-            backgroundColor: AppTheme.accentPink,
-          ),
-        );
+        DashboardAnimatedToast.show(context, 'Error al regenerar: $e', isError: true);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.transparent,
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _qrCodes.isEmpty
-              ? Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(32),
-                        decoration: BoxDecoration(color: AppTheme.accentYellow.withValues(alpha: 0.05), shape: BoxShape.circle),
-                        child: const Icon(Icons.qr_code_2_rounded, size: 64, color: AppTheme.accentYellow),
-                      ),
-                      const SizedBox(height: 24),
-                      Text(
-                        'SIN CÓDIGOS QR',
-                        style: GoogleFonts.anton(fontSize: 16, fontWeight: FontWeight.w400, letterSpacing: 1),
-                      ),
-                      const Text(
-                        'Genera uno para empezar a recibir clientes.',
-                        style: TextStyle(fontWeight: FontWeight.w700, color: Colors.black26),
-                      ),
-                    ],
-                  ),
-                )
-              : ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 100),
-                  itemCount: _qrCodes.length,
-                  itemBuilder: (context, index) {
-                    final qr = _qrCodes[index];
-                    final String safeCode = (qr['qr_code'] ?? '').toString();
-                    final String safeLabel = (qr['label'] ?? 'QR').toString();
-                    final String rawDate = (qr['created_at'] ?? '').toString();
-                    final String displayDate = EcuadorDateUtils.formatEcuadorDate(rawDate);
-                    final bool isCorrupt = safeCode.isEmpty;
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-                    return Container(
-                      margin: const EdgeInsets.only(bottom: 16),
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(32),
-                        boxShadow: [
-                          BoxShadow(color: Colors.black.withValues(alpha: 0.02), blurRadius: 10, offset: const Offset(0, 4)),
-                        ],
-                        border: Border.all(color: isCorrupt ? AppTheme.accentPink.withValues(alpha: 0.2) : Colors.black.withValues(alpha: 0.04)),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: (isCorrupt ? AppTheme.accentPink : AppTheme.accentYellow).withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            child: Icon(
-                              isCorrupt ? Icons.warning_amber_rounded : Icons.qr_code_rounded,
-                              color: isCorrupt ? AppTheme.accentPink : AppTheme.accentYellow,
-                            ),
-                          ),
-                          const SizedBox(width: 16),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  safeLabel.toUpperCase(),
-                                  style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 14, letterSpacing: 0.5),
-                                ),
-                                const SizedBox(height: 4),
-                                Text(
-                                  isCorrupt ? 'ERROR EN DATOS' : 'CREADO EL $displayDate',
-                                  style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.w800,
-                                    color: isCorrupt ? AppTheme.accentPink : Colors.black38,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          IconButton(
-                            icon: const Icon(Icons.chevron_right_rounded, color: Colors.black26),
-                            onPressed: () => isCorrupt ? _confirmRegenerateQR(index, safeLabel) : _showQRDialog(safeCode, safeLabel),
-                          ),
-                        ],
-                      ),
-                    ).animate(delay: (index * 50).ms).fadeIn(duration: 400.ms).slideX(begin: 0.1, curve: Curves.easeOut);
-                  },
+    if (_qrCodes.isEmpty) {
+      return Column(
+        children: [
+          const Expanded(
+            child: AppEmptyState(
+              title: 'Sin códigos QR',
+              message: 'Genera uno para empezar a recibir clientes.',
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(48, 8, 48, 32),
+            child: AppPrimaryButton(label: 'Generar mi QR', onPressed: _generateFirstQRCode),
+          ),
+        ],
+      );
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
+      itemCount: _qrCodes.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 14),
+      itemBuilder: (context, index) {
+        final qr = _qrCodes[index];
+        final String safeCode = (qr['qr_code'] ?? '').toString();
+        final String safeLabel = (qr['label'] ?? 'QR').toString();
+        final String displayDate =
+            EcuadorDateUtils.formatEcuadorDate((qr['created_at'] ?? '').toString());
+        final bool isCorrupt = safeCode.isEmpty;
+
+        return AppCard(
+          onTap: () => isCorrupt
+              ? _confirmRegenerateQR(index, safeLabel)
+              : _showQRDialog(safeCode, safeLabel),
+          padding: const EdgeInsets.all(16),
+          child: Row(
+            children: [
+              Container(
+                width: 52,
+                height: 52,
+                decoration: BoxDecoration(
+                  color: isCorrupt ? AppColors.pink : AppColors.surfaceMuted,
+                  shape: BoxShape.circle,
                 ),
-      floatingActionButton: (!_isLoading && _qrCodes.isEmpty)
-          ? FloatingActionButton.extended(
-              onPressed: _generateFirstQRCode,
-              label: const Text('GENERAR MI QR'),
-              icon: const Icon(Icons.add_rounded),
-            )
-          : null,
+                child: Icon(
+                  isCorrupt ? Icons.warning_amber_rounded : Icons.qr_code_2_rounded,
+                  size: 28,
+                ),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(safeLabel.toUpperCase(), style: AppTypography.display(size: 22)),
+                    Text(
+                      isCorrupt
+                          ? 'Código dañado: toca para regenerarlo'
+                          : 'Creado el $displayDate',
+                      style: AppTypography.body(
+                        size: 14,
+                        weight: FontWeight.w300,
+                        color: AppColors.textSecondary,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const Icon(Icons.chevron_right_rounded, size: 32),
+            ],
+          ),
+        )
+            .animate(delay: (index.clamp(0, 6) * 50).ms)
+            .fadeIn(duration: 350.ms)
+            .slideY(begin: 0.06, curve: Curves.easeOutCubic);
+      },
+    );
+  }
+}
+
+class _QrActionButton extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onPressed;
+
+  const _QrActionButton({required this.icon, required this.label, required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return OutlinedButton.icon(
+      onPressed: onPressed,
+      icon: Icon(icon, size: 20),
+      label: Text(label.toUpperCase()),
+      style: OutlinedButton.styleFrom(
+        foregroundColor: AppColors.black,
+        side: const BorderSide(color: AppColors.black, width: 1.2),
+        shape: const StadiumBorder(),
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        textStyle: AppTypography.label(size: 12, tracking: 2),
+      ),
     );
   }
 }

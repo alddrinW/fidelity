@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_animate/flutter_animate.dart';
 
 import '../../core/theme/app_typography.dart';
@@ -7,6 +7,7 @@ import '../../core/widgets/app_choice_option.dart';
 import '../../core/widgets/app_page_header.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import 'register_screen.dart';
+import '../../core/l10n/tr_text.dart';
 
 /// Primer paso del registro: elegir entre cuenta de usuario o de negocio.
 class RegisterChoiceScreen extends StatefulWidget {

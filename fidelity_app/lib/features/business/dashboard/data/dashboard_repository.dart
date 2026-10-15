@@ -1,5 +1,6 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/services/api_client.dart';
+import '../../../auth/data/auth_repository.dart';
 
 final dashboardRepositoryProvider = Provider<DashboardRepository>((ref) {
   return DashboardRepository();
@@ -13,8 +14,13 @@ class DashboardRepository {
   Future<Map<String, dynamic>?> fetchBusiness(String userId) async {
     final response = await _api.get('businesses/my-businesses');
     if (response is List && response.isNotEmpty) {
-      final raw = Map<String, dynamic>.from(response.first as Map);
+      // El negocio elegido por el usuario (business_id); si no, el primero.
+      final currentId = _api.currentUser?['business_id']?.toString();
+      final list = response.map((b) => Map<String, dynamic>.from(b as Map)).toList();
+      final pickedId = AuthRepository.pickBusinessId(list, currentId);
+      final raw = list.firstWhere((b) => b['id']?.toString() == pickedId, orElse: () => list.first);
       return {
+        'parent_id': raw['parentId'] ?? raw['parent_id'],
         'id': raw['id'],
         'owner_id': raw['ownerId'] ?? raw['owner_id'],
         'name': raw['name'],
@@ -31,6 +37,7 @@ class DashboardRepository {
         'points_required': raw['pointsRequired'] ?? raw['points_required'] ?? 10,
         'cooldown_hours': raw['cooldownHours'] ?? raw['cooldown_hours'] ?? 4,
         'is_active': raw['isActive'] ?? raw['is_active'] ?? true,
+        'created_at': raw['createdAt'] ?? raw['created_at'],
       };
     }
     return null;

@@ -1,7 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../theme/app_colors.dart';
+import '../l10n/translator.dart';
 import '../theme/app_typography.dart';
+import '../l10n/tr_text.dart';
 
 /// Botón principal de marca: píldora negra con etiqueta extendida y espaciada.
 class AppPrimaryButton extends StatelessWidget {
@@ -101,7 +103,7 @@ class AppCircleButton extends StatelessWidget {
     final background = dark ? AppColors.black : AppColors.pink;
     final foreground = dark ? AppColors.white : AppColors.black;
     return Tooltip(
-      message: tooltip,
+      message: context.tr(tooltip),
       child: AnimatedOpacity(
         duration: const Duration(milliseconds: 250),
         opacity: onPressed == null ? 0.45 : 1,

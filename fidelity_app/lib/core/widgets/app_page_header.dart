@@ -1,7 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../theme/app_colors.dart';
+import '../l10n/translator.dart';
 import '../theme/app_typography.dart';
+import '../l10n/tr_text.dart';
 
 /// Cabecera de pantalla: flecha de retroceso a la izquierda y título Anton
 /// centrado. El título se reduce si no cabe, sin invadir la flecha.
@@ -33,7 +35,7 @@ class AppPageHeader extends StatelessWidget {
             width: _slot,
             child: canPop
                 ? IconButton(
-                    tooltip: 'Volver',
+                    tooltip: context.tr('Volver'),
                     icon: const Icon(
                       Icons.chevron_left_rounded,
                       size: 40,

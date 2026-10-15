@@ -29,6 +29,8 @@ class CardHistoryRepository {
         'id': raw['id'],
         'scanned_at': raw['scannedAt'] ?? raw['scanned_at'],
         'status': raw['status'],
+        // Sin QR el punto lo otorgó el negocio a mano (regalo).
+        'qr_code_id': raw['qrCodeId'] ?? raw['qr_code_id'],
         'points_awarded': raw['pointsAwarded'] ?? raw['points_awarded'] ?? 1,
         'businesses': {
           'name': businessName,

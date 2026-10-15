@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/l10n/language_selector.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/image_picking.dart';
@@ -16,11 +17,15 @@ import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/user_avatar_circle.dart';
 import '../auth/data/auth_repository.dart';
 import '../auth/providers/auth_provider.dart';
+import '../campaigns/my_gifts_screen.dart';
+import '../feedback/data/feedback_repository.dart';
+import '../feedback/feedback_inbox_screen.dart';
 import '../help/business_faqs_screen.dart';
 import '../help/faqs_screen.dart';
 import 'providers/user_profile_provider.dart';
 import 'widgets/change_password_dialog.dart';
 import 'widgets/delete_account_dialog.dart';
+import '../../core/l10n/tr_text.dart';
 
 /// Ajustes de mi perfil: datos personales, foto, contraseña, ayuda y cuenta.
 /// Sirve tanto al cliente como al dueño de un negocio ("Ajustar mis datos").
@@ -213,6 +218,23 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
     );
   }
 
+  void _openMyGifts() {
+    Navigator.push(context, MaterialPageRoute(builder: (_) => const MyGiftsScreen()));
+  }
+
+  void _openMyFeedback() {
+    final repository = ref.read(feedbackRepositoryProvider);
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => FeedbackInboxScreen(
+          title: 'Mis opiniones',
+          load: repository.listMine,
+        ),
+      ),
+    );
+  }
+
   void _openFaqs() {
     Navigator.push(
       context,
@@ -310,6 +332,22 @@ class _UserProfileScreenState extends ConsumerState<UserProfileScreen> {
                                 label: 'Cambiar contraseña',
                                 onTap: _changePassword,
                               ),
+                              const SizedBox(height: 16),
+                              if (!_isBusinessOwner) ...[
+                                AppNavRow(
+                                  icon: Icons.card_giftcard_rounded,
+                                  label: 'Mis regalos',
+                                  onTap: _openMyGifts,
+                                ),
+                                const SizedBox(height: 16),
+                                AppNavRow(
+                                  icon: Icons.chat_bubble_outline_rounded,
+                                  label: 'Mis sugerencias y reclamos',
+                                  onTap: _openMyFeedback,
+                                ),
+                                const SizedBox(height: 16),
+                              ],
+                              const LanguageRow(),
                               const SizedBox(height: 16),
                               AppNavRow(
                                 icon: Icons.help_outline_rounded,

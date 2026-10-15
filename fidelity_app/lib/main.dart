@@ -1,10 +1,12 @@
 import 'dart:io';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'firebase_options.dart';
+import 'core/l10n/app_language.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/api_client.dart';
 import 'features/auth/auth_wrapper.dart';
@@ -28,19 +30,28 @@ void main() async {
     }
   }
 
-  runApp(const ProviderScope(child: FidelityApp()));
+  // Idioma elegido en la última sesión (español por defecto).
+  final language = await LanguageStore.load();
+
+  runApp(ProviderScope(
+    overrides: [initialLanguageProvider.overrideWithValue(language)],
+    child: const FidelityApp(),
+  ));
 }
 
-class FidelityApp extends StatelessWidget {
+class FidelityApp extends ConsumerWidget {
   const FidelityApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    // Al cambiar de idioma en Ajustes, toda la interfaz se actualiza al instante.
+    final language = ref.watch(languageProvider);
+
     return MaterialApp(
       title: 'Fidelity',
       theme: AppTheme.popTheme,
       debugShowCheckedModeBanner: false,
-      locale: const Locale('es'),
+      locale: language.locale,
       supportedLocales: const [Locale('es'), Locale('en')],
       localizationsDelegates: const [
         GlobalMaterialLocalizations.delegate,
@@ -48,6 +59,15 @@ class FidelityApp extends StatelessWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       navigatorKey: globalNavigatorKey,
+      // En PC los carruseles y las filas de filtros también se arrastran con el ratón.
+      scrollBehavior: const MaterialScrollBehavior().copyWith(
+        dragDevices: {
+          PointerDeviceKind.touch,
+          PointerDeviceKind.mouse,
+          PointerDeviceKind.trackpad,
+          PointerDeviceKind.stylus,
+        },
+      ),
       home: const AuthWrapper(),
     );
   }

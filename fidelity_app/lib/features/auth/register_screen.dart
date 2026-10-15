@@ -1,10 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/auth_error_translator.dart';
 import '../../core/validators/app_validators.dart';
@@ -14,6 +14,7 @@ import '../../core/widgets/app_photo_picker.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../../core/widgets/app_text_field.dart';
 import 'data/auth_repository.dart';
+import '../../core/l10n/tr_text.dart';
 
 /// Datos personales del registro. [role] llega desde la pantalla de elección:
 /// 'client' (usuario) o 'business' (negocio).
@@ -111,7 +112,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         content: Container(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
           decoration: BoxDecoration(
-            color: AppTheme.accentGreen,
+            color: AppColors.black,
             borderRadius: BorderRadius.circular(24),
           ),
           child: Row(

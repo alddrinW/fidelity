@@ -1,12 +1,12 @@
 {
-    "name": "fidelity_app",
-    "short_name": "fidelity_app",
+    "name": "Fidelity",
+    "short_name": "Fidelity",
     "start_url": ".",
     "display": "standalone",
     "background_color": "#FFFFFF",
-    "theme_color": "#FFFFFF",
-    "description": "A new Flutter project.",
-    "orientation": "portrait-primary",
+    "theme_color": "#FEBFDC",
+    "description": "Tarjetas de fidelidad digitales: acumula puntos y gana premios.",
+    "orientation": "any",
     "prefer_related_applications": false,
     "icons": [
         {

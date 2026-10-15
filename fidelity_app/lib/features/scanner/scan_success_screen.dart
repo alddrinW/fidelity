@@ -1,5 +1,5 @@
 import 'package:confetti/confetti.dart';
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -8,7 +8,9 @@ import '../../core/theme/app_typography.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../cards/providers/my_cards_provider.dart';
+import '../feedback/widgets/feedback_sheet.dart';
 import 'data/scanner_repository.dart';
+import '../../core/l10n/tr_text.dart';
 
 /// Pantalla de cierre de un escaneo válido: Fido celebra y se informa el
 /// progreso real devuelto por el backend.
@@ -39,6 +41,10 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
 
   String get _summary {
     final r = widget.result;
+    if (r.isPending) {
+      return 'Tu escaneo en ${r.businessName} quedó pendiente. '
+          'Cuando el local lo apruebe, sumarás tu punto.';
+    }
     if (r.rewardCompleted) {
       final prize = r.rewardDescription;
       return prize == null || prize.isEmpty
@@ -51,6 +57,17 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
       return 'Sumaste un punto en ${r.businessName}. Llevas $points de $required.';
     }
     return 'Sumaste un punto en ${r.businessName}.';
+  }
+
+  /// Buzón de Fido: el cliente califica la atención recién recibida.
+  Future<void> _openFeedback() async {
+    final businessId = widget.result.businessId;
+    if (businessId == null) return;
+    await showFeedbackSheet(
+      context,
+      businessId: businessId,
+      businessName: widget.result.businessName,
+    );
   }
 
   void _finish() {
@@ -103,7 +120,12 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
                                   weight: FontWeight.w300,
                                 ),
                               ).animate(delay: 200.ms).fadeIn(),
-                              const SizedBox(height: 16),
+                              if (widget.result.businessId != null)
+                                AppTextAction(
+                                  label: 'Califica la atención',
+                                  onPressed: _openFeedback,
+                                ).animate(delay: 400.ms).fadeIn(),
+                              const SizedBox(height: 8),
                               Image.asset(
                                 'assets/images/fido_celebra.png',
                                 width: (MediaQuery.sizeOf(context).width * 0.8)

@@ -117,8 +117,11 @@ class DashboardNotifier extends Notifier<DashboardState> {
 
       final businessId = business['id'] as String;
 
+      // El aprobador no ve la lista de clientes (es solo para el dueño).
+      final isApprover = user.role == 'approver';
+
       final results = await Future.wait([
-        repo.fetchCustomers(businessId),
+        isApprover ? Future.value(<Map<String, dynamic>>[]) : repo.fetchCustomers(businessId),
         repo.fetchPendingScans(businessId),
         repo.fetchPendingRewards(businessId),
       ]);

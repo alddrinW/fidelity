@@ -1,8 +1,9 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
 import 'app_button.dart';
+import '../l10n/tr_text.dart';
 
 /// Diálogo de mensaje con el estilo de marca: icono en halo rosa, título
 /// Anton, texto y botón principal negro. Opcionalmente un botón secundario.

@@ -1,9 +1,10 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/validators/app_validators.dart';
 import '../../../core/widgets/app_text_field.dart';
+import '../../../core/l10n/tr_text.dart';
 
 typedef PasswordChange = ({String current, String next});
 

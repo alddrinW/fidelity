@@ -21,6 +21,8 @@ class AuthAdmin extends AuthStateStatus {}
 class AuthBusinessActive extends AuthStateStatus {}
 class AuthBusinessInactive extends AuthStateStatus {}
 class AuthBusinessPendingCreate extends AuthStateStatus {}
+/// Supervisor de un local (rol Aprobador): aprueba escaneos y premios.
+class AuthApprover extends AuthStateStatus {}
 class AuthClient extends AuthStateStatus {}
 
 class AuthNotifier extends Notifier<AuthStateStatus> {
@@ -77,6 +79,8 @@ class AuthNotifier extends Notifier<AuthStateStatus> {
 
       if (userRole == 'admin') {
         state = AuthAdmin();
+      } else if (userRole == 'approver') {
+        state = AuthApprover();
       } else if (userRole == 'business') {
         final businessId = user.businessId;
         if (businessId == null || businessId.isEmpty) {

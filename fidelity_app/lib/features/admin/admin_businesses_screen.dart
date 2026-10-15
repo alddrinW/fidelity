@@ -1,11 +1,23 @@
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:flutter/material.dart' hide Text;
+import 'package:flutter_animate/flutter_animate.dart';
+
 import '../../core/services/api_client.dart';
-import '../../core/theme/app_theme.dart';
-import '../../core/utils/date_utils.dart';
 import '../../core/services/export_service.dart';
-import 'widgets/export_preview_dialog.dart';
+import '../../core/theme/app_colors.dart';
+import '../../core/theme/app_typography.dart';
+import '../../core/utils/date_utils.dart';
 import '../../core/utils/image_source.dart';
+import '../../core/widgets/app_button.dart';
+import '../../core/widgets/app_card.dart';
+import '../../core/widgets/app_chip.dart';
+import '../../core/widgets/app_empty_state.dart';
+import '../../core/widgets/app_message_dialog.dart';
+import '../../core/widgets/person_avatar.dart';
+import '../business/dashboard/widgets/dashboard_animated_toast.dart';
+import 'data/admin_date_filter.dart';
+import 'widgets/admin_widgets.dart';
+import 'widgets/export_preview_dialog.dart';
+import '../../core/l10n/tr_text.dart';
 
 class AdminBusinessesScreen extends StatefulWidget {
   const AdminBusinessesScreen({super.key});
@@ -14,124 +26,63 @@ class AdminBusinessesScreen extends StatefulWidget {
   State<AdminBusinessesScreen> createState() => _AdminBusinessesScreenState();
 }
 
-enum DateRangeFilter {
-  all('Todas', 0),
-  today('Hoy', 1),
-  week('Semana', 7),
-  month('Mes', 30),
-  year('Año', 365),
-  custom('Personalizado', -1);
-
-  final String label;
-  final int days;
-
-  const DateRangeFilter(this.label, this.days);
-}
-
 class _AdminBusinessesScreenState extends State<AdminBusinessesScreen> {
   final ApiClient _apiClient = ApiClient();
+  final TextEditingController _searchController = TextEditingController();
+
   bool _isLoading = true;
   List<Map<String, dynamic>> _businesses = [];
-  final TextEditingController _searchController = TextEditingController();
   String _searchQuery = '';
-  DateRangeFilter _selectedFilter = DateRangeFilter.all;
-  DateTime? _customStartDate;
-  DateTime? _customEndDate;
+  // 'all' | 'pending' (por activar) | 'active'
+  String _statusFilter = 'all';
+  AdminDateFilter _filter = AdminDateFilter.all;
+  DateTimeRange? _customRange;
 
-  final ScrollController _scrollController = ScrollController();
-  bool _isFetchingMore = false;
-  bool _hasMore = true;
-  int _currentPage = 0;
-  static const int _pageSize = 20;
+  static const _statusOptions = <(String, String)>[
+    ('all', 'Todos'),
+    ('pending', 'Por activar'),
+    ('active', 'Activos'),
+  ];
 
   @override
   void initState() {
     super.initState();
     _loadBusinesses();
-    _scrollController.addListener(() {
-      if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200 && 
-          !_isFetchingMore && 
-          _hasMore) {
-        _fetchMoreBusinesses();
-      }
-    });
   }
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _searchController.dispose();
     super.dispose();
   }
 
-  (DateTime start, DateTime end)? _getDateRange() {
-    final startOfDay = EcuadorDateUtils.getStartOfDayEcuadorUtc();
-    final nowUtc = DateTime.now().toUtc();
-
-    switch (_selectedFilter) {
-      case DateRangeFilter.all:
-        return null;
-      case DateRangeFilter.today:
-        return (startOfDay, EcuadorDateUtils.getEndOfDayEcuadorUtc());
-      case DateRangeFilter.week:
-        final start = startOfDay.subtract(const Duration(days: 7));
-        return (start, nowUtc);
-      case DateRangeFilter.month:
-        final start = startOfDay.subtract(const Duration(days: 30));
-        return (start, nowUtc);
-      case DateRangeFilter.year:
-        final start = startOfDay.subtract(const Duration(days: 365));
-        return (start, nowUtc);
-      case DateRangeFilter.custom:
-        if (_customStartDate != null && _customEndDate != null) {
-          final cStart = DateTime.utc(_customStartDate!.year, _customStartDate!.month, _customStartDate!.day, 5, 0, 0);
-          final cEnd = DateTime.utc(_customEndDate!.year, _customEndDate!.month, _customEndDate!.day, 5, 0, 0).add(const Duration(days: 1)).subtract(const Duration(milliseconds: 1));
-          return (cStart, cEnd);
-        }
-        return (startOfDay, EcuadorDateUtils.getEndOfDayEcuadorUtc());
-    }
-  }
-
   Future<void> _loadBusinesses() async {
-    setState(() {
-      _isLoading = true;
-      _currentPage = 0;
-      _hasMore = true;
-      _businesses = [];
-    });
+    setState(() => _isLoading = true);
     try {
       final response = await _apiClient.get('businesses', queryParams: {'all': 'true'});
-      var list = response is List ? List<Map<String, dynamic>>.from(response) : <Map<String, dynamic>>[];
+      var list = response is List
+          ? List<Map<String, dynamic>>.from(response)
+          : <Map<String, dynamic>>[];
 
-      final dateRange = _getDateRange();
-      if (dateRange != null) {
+      final range = AdminDateRange.resolve(_filter, custom: _customRange);
+      if (range != null) {
         list = list.where((b) {
-          final createdAtStr = b['createdAt'] ?? b['created_at'];
-          if (createdAtStr == null) return false;
-          final d = DateTime.tryParse(createdAtStr);
-          if (d == null) return false;
-          return d.isAfter(dateRange.$1) && d.isBefore(dateRange.$2);
+          final created = DateTime.tryParse('${b['createdAt'] ?? b['created_at'] ?? ''}');
+          return created != null && range.contains(created);
         }).toList();
       }
 
-      final normalized = _normalizeBusinesses(list);
-
       if (mounted) {
         setState(() {
-          _businesses = normalized;
-          _hasMore = false;
+          _businesses = _normalizeBusinesses(list);
           _isLoading = false;
         });
       }
     } catch (e) {
       debugPrint('Error loading businesses: $e');
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al cargar negocios: $e'),
-            backgroundColor: AppTheme.accentPink,
-          ),
-        );
         setState(() => _isLoading = false);
+        DashboardAnimatedToast.show(context, 'Error al cargar negocios', isError: true);
       }
     }
   }
@@ -148,6 +99,7 @@ class _AdminBusinessesScreenState extends State<AdminBusinessesScreen> {
             'full_name': u['fullName'] ?? u['full_name'],
             'email': u['email'],
             'phone': u['phone'],
+            'avatar_url': u['avatarUrl'] ?? u['avatar_url'],
             'is_demo': u['isDemo'] ?? u['is_demo'] ?? false,
           },
         };
@@ -177,60 +129,70 @@ class _AdminBusinessesScreenState extends State<AdminBusinessesScreen> {
     }).toList();
   }
 
-  Future<void> _fetchMoreBusinesses() async {
-    // Already fetched all in getBusinesses('all=true')
-  }
-
   List<Map<String, dynamic>> get _filteredBusinesses {
-    if (_searchQuery.isEmpty) return _businesses;
+    final query = _searchQuery.toLowerCase();
     return _businesses.where((b) {
+      final isActive = b['is_active'] == true;
+      if (_statusFilter == 'pending' && isActive) return false;
+      if (_statusFilter == 'active' && !isActive) return false;
+      if (query.isEmpty) return true;
       final name = (b['name'] ?? '').toString().toLowerCase();
       final owner = (b['profiles']?['full_name'] ?? '').toString().toLowerCase();
       final email = (b['profiles']?['email'] ?? '').toString().toLowerCase();
-      final query = _searchQuery.toLowerCase();
       return name.contains(query) || owner.contains(query) || email.contains(query);
     }).toList();
   }
 
-  Future<void> _toggleBusinessStatus(String id, bool currentStatus) async {
-    // 1. Optimistic UI Update
-    setState(() {
-      final index = _businesses.indexWhere((b) => b['id'] == id);
-      if (index != -1) {
-        _businesses[index]['is_active'] = !currentStatus;
-      }
-    });
+  /// Activar o desactivar una cuenta pide confirmación: activar equivale a
+  /// confirmar que se validó el pago del registro del negocio.
+  void _confirmToggle(Map<String, dynamic> business) {
+    final name = '${business['name'] ?? 'el negocio'}';
+    final isActive = business['is_active'] == true;
 
+    showDialog(
+      context: context,
+      builder: (_) => AppMessageDialog(
+        icon: isActive ? Icons.block_rounded : Icons.verified_rounded,
+        title: isActive ? '¿Desactivar cuenta?' : '¿Activar cuenta?',
+        message: isActive
+            ? '$name dejará de recibir escaneos hasta que vuelvas a activarla.'
+            : 'Confirma que ya validaste el pago del registro de $name. '
+                'Su dueño podrá empezar a usar Fidelity.',
+        primaryLabel: isActive ? 'Desactivar' : 'Sí, activar',
+        onPrimary: () => _toggleBusinessStatus(business['id'] as String, isActive),
+        secondaryLabel: 'Cancelar',
+      ),
+    );
+  }
+
+  Future<void> _toggleBusinessStatus(String id, bool currentStatus) async {
+    void setStatus(bool value) {
+      final index = _businesses.indexWhere((b) => b['id'] == id);
+      if (index != -1) _businesses[index]['is_active'] = value;
+    }
+
+    // Actualización optimista; se revierte si el servidor rechaza el cambio.
+    setState(() => setStatus(!currentStatus));
     try {
-      // 2. Ejecutar vía API NestJS
-      await _apiClient.patch('businesses/$id/status', body: {
-        'isActive': !currentStatus,
-      });
-    } catch (e) {
-      debugPrint('Error toggling status: $e');
+      await _apiClient.patch('businesses/$id/status', body: {'isActive': !currentStatus});
       if (mounted) {
-        // 3. Revertir si hubo error
-        setState(() {
-          final index = _businesses.indexWhere((b) => b['id'] == id);
-          if (index != -1) {
-            _businesses[index]['is_active'] = currentStatus;
-          }
-        });
-        
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Error al cambiar estado: $e'),
-            backgroundColor: AppTheme.accentPink,
-          ),
+        DashboardAnimatedToast.show(
+          context,
+          currentStatus ? 'Cuenta desactivada' : 'Cuenta activada',
         );
       }
+    } catch (e) {
+      debugPrint('Error toggling status: $e');
+      if (!mounted) return;
+      setState(() => setStatus(currentStatus));
+      DashboardAnimatedToast.show(context, 'Error al cambiar el estado', isError: true);
     }
   }
 
   void _showExportDialog() {
     showDialog(
       context: context,
-      builder: (context) => ExportPreviewDialog(
+      builder: (_) => ExportPreviewDialog(
         data: _filteredBusinesses,
         entity: ExportEntity.businesses,
         exportService: AppExportService(),
@@ -238,554 +200,320 @@ class _AdminBusinessesScreenState extends State<AdminBusinessesScreen> {
     );
   }
 
-  Future<void> _showCustomDatePicker() async {
-    final now = EcuadorDateUtils.nowEcuador();
-    final picked = await showDateRangePicker(
-      context: context,
-      firstDate: now.subtract(const Duration(days: 365 * 5)),
-      lastDate: now,
-      initialDateRange: _customStartDate != null && _customEndDate != null
-          ? DateTimeRange(start: _customStartDate!, end: _customEndDate!)
-          : DateTimeRange(
-              start: now.subtract(const Duration(days: 7)),
-              end: now,
-            ),
-      builder: (context, child) {
-        return Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: AppTheme.accentPurple,
-              onPrimary: Colors.white,
-              surface: Colors.white,
-              onSurface: Colors.black,
-            ),
-          ),
-          child: child!,
-        );
-      },
-    );
-
-    if (picked != null) {
-      setState(() {
-        _customStartDate = picked.start;
-        _customEndDate = picked.end;
-        _selectedFilter = DateRangeFilter.custom;
-      });
-      _loadBusinesses();
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Negocios Registrados'),
-        backgroundColor: Colors.white,
-        elevation: 0,
-        foregroundColor: Colors.black,
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _showExportDialog,
-        icon: const Icon(Icons.download),
-        label: const Text('Exportar'),
-        backgroundColor: AppTheme.accentPurple,
-        foregroundColor: Colors.white,
+    final businesses = _filteredBusinesses;
+
+    return AdminPageFrame(
+      title: 'Negocios',
+      bottom: AdminExportButton(
+        onPressed: _isLoading || businesses.isEmpty ? null : _showExportDialog,
       ),
       body: RefreshIndicator(
         onRefresh: _loadBusinesses,
-        color: Colors.black,
+        color: AppColors.black,
         child: CustomScrollView(
-          controller: _scrollController,
           slivers: [
             SliverToBoxAdapter(
               child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Barra de Búsqueda Profesional
                   Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-            child: Container(
-              decoration: BoxDecoration(
-                color: Colors.grey[100],
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: TextField(
-                controller: _searchController,
-                onChanged: (value) {
-                  setState(() {
-                    _searchQuery = value;
-                  });
-                },
-                decoration: InputDecoration(
-                  hintText: 'Buscar por nombre, dueño o email...',
-                  hintStyle: TextStyle(color: Colors.grey[500], fontSize: 14),
-                  prefixIcon: const Icon(Icons.search, color: AppTheme.accentPurple),
-                  suffixIcon: _searchQuery.isNotEmpty
-                      ? IconButton(
-                          icon: const Icon(Icons.close, size: 20),
-                          onPressed: () {
-                            _searchController.clear();
-                            setState(() {
-                              _searchQuery = '';
-                            });
-                          },
-                        )
-                      : null,
-                  border: InputBorder.none,
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                ),
-              ),
-            ),
-          ),
-          // Filtros de fecha
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            color: Colors.white,
-            width: double.infinity,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '${_filteredBusinesses.length} negocios',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Colors.black,
-                    fontSize: 14,
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                    child: AdminSearchField(
+                      controller: _searchController,
+                      hint: 'Nombre, dueño o correo',
+                      onChanged: (v) => setState(() => _searchQuery = v),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: DateRangeFilter.values.map((filter) {
-                    final isSelected = _selectedFilter == filter;
-                    return InkWell(
-                      onTap: filter == DateRangeFilter.custom
-                          ? _showCustomDatePicker
-                          : () {
-                              setState(() => _selectedFilter = filter);
-                              _loadBusinesses();
-                            },
-                      borderRadius: BorderRadius.circular(20),
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: isSelected ? AppTheme.accentPurple : AppTheme.surface,
-                          borderRadius: BorderRadius.circular(20),
-                          border: isSelected ? null : Border.all(color: Colors.black12),
-                        ),
-                        child: Text(
-                          filter.label,
-                          style: TextStyle(
-                            color: isSelected ? Colors.white : Colors.black87,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.w500,
-                            fontSize: 12,
-                          ),
-                        ),
-                      ),
-                    );
-                  }).toList(),
-                ),
-                if (_selectedFilter == DateRangeFilter.custom &&
-                    _customStartDate != null &&
-                    _customEndDate != null) ...[
-                  const SizedBox(height: 8),
-                  Text(
-                    '${_formatDate(_customStartDate!)} - ${_formatDate(_customEndDate!)}',
-                    style: const TextStyle(color: Color(0xFF666666), fontSize: 12),
+                  SizedBox(
+                    height: 40,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      itemCount: _statusOptions.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 8),
+                      itemBuilder: (context, index) {
+                        final (value, label) = _statusOptions[index];
+                        return AdminFilterPill(
+                          label: label,
+                          selected: _statusFilter == value,
+                          onTap: () => setState(() => _statusFilter = value),
+                        );
+                      },
+                    ),
                   ),
-                ],
+                  const SizedBox(height: 12),
+                  AdminDateFilterBar(
+                    selected: _filter,
+                    customRange: _customRange,
+                    onChanged: (filter, range) {
+                      setState(() {
+                        _filter = filter;
+                        _customRange = range;
+                      });
+                      _loadBusinesses();
+                    },
+                  ),
+                  if (!_isLoading)
+                    AdminCountLabel(
+                      '${businesses.length} ${businesses.length == 1 ? 'negocio' : 'negocios'}',
+                    ),
                 ],
               ),
             ),
+            if (_isLoading)
+              const SliverFillRemaining(hasScrollBody: false, child: AdminLoading())
+            else if (businesses.isEmpty)
+              SliverFillRemaining(
+                hasScrollBody: false,
+                child: AppEmptyState(
+                  title: _searchQuery.isEmpty ? 'Sin negocios' : 'Sin resultados',
+                  message: _searchQuery.isEmpty
+                      ? 'No hay negocios registrados en este periodo.'
+                      : 'Ningún negocio coincide con tu búsqueda.',
+                ),
+              )
+            else
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                sliver: SliverList.separated(
+                  itemCount: businesses.length,
+                  separatorBuilder: (_, __) => const SizedBox(height: 16),
+                  itemBuilder: (context, index) {
+                    final business = businesses[index];
+                    return _BusinessCard(
+                      business: business,
+                      onToggle: () => _confirmToggle(business),
+                    )
+                        .animate(delay: Duration(milliseconds: 40 * (index.clamp(0, 8))))
+                        .fadeIn(duration: 300.ms)
+                        .slideY(begin: 0.06);
+                  },
+                ),
+              ),
           ],
         ),
       ),
-      if (_isLoading)
-          const SliverFillRemaining(
-            child: Center(
-              child: CircularProgressIndicator(
-                valueColor: AlwaysStoppedAnimation(AppTheme.accentPurple),
+    );
+  }
+}
+
+class _BusinessCard extends StatelessWidget {
+  final Map<String, dynamic> business;
+  final VoidCallback onToggle;
+
+  const _BusinessCard({required this.business, required this.onToggle});
+
+  @override
+  Widget build(BuildContext context) {
+    final owner = (business['profiles'] ?? {}) as Map;
+    final isActive = business['is_active'] == true;
+    final logo = imageProviderFromUrl(business['logo_url']?.toString());
+    final clients = List<Map<String, dynamic>>.from(business['loyalty_cards'] ?? []);
+    final createdAt = business['created_at']?.toString();
+
+    return AppCard(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: AppColors.surfaceMuted,
+                  shape: BoxShape.circle,
+                  image: logo == null
+                      ? null
+                      : DecorationImage(image: logo, fit: BoxFit.cover),
+                ),
+                child: logo == null
+                    ? const Icon(Icons.storefront_rounded, color: AppColors.placeholderIcon)
+                    : null,
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      (business['name'] ?? 'Sin nombre').toString().toUpperCase(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.display(size: 24),
+                    ),
+                    const SizedBox(height: 6),
+                    Wrap(
+                      spacing: 6,
+                      runSpacing: 6,
+                      children: [
+                        AppChip(
+                          label: '${business['business_categories']?['name'] ?? 'Otra'}',
+                          style: AppChipStyle.outline,
+                        ),
+                        if (!isActive)
+                          const AppChip(label: 'Por activar')
+                        else
+                          const AppChip(label: 'Activo', style: AppChipStyle.dark),
+                        if (business['is_demo'] == true)
+                          const AppChip(label: 'Demo', style: AppChipStyle.dark),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          AdminInfoLine(
+            icon: Icons.person_outline_rounded,
+            text: '${owner['full_name'] ?? 'Desconocido'}',
+            strong: true,
+          ),
+          AdminInfoLine(icon: Icons.mail_outline_rounded, text: '${owner['email'] ?? 'Sin correo'}'),
+          AdminInfoLine(icon: Icons.phone_outlined, text: '${owner['phone'] ?? 'Sin celular'}'),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceMuted,
+              borderRadius: BorderRadius.circular(24),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('CAMPAÑA', style: AppTypography.label(size: 12, tracking: 4)),
+                const SizedBox(height: 8),
+                _CampaignRow(
+                  label: 'Premio',
+                  value: '${business['reward_description'] ?? 'No definido'}',
+                ),
+                _CampaignRow(label: 'Puntos', value: '${business['points_required'] ?? 0} pts'),
+                _CampaignRow(
+                  label: 'Inicio',
+                  value: createdAt == null || createdAt.isEmpty
+                      ? 'N/A'
+                      : EcuadorDateUtils.formatEcuadorDate(createdAt),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          if (!isActive) ...[
+            AppPrimaryButton(label: 'Activar cuenta', onPressed: onToggle),
+            Padding(
+              padding: const EdgeInsets.only(top: 8, left: 8),
+              child: Text(
+                'Actívala cuando valides el pago del registro.',
+                style: AppTypography.body(
+                  size: 13,
+                  weight: FontWeight.w300,
+                  color: AppColors.textSecondary,
+                ),
               ),
             ),
-          )
-        else if (_filteredBusinesses.isEmpty)
-          SliverFillRemaining(
-            child: Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+          ] else
+            Align(
+              alignment: Alignment.centerLeft,
+              child: AppTextAction(label: 'Desactivar cuenta', onPressed: onToggle),
+            ),
+          const SizedBox(height: 8),
+          if (clients.isEmpty)
+            Text(
+              'Aún no tiene clientes',
+              style: AppTypography.body(
+                size: 14,
+                weight: FontWeight.w300,
+                color: AppColors.textSecondary,
+              ),
+            )
+          else
+            Theme(
+              data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+              child: ExpansionTile(
+                tilePadding: EdgeInsets.zero,
+                childrenPadding: const EdgeInsets.only(bottom: 4),
+                iconColor: AppColors.black,
+                collapsedIconColor: AppColors.black,
+                title: Text(
+                  '${clients.length} ${clients.length == 1 ? 'CLIENTE' : 'CLIENTES'}',
+                  style: AppTypography.label(size: 12, tracking: 4),
+                ),
                 children: [
-                  Icon(Icons.search_off_rounded, size: 48, color: Colors.grey[300]),
-                  const SizedBox(height: 16),
-                  Text(
-                    _searchQuery.isEmpty 
-                        ? 'No hay negocios registrados' 
-                        : 'No se encontraron negocios',
-                    style: TextStyle(color: Colors.grey[500]),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Wrap(
+                      spacing: 12,
+                      runSpacing: 12,
+                      children: clients.map((c) {
+                        final p = (c['profiles'] ?? {}) as Map;
+                        final name = '${p['full_name'] ?? p['email'] ?? 'Desconocido'}';
+                        return Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            PersonAvatar(
+                              name: name,
+                              avatarUrl: p['avatar_url']?.toString(),
+                              size: 32,
+                            ),
+                            const SizedBox(width: 8),
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(maxWidth: 180),
+                              child: Text(
+                                name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: AppTypography.body(size: 14, weight: FontWeight.w300),
+                              ),
+                            ),
+                          ],
+                        );
+                      }).toList(),
+                    ),
                   ),
                 ],
               ),
             ),
-          )
-        else
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            sliver: SliverList(
-              delegate: SliverChildBuilderDelegate(
-                (context, index) {
-                        if (index == _filteredBusinesses.length) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 16),
-                            child: Center(
-                              child: CircularProgressIndicator(valueColor: AlwaysStoppedAnimation(AppTheme.accentPurple)),
-                            ),
-                          );
-                        }
-                        final business = _filteredBusinesses[index];
-                        final owner = business['profiles'] ?? {};
-                  final ownerName = owner['full_name'] ?? 'Desconocido';
-                  final ownerEmail = owner['email'] ?? 'Sin correo';
-                  final isActive = business['is_active'] ?? false;
-
-                  final clientsList = List<Map<String, dynamic>>.from(
-                    business['loyalty_cards'] ?? [],
-                  );
-
-                  return Card(
-                    margin: const EdgeInsets.only(bottom: 12),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 0,
-                    color: Colors.white,
-                    child: Column(
-                      children: [
-                        ListTile(
-                          contentPadding: const EdgeInsets.all(16),
-                          leading: CircleAvatar(
-                            radius: 28,
-                            backgroundColor: Colors.black.withValues(alpha: 0.05),
-                            backgroundImage: imageProviderFromUrl(business['logo_url']?.toString()),
-                            child: business['logo_url'] == null
-                                ? const Icon(Icons.store, color: Colors.black)
-                                : null,
-                          ),
-                          title: Row(
-                            children: [
-                              Expanded(
-                                child: Text(
-                                  business['name'] ?? 'Sin nombre',
-                                  style: const TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                              if (!isActive)
-                                Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: AppTheme.accentPink.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(
-                                      color: AppTheme.accentPink,
-                                      width: 1,
-                                    ),
-                                  ),
-                                  child: const Text(
-                                    'PENDIENTE',
-                                    style: TextStyle(
-                                      color: AppTheme.accentPink,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              if (business['is_demo'] == true)
-                                Container(
-                                  margin: const EdgeInsets.only(left: 8),
-                                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color: Colors.amber.withValues(alpha: 0.1),
-                                    borderRadius: BorderRadius.circular(8),
-                                    border: Border.all(color: Colors.amber, width: 1),
-                                  ),
-                                  child: const Text(
-                                    'DEMO',
-                                    style: TextStyle(
-                                      color: Colors.amber,
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                          subtitle: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              const SizedBox(height: 4),
-                              Text(
-                                'Categoría: ${business['business_categories']?['name'] ?? 'Otra'}',
-                                style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-                              ),
-                              const SizedBox(height: 8),
-                              Row(
-                                children: [
-                                  const Icon(Icons.person, size: 14, color: Colors.black45),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      'Dueño: $ownerName',
-                                      style: const TextStyle(fontSize: 12, color: Colors.black87, fontWeight: FontWeight.bold),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Row(
-                                children: [
-                                  const Icon(Icons.email, size: 14, color: Colors.black45),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      ownerEmail,
-                                      style: const TextStyle(fontSize: 12, color: Colors.black54),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                              Row(
-                                children: [
-                                  const Icon(Icons.phone, size: 14, color: Colors.black45),
-                                  const SizedBox(width: 4),
-                                  Expanded(
-                                    child: Text(
-                                      owner['phone'] ?? 'Sin celular',
-                                      style: const TextStyle(fontSize: 12, color: Colors.black54),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          trailing: Switch(
-                            value: isActive,
-                            onChanged: (val) =>
-                                _toggleBusinessStatus(business['id'], isActive),
-                            activeColor: AppTheme.accentGreen,
-                          ),
-                        ),
-                        Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                          child: Container(
-                            padding: const EdgeInsets.all(12),
-                            decoration: BoxDecoration(
-                              color: AppTheme.accentPurple.withValues(alpha: 0.05),
-                              borderRadius: BorderRadius.circular(12),
-                              border: Border.all(color: AppTheme.accentPurple.withValues(alpha: 0.1)),
-                            ),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Row(
-                                  children: [
-                                    const Icon(Icons.campaign_rounded, size: 18, color: AppTheme.accentPurple),
-                                    const SizedBox(width: 8),
-                                    Text(
-                                      'Campaña Activa',
-                                      style: GoogleFonts.anton(
-                                        fontSize: 14,
-                                        color: AppTheme.accentPurple,
-                                        letterSpacing: 0.5,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const Divider(height: 16),
-                                _CampaignDetailRow(
-                                  icon: Icons.card_giftcard_rounded,
-                                  label: 'Premio:',
-                                  value: business['reward_description'] ?? 'No definido',
-                                ),
-                                const SizedBox(height: 8),
-                                _CampaignDetailRow(
-                                  icon: Icons.stars_rounded,
-                                  label: 'Puntos:',
-                                  value: '${business['points_required'] ?? 0} pts',
-                                ),
-                                const SizedBox(height: 8),
-                                _CampaignDetailRow(
-                                  icon: Icons.calendar_today_rounded,
-                                  label: 'Inicio:',
-                                  value: business['created_at'] != null 
-                                    ? EcuadorDateUtils.formatEcuadorDate(business['created_at'])
-                                    : 'N/A',
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                        if (clientsList.isNotEmpty)
-                          Theme(
-                            data: Theme.of(
-                              context,
-                            ).copyWith(dividerColor: Colors.transparent),
-                            child: ExpansionTile(
-                              tilePadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                              ),
-                              title: Text(
-                                '${clientsList.length} Clientes Activos',
-                                style: const TextStyle(
-                                  fontSize: 13,
-                                  color: Colors.black,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                              children: [
-                                const Padding(
-                                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-                                  child: Divider(height: 1),
-                                ),
-                                Padding(
-                                  padding: const EdgeInsets.only(
-                                    left: 16,
-                                    right: 16,
-                                    bottom: 16,
-                                    top: 8,
-                                  ),
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      const Text(
-                                        'Clientes Registrados:',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: Colors.black54,
-                                        ),
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Align(
-                                        alignment: Alignment.centerLeft,
-                                        child: Wrap(
-                                          spacing: 8,
-                                          runSpacing: 8,
-                                          children: clientsList.map((clientData) {
-                                            final p = clientData['profiles'] ?? {};
-                                            final clientName =
-                                                p['full_name'] ??
-                                                p['email'] ??
-                                                'Desconocido';
-                                            return Chip(
-                                              avatar: CircleAvatar(
-                                                backgroundColor: Colors.black
-                                                    .withValues(alpha: 0.04),
-                                                child: Text(
-                                                  clientName[0].toUpperCase(),
-                                                  style: const TextStyle(
-                                                    fontSize: 10,
-                                                    color: Colors.black,
-                                                    fontWeight: FontWeight.bold,
-                                                  ),
-                                                ),
-                                              ),
-                                              label: Text(
-                                                clientName,
-                                                style: const TextStyle(
-                                                  fontSize: 12,
-                                                  color: Colors.black54,
-                                                ),
-                                              ),
-                                              backgroundColor: Colors.black
-                                                  .withValues(alpha: 0.04),
-                                              side: BorderSide.none,
-                                              padding: EdgeInsets.zero,
-                                            );
-                                          }).toList(),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        else
-                          const Padding(
-                            padding: EdgeInsets.only(
-                              left: 16,
-                              bottom: 16,
-                              top: 4,
-                            ),
-                            child: Align(
-                              alignment: Alignment.centerLeft,
-                              child: Text(
-                                'Aún no tiene clientes',
-                                style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey,
-                                ),
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                  );
-                },
-              ),
-            ),
-          ),
         ],
-      ),
       ),
     );
   }
-
-  String _formatDate(DateTime date) {
-    final day = date.day.toString().padLeft(2, '0');
-    final month = date.month.toString().padLeft(2, '0');
-    final year = date.year;
-    return '$day/$month/$year';
-  }
 }
 
-class _CampaignDetailRow extends StatelessWidget {
-  final IconData icon;
+class _CampaignRow extends StatelessWidget {
   final String label;
   final String value;
 
-  const _CampaignDetailRow({
-    required this.icon,
-    required this.label,
-    required this.value,
-  });
+  const _CampaignRow({required this.label, required this.value});
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Icon(icon, size: 14, color: Colors.black45),
-        const SizedBox(width: 8),
-        Text(
-          label,
-          style: const TextStyle(fontSize: 12, color: Colors.black54),
-        ),
-        const SizedBox(width: 4),
-        Expanded(
-          child: Text(
-            value,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: Colors.black87,
+    return Padding(
+      padding: const EdgeInsets.only(top: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          SizedBox(
+            width: 64,
+            child: Text(
+              label,
+              style: AppTypography.body(
+                size: 14,
+                weight: FontWeight.w300,
+                color: AppColors.textSecondary,
+              ),
             ),
           ),
-        ),
-      ],
+          Expanded(
+            child: Text(value, style: AppTypography.body(size: 14, weight: FontWeight.w500)),
+          ),
+        ],
+      ),
     );
   }
 }

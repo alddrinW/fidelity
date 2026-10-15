@@ -1,28 +1,32 @@
-import 'package:flutter/material.dart';
+import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/models/business_category.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/image_picking.dart';
-import '../../core/utils/whatsapp_launcher.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_message_dialog.dart';
 import '../../core/widgets/app_page_header.dart';
 import '../../core/widgets/app_photo_picker.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../auth/providers/auth_provider.dart';
+import '../payments/paga_ya_screen.dart';
 import 'data/business_repository.dart';
 import 'providers/create_business_provider.dart';
 import 'widgets/business_form_fields.dart';
 import 'widgets/campaign_form_fields.dart';
 import 'widgets/location_picker_page.dart';
+import '../../core/l10n/tr_text.dart';
 
 /// Alta de un negocio en dos pasos: "Mi negocio" (logo, datos y ubicación) y
 /// "Mi campaña" (premio y puntos).
 class CreateBusinessScreen extends ConsumerStatefulWidget {
-  const CreateBusinessScreen({super.key});
+  /// Si se indica, se crea una **sucursal** de este negocio (sus datos sirven
+  /// de punto de partida) y el flujo termina en PAGA YA.
+  final Map<String, dynamic>? parent;
+
+  const CreateBusinessScreen({super.key, this.parent});
 
   @override
   ConsumerState<CreateBusinessScreen> createState() => _CreateBusinessScreenState();
@@ -49,10 +53,28 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
   final _rewardLongController = TextEditingController();
   final _pointsController = TextEditingController(text: '10');
 
+  bool get _isBranch => widget.parent != null;
+
   @override
   void initState() {
     super.initState();
+    _prefillFromParent();
     WidgetsBinding.instance.addPostFrameCallback((_) => _loadCategories());
+  }
+
+  /// Una sucursal hereda los datos del negocio principal (se pueden editar).
+  void _prefillFromParent() {
+    final p = widget.parent;
+    if (p == null) return;
+    String text(Object? v) => v?.toString() ?? '';
+    _nameController.text = '${text(p['name'])} - ';
+    _phoneController.text = text(p['phone']);
+    _taxIdController.text = text(p['taxId'] ?? p['tax_id']);
+    _rewardController.text = text(p['rewardDescription'] ?? p['reward_description']);
+    _rewardLongController.text =
+        text(p['rewardLongDescription'] ?? p['reward_long_description']);
+    final points = p['pointsRequired'] ?? p['points_required'];
+    if (points != null) _pointsController.text = text(points);
   }
 
   @override
@@ -73,7 +95,11 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
       if (mounted) {
         setState(() {
           _categories = categories;
-          _selectedCategory ??= categories.isNotEmpty ? categories.first : null;
+          final parentCategoryId = widget.parent?['categoryId'] ?? widget.parent?['category_id'];
+          _selectedCategory ??= categories
+                  .where((c) => c.id.toString() == parentCategoryId?.toString())
+                  .firstOrNull ??
+              (categories.isNotEmpty ? categories.first : null);
         });
       }
     } catch (e) {
@@ -124,6 +150,8 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
   void _back() {
     if (_step == 1) {
       setState(() => _step = 0);
+    } else if (_isBranch) {
+      Navigator.of(context).pop();
     } else {
       _confirmExit();
     }
@@ -159,28 +187,8 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
           rewardDescription: _rewardController.text,
           rewardLongDescription: _rewardLongController.text,
           pointsRequired: int.tryParse(_pointsController.text.trim()) ?? 10,
+          parentId: widget.parent?['id']?.toString(),
         );
-  }
-
-  void _showSuccessDialog() {
-    final waMessage =
-        'Hola, acabo de crear mi negocio ${_nameController.text.trim()} y quiero '
-        'información para activar la cuenta.';
-
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => _BusinessCreatedDialog(
-        onEmail: () => launchUrl(
-          Uri.parse('mailto:fidelitysistemadefidelizacion@gmail.com'),
-        ),
-        onWhatsApp: () => openSupportWhatsApp(waMessage),
-        onDone: () {
-          Navigator.pop(ctx);
-          ref.read(authStateProvider.notifier).logout();
-        },
-      ),
-    );
   }
 
   @override
@@ -188,10 +196,20 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
     final createState = ref.watch(createBusinessProvider);
 
     ref.listen<CreateBusinessState>(createBusinessProvider, (previous, next) {
+      // Al crearse el primer negocio la sesión pasa sola a la pantalla de
+      // activación (PAGA YA). Una sucursal abre PAGA YA desde aquí.
       if (next.error != null && previous?.error != next.error) {
         _showError('No se pudo crear el negocio: ${next.error}');
-      } else if (next.isSuccess && previous?.isSuccess != next.isSuccess) {
-        _showSuccessDialog();
+      } else if (next.isSuccess && previous?.isSuccess != true && _isBranch) {
+        final order = next.createdPayment;
+        ref.invalidate(createBusinessProvider);
+        if (order == null) {
+          Navigator.of(context).pop();
+        } else {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => PagaYaScreen(order: order)),
+          );
+        }
       }
     });
 
@@ -201,7 +219,9 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
           child: Column(
             children: [
               AppPageHeader(
-                title: _step == 0 ? 'Mi negocio' : 'Mi campaña',
+                title: _isBranch
+                    ? (_step == 0 ? 'Nueva sucursal' : 'Su campaña')
+                    : (_step == 0 ? 'Mi negocio' : 'Mi campaña'),
                 onBack: createState.isLoading ? () {} : _back,
               ),
               Expanded(
@@ -300,89 +320,6 @@ class _SectionLabel extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.only(left: 8, bottom: 12),
       child: Text(text, style: AppTypography.label(size: 13, tracking: 5)),
-    );
-  }
-}
-
-/// Aviso tras crear el negocio: hay que contactar a Fidelity para activarlo.
-class _BusinessCreatedDialog extends StatelessWidget {
-  final VoidCallback onEmail;
-  final VoidCallback onWhatsApp;
-  final VoidCallback onDone;
-
-  const _BusinessCreatedDialog({
-    required this.onEmail,
-    required this.onWhatsApp,
-    required this.onDone,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: AppColors.white,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
-      contentPadding: const EdgeInsets.fromLTRB(24, 28, 24, 8),
-      actionsPadding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              padding: const EdgeInsets.all(20),
-              decoration: const BoxDecoration(
-                color: AppColors.pink,
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(Icons.storefront_outlined, size: 44),
-            ),
-            const SizedBox(height: 20),
-            Text(
-              '¡TODO LISTO!',
-              textAlign: TextAlign.center,
-              style: AppTypography.display(size: 28),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              'Tu negocio fue creado. Para activarlo en la plataforma, '
-              'comunícate con nosotros por WhatsApp o correo.',
-              textAlign: TextAlign.center,
-              style: AppTypography.body(size: 16),
-            ),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: onWhatsApp,
-                icon: const Icon(Icons.chat_bubble_outline, color: AppColors.white),
-                label: const Text('WhatsApp'),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF25D366),
-                  foregroundColor: AppColors.white,
-                ),
-              ),
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: onEmail,
-                icon: const Icon(Icons.mail_outline_rounded),
-                label: const Text('Enviar correo'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: AppColors.black,
-                  side: const BorderSide(color: AppColors.black, width: 1.2),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: const StadiumBorder(),
-                  textStyle: AppTypography.label(size: 14, tracking: 1.5),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-      actions: [
-        AppPrimaryButton(label: 'Entendido', onPressed: onDone),
-      ],
     );
   }
 }

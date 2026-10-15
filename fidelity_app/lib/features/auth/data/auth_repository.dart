@@ -86,14 +86,13 @@ class AuthRepository {
       final token = response['accessToken']?.toString() ?? '';
       final userData = response['user'] as Map<String, dynamic>? ?? {};
       
-      // Si el rol es negocio, buscamos su negocio asociado para guardar business_id
-      if (userData['role'] == 'business') {
+      // Dueños y aprobadores trabajan sobre un negocio: guardamos cuál es
+      // (business_id) para que el resto de la app sepa con cuál operar.
+      if (isBusinessSide(userData['role']?.toString())) {
         try {
           await _api.setSession(token, userData);
-          final businesses = await _api.get('businesses/my-businesses');
-          if (businesses is List && businesses.isNotEmpty) {
-            userData['business_id'] = businesses.first['id'];
-          }
+          final businessId = await _resolveBusinessId(null);
+          if (businessId != null) userData['business_id'] = businessId;
         } catch (_) {}
       }
 
@@ -151,19 +150,53 @@ class AuthRepository {
         final current = Map<String, dynamic>.from(_api.currentUser ?? {});
         current.addAll(response);
         
-        if (current['role'] == 'business') {
-          final businesses = await _api.get('businesses/my-businesses');
-          if (businesses is List && businesses.isNotEmpty) {
-            current['business_id'] = businesses.first['id'];
-          }
+        if (isBusinessSide(current['role']?.toString())) {
+          // Se conserva el negocio elegido si sigue siendo válido.
+          final businessId = await _resolveBusinessId(current['business_id']?.toString());
+          if (businessId != null) current['business_id'] = businessId;
         }
-        
+
         await _api.updateUser(current);
         _authStateController.add(AuthUser.fromJson(current));
       }
     } catch (e) {
       debugPrint('Error refrescando perfil: $e');
     }
+  }
+
+  /// Dueños y aprobadores: los roles que operan sobre un negocio.
+  static bool isBusinessSide(String? role) => role == 'business' || role == 'approver';
+
+  /// Negocios con los que trabaja el usuario (los suyos o aquellos donde es
+  /// aprobador), tal como los devuelve el backend.
+  Future<List<Map<String, dynamic>>> myBusinesses() async {
+    final response = await _api.get('businesses/my-businesses');
+    if (response is! List) return [];
+    return response.map((b) => Map<String, dynamic>.from(b as Map)).toList();
+  }
+
+  /// Elige el negocio actual: el que ya estaba elegido si sigue en la lista;
+  /// si no, el primero activo; y si ninguno está activo, el primero.
+  static String? pickBusinessId(List<Map<String, dynamic>> businesses, String? currentId) {
+    if (businesses.isEmpty) return null;
+    if (currentId != null && businesses.any((b) => b['id']?.toString() == currentId)) {
+      return currentId;
+    }
+    final active = businesses.where((b) => b['isActive'] == true || b['is_active'] == true);
+    return (active.isNotEmpty ? active.first : businesses.first)['id']?.toString();
+  }
+
+  Future<String?> _resolveBusinessId(String? currentId) async {
+    return pickBusinessId(await myBusinesses(), currentId);
+  }
+
+  /// Cambia el negocio con el que se trabaja y avisa a la sesión para que
+  /// recargue todo lo que depende de él.
+  Future<void> selectBusiness(String businessId) async {
+    final current = Map<String, dynamic>.from(_api.currentUser ?? {});
+    current['business_id'] = businessId;
+    await _api.updateUser(current);
+    _authStateController.add(AuthUser.fromJson(current));
   }
 
   Future<bool> isBusinessActive(String businessId) async {

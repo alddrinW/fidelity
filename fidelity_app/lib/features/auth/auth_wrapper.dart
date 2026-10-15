@@ -1,18 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'login_screen.dart';
 import '../business/dashboard/business_dashboard_screen.dart';
 import '../business/create_business_screen.dart';
+import '../payments/account_activation_screen.dart';
 import '../cards/my_cards_screen.dart';
 import '../admin/admin_dashboard_screen.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/services/push_notification_service.dart';
 import '../../core/services/realtime_sync_service.dart';
 import '../../core/widgets/global_celebration_dialog.dart';
-import '../../core/utils/whatsapp_launcher.dart';
 import 'dart:async';
 import 'providers/auth_provider.dart';
 import 'data/auth_repository.dart';
@@ -55,100 +51,17 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
     super.dispose();
   }
 
-  void _showInactiveAccountDialog() {
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
-        ),
-        title: Text(
-          'CUENTA INACTIVA',
-          style: GoogleFonts.anton(
-            letterSpacing: 1,
-          ),
-          textAlign: TextAlign.center,
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text(
-              'Tu negocio se encuentra inactivo.\n\nPor favor, comunícate con nosotros para procesar el pago o la activación de tu cuenta:',
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 24),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () => launchUrl(Uri.parse('mailto:fidelitysistemadefidelizacion@gmail.com')),
-                icon: const Icon(Icons.email_outlined, color: Colors.blue),
-                label: const Text('Enviar Correo', style: TextStyle(color: Colors.blue)),
-                style: OutlinedButton.styleFrom(
-                  side: const BorderSide(color: Colors.blue, width: 1.5),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ).animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .scaleXY(begin: 1.0, end: 1.03, duration: 1.2.seconds, curve: Curves.easeInOut),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton.icon(
-                onPressed: () => openSupportWhatsApp(
-                  'Hola, mi negocio está pendiente de activación en Fidelity y quiero información para activar la cuenta.',
-                ),
-                icon: const Icon(Icons.chat_bubble_outline, color: Colors.white),
-                label: const Text('Contactar por WhatsApp', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF25D366),
-                  elevation: 0,
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-              ),
-            ).animate(onPlay: (controller) => controller.repeat(reverse: true))
-              .scaleXY(begin: 1.0, end: 1.03, duration: 1.2.seconds, delay: 600.ms, curve: Curves.easeInOut),
-          ],
-        ),
-        actions: [
-          SizedBox(
-            width: double.infinity,
-            child: ElevatedButton(
-              onPressed: () {
-                Navigator.pop(ctx);
-                ref.read(authStateProvider.notifier).logout();
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.black,
-                foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16),
-                ),
-              ),
-              child: const Text('CERRAR SESIÓN', style: TextStyle(fontWeight: FontWeight.bold)),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     final authState = ref.watch(authStateProvider);
 
     // Escuchar cambios de estado para mostrar dialogos (side-effects)
     ref.listen<AuthStateStatus>(authStateProvider, (previous, next) {
-      if (next is AuthBusinessInactive && previous is! AuthBusinessInactive) {
-        _showInactiveAccountDialog();
-      }
-      
       // Manejar inicialización de push notification cuando hay usuario validado
-      if (next is AuthAdmin || next is AuthBusinessActive || next is AuthClient) {
+      if (next is AuthAdmin ||
+          next is AuthBusinessActive ||
+          next is AuthApprover ||
+          next is AuthClient) {
         PushNotificationService.initialize();
         // Recién acá (ya autenticado) suscribimos el realtime, para que el canal
         // lleve el JWT del usuario y RLS le entregue sus cambios en vivo.
@@ -163,13 +76,7 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
     });
 
     if (authState is AuthInitial) {
-      return const Scaffold(
-        body: Center(
-          child: CircularProgressIndicator(
-            valueColor: AlwaysStoppedAnimation(AppTheme.accentPurple),
-          ),
-        ),
-      );
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
 
     if (authState is AuthUnauthenticated) {
@@ -184,21 +91,24 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
       return const CreateBusinessScreen();
     }
 
+    // Negocio creado pero sin activar: se activa al validar el pago (PAGA YA).
+    if (authState is AuthBusinessInactive) {
+      return const AccountActivationScreen();
+    }
+
     if (authState is AuthBusinessActive) {
       return const BusinessDashboardScreen();
+    }
+
+    // Aprobador: ve solo lo que puede operar (escaneos, premios y opiniones).
+    if (authState is AuthApprover) {
+      return const BusinessDashboardScreen(approverMode: true);
     }
 
     if (authState is AuthClient) {
       return const MyCardsScreen();
     }
 
-    // Estado por defecto mientras procesa inactividad
-    return const Scaffold(
-      body: Center(
-        child: CircularProgressIndicator(
-          valueColor: AlwaysStoppedAnimation(AppTheme.accentPurple),
-        ),
-      ),
-    );
+    return const Scaffold(body: Center(child: CircularProgressIndicator()));
   }
 }

@@ -14,6 +14,10 @@ class ScannerState {
   /// permite otro escaneo (HTTP 429).
   final String? cooldownMessage;
   final bool hasPendingReward;
+
+  /// Mensaje del backend cuando el cliente ya tiene un escaneo esperando la
+  /// aprobación del negocio en ese local.
+  final String? pendingScanMessage;
   final ScanResult? result;
 
   const ScannerState({
@@ -21,6 +25,7 @@ class ScannerState {
     this.error,
     this.cooldownMessage,
     this.hasPendingReward = false,
+    this.pendingScanMessage,
     this.result,
   });
 
@@ -29,6 +34,7 @@ class ScannerState {
     String? error,
     String? cooldownMessage,
     bool hasPendingReward = false,
+    String? pendingScanMessage,
     ScanResult? result,
   }) {
     return ScannerState(
@@ -36,6 +42,7 @@ class ScannerState {
       error: error,
       cooldownMessage: cooldownMessage,
       hasPendingReward: hasPendingReward,
+      pendingScanMessage: pendingScanMessage,
       result: result,
     );
   }
@@ -66,7 +73,10 @@ class ScannerNotifier extends Notifier<ScannerState> {
       final message = e.message.toLowerCase();
       if (e.statusCode == 429) {
         state = state.copyWith(isProcessing: false, cooldownMessage: e.message);
-      } else if (e.message.contains('PENDING_REWARD') ||
+      } else if (e.details == 'pending_scan') {
+        state = state.copyWith(isProcessing: false, pendingScanMessage: e.message);
+      } else if (e.details == 'pending_reward' ||
+          e.message.contains('PENDING_REWARD') ||
           message.contains('premio pendiente')) {
         state = state.copyWith(isProcessing: false, hasPendingReward: true);
       } else {
