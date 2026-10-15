@@ -3,6 +3,7 @@ import 'package:flutter/material.dart' hide Text;
 import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
 import '../l10n/tr_text.dart';
+import 'fido_mascot.dart';
 
 /// Fido con un globo de diálogo: lo usan los asistentes guiados (pago,
 /// buzón de sugerencias...) para hablarle al usuario.
@@ -25,13 +26,9 @@ class FidoSays extends StatelessWidget {
     return Row(
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Image.asset(
-          celebrating
-              ? 'assets/images/fido_celebra.png'
-              : 'assets/images/logo_transparente.png',
+        FidoMascot(
+          mood: celebrating ? FidoMood.celebrate : FidoMood.calm,
           height: fidoHeight,
-          fit: BoxFit.contain,
-          semanticLabel: 'Fido',
         ),
         const SizedBox(width: 8),
         Expanded(

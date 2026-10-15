@@ -79,39 +79,25 @@ class PaymentPlan {
   /// Cuentas para transferencias; vacía si no hay ninguna configurada.
   final List<BankAccount> bankAccounts;
 
-  /// Enlace de la pasarela de pago con tarjeta (puede llevar `{reference}` y
-  /// `{amount}`); `null` si no hay una configurada.
-  final String? cardPaymentUrl;
+  /// Hay pago con tarjeta (PayPhone) configurado en el backend.
+  final bool cardEnabled;
 
   const PaymentPlan({
     required this.currency,
     required this.registrationFee,
     required this.branchFee,
     this.bankAccounts = const [],
-    this.cardPaymentUrl,
+    this.cardEnabled = false,
   });
 
   /// Métodos que se pueden usar con la configuración actual.
   List<PaymentMethod> get availableMethods => [
         if (bankAccounts.isNotEmpty) PaymentMethod.transfer,
-        if (cardPaymentUrl != null) PaymentMethod.card,
+        if (cardEnabled) PaymentMethod.card,
       ];
-
-  /// Enlace de pago con la referencia y el monto de [order] ya rellenados.
-  Uri? cardPaymentUri(PaymentOrder order) {
-    final template = cardPaymentUrl;
-    if (template == null) return null;
-    final uri = Uri.tryParse(
-      template
-          .replaceAll('{reference}', Uri.encodeComponent(order.reference))
-          .replaceAll('{amount}', order.amount.toStringAsFixed(2)),
-    );
-    return (uri != null && (uri.scheme == 'https' || uri.scheme == 'http')) ? uri : null;
-  }
 
   factory PaymentPlan.fromJson(Map<String, dynamic> json) {
     final banks = json['bankAccounts'];
-    final card = json['cardPaymentUrl']?.toString();
     return PaymentPlan(
       currency: json['currency']?.toString() ?? 'USD',
       registrationFee: (json['registrationFee'] as num?)?.toDouble() ?? 0,
@@ -123,7 +109,7 @@ class PaymentPlan {
               .where((b) => b.accountNumber.isNotEmpty)
               .toList()
           : const [],
-      cardPaymentUrl: (card == null || card.isEmpty) ? null : card,
+      cardEnabled: json['cardEnabled'] == true,
     );
   }
 }
@@ -325,6 +311,18 @@ class PaymentsRepository {
     return PaymentPlan.fromJson(Map<String, dynamic>.from(response as Map));
   }
 
+  /// El administrador fija los precios; devuelve el plan ya actualizado.
+  Future<PaymentPlan> updatePrices({
+    required double registrationFee,
+    required double branchFee,
+  }) async {
+    final response = await _api.patch('payments/plan', body: {
+      'registrationFee': registrationFee,
+      'branchFee': branchFee,
+    });
+    return PaymentPlan.fromJson(Map<String, dynamic>.from(response as Map));
+  }
+
   Future<List<PaymentOrder>> listMine() async {
     final response = await _api.get('payments/mine');
     return _parseList(response);
@@ -334,6 +332,18 @@ class PaymentsRepository {
   Future<PaymentOrder> ensureOrder(String businessId) async {
     final response = await _api.post('payments/order', body: {'businessId': businessId});
     return PaymentOrder.fromJson(Map<String, dynamic>.from(response as Map));
+  }
+
+  /// Inicia el pago con tarjeta: devuelve la página de pago de PayPhone. El
+  /// cobro lo confirma el servidor cuando el cliente vuelve de PayPhone.
+  Future<Uri> startCardPayment(String paymentId) async {
+    final response = await _api.post('payments/$paymentId/card');
+    final url = (response as Map)['payUrl']?.toString() ?? '';
+    final uri = Uri.tryParse(url);
+    if (uri == null || (uri.scheme != 'https' && uri.scheme != 'http')) {
+      throw Exception('No se pudo abrir la página de pago.');
+    }
+    return uri;
   }
 
   /// El dueño avisa que ya pagó. [proofDataUri] es la foto del comprobante.

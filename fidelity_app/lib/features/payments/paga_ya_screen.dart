@@ -15,12 +15,14 @@ import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/fido_says.dart';
 import '../../core/l10n/tr_text.dart';
 import '../../core/l10n/translator.dart';
+import '../auth/providers/auth_provider.dart';
 import 'data/payments_repository.dart';
 
 /// Asistente "PAGA YA", guiado por Fido, en tres pasos:
 /// 1) resumen del plan y costo, 2) elegir cómo pagar (transferencia bancaria
-/// con los datos de la cuenta, o tarjeta en la pasarela de pago), 3) confirmar:
-/// subir el comprobante de la transferencia o avisar que ya se pagó con tarjeta.
+/// con los datos de la cuenta, o tarjeta en PayPhone), 3) confirmar: subir el
+/// comprobante de la transferencia o pagar en PayPhone y volver. El pago con
+/// tarjeta lo confirma el servidor, no el dueño.
 ///
 /// Cierra con `true` si el pago quedó reportado.
 class PagaYaScreen extends ConsumerStatefulWidget {
@@ -32,21 +34,39 @@ class PagaYaScreen extends ConsumerStatefulWidget {
   ConsumerState<PagaYaScreen> createState() => _PagaYaScreenState();
 }
 
-class _PagaYaScreenState extends ConsumerState<PagaYaScreen> {
+class _PagaYaScreenState extends ConsumerState<PagaYaScreen> with WidgetsBindingObserver {
   static const _lastStep = 2;
 
   final _noteController = TextEditingController();
   int _step = 0;
   bool _isSending = false;
+  bool _openingGateway = false;
+
+  /// El dueño ya fue a PayPhone: al volver a la app se revisa el cobro solo.
+  bool _cardStarted = false;
   PaymentMethod? _method;
   PickedImage? _proof;
 
   PaymentOrder get _order => widget.order;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _noteController.dispose();
     super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed && _cardStarted && !_isSending) {
+      _checkCardPayment(silent: true);
+    }
   }
 
   void _showError(String message) {
@@ -81,14 +101,72 @@ class _PagaYaScreenState extends ConsumerState<PagaYaScreen> {
     }
   }
 
-  Future<void> _openCardGateway(PaymentPlan plan) async {
-    final uri = plan.cardPaymentUri(_order);
-    if (uri == null) {
-      _showError('El pago con tarjeta no está disponible por ahora.');
-      return;
+  Future<void> _openCardGateway() async {
+    setState(() => _openingGateway = true);
+    try {
+      final uri = await ref.read(paymentsRepositoryProvider).startCardPayment(_order.id);
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!mounted) return;
+      if (opened) {
+        _cardStarted = true;
+      } else {
+        _showError('No se pudo abrir la página de pago.');
+      }
+    } catch (e) {
+      if (mounted) _showError(e.toString());
+    } finally {
+      if (mounted) setState(() => _openingGateway = false);
     }
-    final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-    if (!opened && mounted) _showError('No se pudo abrir la pasarela de pago.');
+  }
+
+  /// Pregunta al servidor si PayPhone ya aprobó el cobro (la cuenta se activa
+  /// sola). Con [silent] (al volver a la app) no avisa si todavía no llegó.
+  Future<void> _checkCardPayment({bool silent = false}) async {
+    if (_isSending) return;
+    setState(() => _isSending = true);
+    try {
+      final mine = await ref.read(paymentsRepositoryProvider).listMine();
+      final current = mine.where((p) => p.id == _order.id).firstOrNull;
+      if (!mounted) return;
+      if (current?.status == PaymentStatus.paid) {
+        // La sesión pasa sola al panel del negocio.
+        await ref.read(authStateProvider.notifier).checkAuth();
+        if (!mounted) return;
+        await _showReportedDialog(
+          '¡Pago aprobado!',
+          'Tu pago con tarjeta fue aprobado y ${_order.businessName} ya está activo. '
+              '¡Bienvenido a Fidelity!',
+          icon: Icons.verified_rounded,
+        );
+      } else if (current?.status == PaymentStatus.reported) {
+        await _showReportedDialog('Pago recibido',
+            'Recibimos tu pago. Lo validaremos enseguida y te avisaremos por notificación cuando tu cuenta esté activa.');
+      } else if (!silent) {
+        _showError('Aún no recibimos la confirmación de PayPhone. '
+            'Si ya pagaste, espera unos segundos e inténtalo de nuevo.');
+      }
+    } catch (e) {
+      if (mounted && !silent) _showError(e.toString());
+    } finally {
+      if (mounted) setState(() => _isSending = false);
+    }
+  }
+
+  Future<void> _showReportedDialog(
+    String title,
+    String message, {
+    IconData icon = Icons.hourglass_top_rounded,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AppMessageDialog(
+        icon: icon,
+        title: title,
+        message: message,
+      ),
+    );
+    if (mounted) Navigator.of(context).pop(true);
   }
 
   /// La transferencia se valida con la foto del comprobante.
@@ -117,17 +195,11 @@ class _PagaYaScreenState extends ConsumerState<PagaYaScreen> {
             proofDataUri: _proof?.dataUri,
           );
       if (!mounted) return;
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (_) => const AppMessageDialog(
-          icon: Icons.hourglass_top_rounded,
-          title: 'Pago reportado',
-          message: 'Lo validaremos lo antes posible y te avisaremos por '
-              'notificación cuando tu cuenta esté activa.',
-        ),
+      await _showReportedDialog(
+        'Pago reportado',
+        'Lo validaremos lo antes posible y te avisaremos por '
+            'notificación cuando tu cuenta esté activa.',
       );
-      if (mounted) Navigator.of(context).pop(true);
     } catch (e) {
       if (mounted) _showError(e.toString());
     } finally {
@@ -185,7 +257,8 @@ class _PagaYaScreenState extends ConsumerState<PagaYaScreen> {
                           proof: _proof,
                           onPickProof: _pickProof,
                           onRemoveProof: () => setState(() => _proof = null),
-                          onOpenGateway: plan.hasValue ? () => _openCardGateway(plan.value!) : null,
+                          isOpeningGateway: _openingGateway,
+                          onOpenGateway: _openCardGateway,
                         ),
                     },
                   ),
@@ -205,7 +278,7 @@ class _PagaYaScreenState extends ConsumerState<PagaYaScreen> {
                           child: AppPrimaryButton(
                             label: _method == PaymentMethod.card ? 'Ya pagué' : 'Enviar comprobante',
                             isLoading: _isSending,
-                            onPressed: _submit,
+                            onPressed: _method == PaymentMethod.card ? _checkCardPayment : _submit,
                           ),
                         ),
                 ),
@@ -577,7 +650,7 @@ class _CopyButton extends StatelessWidget {
   }
 }
 
-/// Pasos del pago con tarjeta (se paga en la pasarela del proveedor).
+/// Pasos del pago con tarjeta (se paga en la página de PayPhone).
 class _CardSteps extends StatelessWidget {
   final PaymentOrder order;
 
@@ -585,9 +658,9 @@ class _CardSteps extends StatelessWidget {
 
   static const _steps = [
     'Toca el botón siguiente.',
-    'Te llevaremos a la pasarela de pago 100% segura.',
+    'Te llevaremos a PayPhone, una pasarela de pago 100% segura.',
     'Ingresa los datos de tu tarjeta de crédito o débito.',
-    'Vuelve aquí y confirma tu pago.',
+    'Vuelve aquí: confirmaremos tu pago y activaremos tu cuenta automáticamente.',
   ];
 
   @override
@@ -637,14 +710,15 @@ class _CardSteps extends StatelessWidget {
   }
 }
 
-/// Paso 3: subir el comprobante (transferencia) o confirmar el pago con tarjeta.
+/// Paso 3: subir el comprobante (transferencia) o pagar en PayPhone (tarjeta).
 class _ConfirmStep extends StatelessWidget {
   final PaymentMethod method;
   final TextEditingController noteController;
   final PickedImage? proof;
   final VoidCallback onPickProof;
   final VoidCallback onRemoveProof;
-  final VoidCallback? onOpenGateway;
+  final bool isOpeningGateway;
+  final VoidCallback onOpenGateway;
 
   const _ConfirmStep({
     required this.method,
@@ -652,6 +726,7 @@ class _ConfirmStep extends StatelessWidget {
     required this.proof,
     required this.onPickProof,
     required this.onRemoveProof,
+    required this.isOpeningGateway,
     required this.onOpenGateway,
   });
 
@@ -665,7 +740,7 @@ class _ConfirmStep extends StatelessWidget {
       children: [
         FidoSays(
           message: isCard
-              ? 'Paga en la pasarela y vuelve aquí para confirmar.'
+              ? 'Paga en PayPhone y vuelve aquí: tu cuenta se activa sola.'
               : 'Sube la foto de tu comprobante para validarlo más rápido.',
         ),
         const SizedBox(height: 24),
@@ -673,17 +748,27 @@ class _ConfirmStep extends StatelessWidget {
           SizedBox(
             height: 60,
             child: ElevatedButton.icon(
-              onPressed: onOpenGateway,
-              icon: const Icon(Icons.open_in_new_rounded),
+              onPressed: isOpeningGateway ? null : onOpenGateway,
+              icon: isOpeningGateway
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2, color: AppColors.black),
+                    )
+                  : const Icon(Icons.open_in_new_rounded),
               label: const Text('IR A PAGAR CON TARJETA'),
             ),
           ),
-          const SizedBox(height: 24),
-          AppTextField(
-            controller: noteController,
-            hint: 'N.º de transacción (opcional)',
-            icon: Icons.tag_rounded,
-            textInputAction: TextInputAction.done,
+          const SizedBox(height: 16),
+          Text(
+            'Cuando termines de pagar, toca "Ya pagué". Si no cierras esta pantalla, '
+            'la revisamos por ti al volver.',
+            textAlign: TextAlign.center,
+            style: AppTypography.body(
+              size: 14,
+              weight: FontWeight.w300,
+              color: AppColors.textSecondary,
+            ),
           ),
         ] else ...[
           Text('FOTO DEL COMPROBANTE *', style: AppTypography.label(size: 13, tracking: 4)),

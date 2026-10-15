@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/app_button.dart';
+import '../../core/widgets/fido_mascot.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../cards/providers/my_cards_provider.dart';
 import '../feedback/widgets/feedback_sheet.dart';
@@ -57,6 +58,14 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
       return 'Sumaste un punto en ${r.businessName}. Llevas $points de $required.';
     }
     return 'Sumaste un punto en ${r.businessName}.';
+  }
+
+  /// Frase de ánimo de Fido según cómo terminó el escaneo.
+  String get _cheer {
+    final r = widget.result;
+    if (r.rewardCompleted) return '¡Lo lograste! Fido salta de la emoción';
+    if (r.isPending) return '¡Buen trabajo! Fido ya avisó al local';
+    return '¡Eso es! Cada punto te acerca a tu premio';
   }
 
   /// Buzón de Fido: el cliente califica la atención recién recibida.
@@ -112,6 +121,20 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
                                 ),
                               ).animate().fadeIn().slideY(begin: -0.2),
                               const SizedBox(height: 12),
+                              Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
+                                decoration: BoxDecoration(
+                                  color: AppColors.pink,
+                                  borderRadius: BorderRadius.circular(22),
+                                  border: Border.all(color: AppColors.black, width: 1.2),
+                                ),
+                                child: Text(
+                                  _cheer,
+                                  textAlign: TextAlign.center,
+                                  style: AppTypography.body(size: 15, weight: FontWeight.w500),
+                                ),
+                              ).animate(delay: 100.ms).fadeIn(),
+                              const SizedBox(height: 12),
                               Text(
                                 _summary,
                                 textAlign: TextAlign.center,
@@ -126,12 +149,10 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
                                   onPressed: _openFeedback,
                                 ).animate(delay: 400.ms).fadeIn(),
                               const SizedBox(height: 8),
-                              Image.asset(
-                                'assets/images/fido_celebra.png',
+                              FidoMascot(
+                                mood: FidoMood.celebrate,
                                 width: (MediaQuery.sizeOf(context).width * 0.8)
                                     .clamp(220.0, 340.0),
-                                fit: BoxFit.contain,
-                                semanticLabel: 'Fido celebrando',
                               )
                                   .animate(delay: 150.ms)
                                   .scale(

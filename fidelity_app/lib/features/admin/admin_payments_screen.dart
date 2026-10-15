@@ -13,7 +13,9 @@ import '../payments/data/payments_repository.dart';
 import 'admin_payment_detail_screen.dart';
 import 'widgets/admin_widgets.dart';
 import 'widgets/payment_review.dart';
+import 'widgets/prices_dialog.dart';
 import '../../core/l10n/tr_text.dart';
+import '../../core/l10n/translator.dart';
 
 /// Pagos de registro de negocios: el administrador valida (y así activa la
 /// cuenta del dueño y emite su comprobante) o rechaza con un motivo.
@@ -98,6 +100,11 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
 
     return AdminPageFrame(
       title: 'Pagos',
+      headerTrailing: IconButton(
+        tooltip: context.tr('Precios del registro'),
+        icon: const Icon(Icons.sell_outlined),
+        onPressed: () => showPricesDialog(context, _repository),
+      ),
       body: RefreshIndicator(
         onRefresh: _load,
         color: AppColors.black,

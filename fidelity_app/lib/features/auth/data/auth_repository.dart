@@ -211,9 +211,21 @@ class AuthRepository {
     }
   }
 
-  Future<void> resetPassword(String email) async {
+  /// Paso 1 de la recuperación: pide un código de 6 dígitos al correo.
+  Future<void> forgotPassword(String email) async {
+    await _api.post('auth/forgot-password', body: {'email': email.trim()});
+  }
+
+  /// Paso 2: crea la nueva contraseña con el código recibido.
+  Future<void> resetPassword({
+    required String email,
+    required String code,
+    required String newPassword,
+  }) async {
     await _api.post('auth/reset-password', body: {
       'email': email.trim(),
+      'code': code.trim(),
+      'newPassword': newPassword,
     });
   }
 }

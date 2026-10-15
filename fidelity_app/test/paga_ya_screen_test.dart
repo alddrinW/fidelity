@@ -46,7 +46,7 @@ void main() {
                 ),
               ]
             : const [],
-        cardPaymentUrl: card ? 'https://pay.example.com/c?ref={reference}' : null,
+        cardEnabled: card,
       );
 
   Future<void> open(WidgetTester tester, PaymentPlan plan) async {
@@ -125,7 +125,7 @@ void main() {
     expect(find.text('Adjunta la foto del comprobante.'), findsOneWidget);
   });
 
-  testWidgets('la tarjeta explica los pasos y lleva a la pasarela', (tester) async {
+  testWidgets('la tarjeta explica los pasos y lleva a PayPhone', (tester) async {
     await open(tester, plan());
     await next(tester);
 
@@ -133,7 +133,8 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Pasos rápidos para pagar:'), findsOneWidget);
-    expect(find.text('Te llevaremos a la pasarela de pago 100% segura.'), findsOneWidget);
+    expect(find.text('Te llevaremos a PayPhone, una pasarela de pago 100% segura.'), findsOneWidget);
+    expect(find.text('Vuelve aquí: confirmaremos tu pago y activaremos tu cuenta automáticamente.'), findsOneWidget);
 
     await next(tester);
 

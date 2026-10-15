@@ -4,12 +4,22 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/theme/app_colors.dart';
+import '../../core/widgets/fido_mascot.dart';
+import '../../core/widgets/fido_says.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/app_message_dialog.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import 'providers/scanner_provider.dart';
 import 'scan_success_screen.dart';
 import '../../core/l10n/tr_text.dart';
+
+/// El backend responde "Ya escaneaste en X. Vuelve en 3h 20min"; Fido lo dice
+/// con más calma. Si el mensaje no tiene ese formato, se muestra tal cual.
+String friendlyCooldownMessage(String message) {
+  final parsed = RegExp(r'^Ya escaneaste en (.+)\. Vuelve en (.+)$').firstMatch(message.trim());
+  if (parsed == null) return message;
+  return 'Tu próximo punto en ${parsed.group(1)} estará listo en ${parsed.group(2)}.';
+}
 
 class ScannerScreen extends ConsumerStatefulWidget {
   const ScannerScreen({super.key});
@@ -36,9 +46,11 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       context: context,
       builder: (_) => AppMessageDialog(
         icon: Icons.hourglass_top_rounded,
-        title: 'Espera un poco',
-        message: message,
-        hint: 'Pero puedes escanear en otros locales ahora mismo.',
+        leading: const FidoCooldownBanner(),
+        title: '¡Paciencia!',
+        message: friendlyCooldownMessage(message),
+        hint: 'Cada local tiene un tiempo de espera entre escaneos. '
+            'Mientras tanto, puedes escanear en otros locales.',
         primaryLabel: 'Vale',
         onPrimary: cameraController.start,
       ),
@@ -183,6 +195,13 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
                       builder: (context, scanner, _) => scanner.error != null
                           ? const SizedBox.shrink()
                           : Center(child: _buildViewfinder(context)),
+                    ),
+                  ),
+                  const Padding(
+                    padding: EdgeInsets.fromLTRB(24, 0, 24, 20),
+                    child: FidoSays(
+                      message: 'Apunta al código QR del local y yo me encargo del resto.',
+                      fidoHeight: 64,
                     ),
                   ),
                 ],

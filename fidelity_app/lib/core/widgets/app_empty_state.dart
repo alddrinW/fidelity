@@ -2,6 +2,7 @@ import 'package:flutter/material.dart' hide Text;
 
 import '../theme/app_typography.dart';
 import '../l10n/tr_text.dart';
+import 'fido_mascot.dart';
 
 /// Estado vacío de marca: Fido, un título de impacto y un texto breve.
 class AppEmptyState extends StatelessWidget {
@@ -24,12 +25,7 @@ class AppEmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Image.asset(
-              'assets/images/logo_transparente.png',
-              height: imageHeight,
-              fit: BoxFit.contain,
-              semanticLabel: 'Fido',
-            ),
+            FidoMascot(mood: FidoMood.calm, height: imageHeight),
             const SizedBox(height: 8),
             Text(
               title.toUpperCase(),

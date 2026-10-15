@@ -6,6 +6,7 @@ import '../theme/app_colors.dart';
 import '../theme/app_typography.dart';
 import 'app_button.dart';
 import '../l10n/tr_text.dart';
+import 'fido_mascot.dart';
 
 /// Celebración a pantalla de diálogo (premio ganado, premio transferido): Fido
 /// con los brazos arriba y confeti rosa y negro.
@@ -95,12 +96,7 @@ class _GlobalCelebrationDialogState extends State<GlobalCelebrationDialog> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Image.asset(
-                  'assets/images/fido_celebra.png',
-                  height: 170,
-                  fit: BoxFit.contain,
-                  semanticLabel: 'Fido celebrando',
-                ).animate().scale(
+                const FidoMascot(mood: FidoMood.euphoric, height: 170).animate().scale(
                       begin: const Offset(0.7, 0.7),
                       duration: 600.ms,
                       curve: const Cubic(0.34, 1.56, 0.64, 1),

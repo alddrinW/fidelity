@@ -78,7 +78,7 @@ class _AccountActivationScreenState extends ConsumerState<AccountActivationScree
     final reported = await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => PagaYaScreen(order: order)),
     );
-    if (reported == true) await _loadOrder();
+    if (reported == true && mounted) await _loadOrder();
   }
 
   @override
@@ -186,11 +186,9 @@ class _OrderView extends StatelessWidget {
             isLoading: isRefreshing,
             onPressed: onRefresh,
           )
-        else ...[
+        else
+          // Antes de pagar, la única salida es PAGA YA: no hay nada que "refrescar".
           AppPrimaryButton(label: rejected ? 'Reportar de nuevo' : 'Paga ya', onPressed: onPay),
-          const SizedBox(height: 8),
-          AppTextAction(label: 'Ya me activaron', onPressed: isRefreshing ? null : onRefresh),
-        ],
       ],
     );
   }

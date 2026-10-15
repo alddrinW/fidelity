@@ -19,6 +19,9 @@ class AppMessageDialog extends StatelessWidget {
   final String? secondaryLabel;
   final VoidCallback? onSecondary;
 
+  /// Reemplaza al icono rosa de arriba (p. ej. una animación de Fido).
+  final Widget? leading;
+
   const AppMessageDialog({
     super.key,
     required this.icon,
@@ -29,6 +32,7 @@ class AppMessageDialog extends StatelessWidget {
     this.onPrimary,
     this.secondaryLabel,
     this.onSecondary,
+    this.leading,
   });
 
   @override
@@ -44,14 +48,15 @@ class AppMessageDialog extends StatelessWidget {
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: const BoxDecoration(
-              color: AppColors.pink,
-              shape: BoxShape.circle,
-            ),
-            child: Icon(icon, size: 44, color: AppColors.black),
-          ),
+          leading ??
+              Container(
+                padding: const EdgeInsets.all(20),
+                decoration: const BoxDecoration(
+                  color: AppColors.pink,
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(icon, size: 44, color: AppColors.black),
+              ),
           const SizedBox(height: 20),
           Text(
             title.toUpperCase(),

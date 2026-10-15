@@ -38,9 +38,9 @@ class BusinessRepository {
     double? latitude,
     double? longitude,
     String? categoryId,
-    required String rewardDescription,
+    String? rewardDescription,
     String? rewardLongDescription,
-    required int pointsRequired,
+    int? pointsRequired,
     String? parentId,
     bool selectAsCurrent = true,
   }) async {
@@ -55,10 +55,11 @@ class BusinessRepository {
       if (latitude != null) 'latitude': latitude,
       if (longitude != null) 'longitude': longitude,
       if (categoryId != null) 'categoryId': int.tryParse(categoryId),
-      'rewardDescription': rewardDescription.trim(),
+      if (rewardDescription != null && rewardDescription.trim().isNotEmpty)
+        'rewardDescription': rewardDescription.trim(),
       if (rewardLongDescription != null && rewardLongDescription.trim().isNotEmpty)
         'rewardLongDescription': rewardLongDescription.trim(),
-      'pointsRequired': pointsRequired,
+      if (pointsRequired != null) 'pointsRequired': pointsRequired,
       'cooldownHours': 4,
     });
 

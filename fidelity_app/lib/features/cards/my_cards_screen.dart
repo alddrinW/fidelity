@@ -8,11 +8,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/services/api_client.dart';
 import '../../core/services/realtime_sync_service.dart';
 import '../../core/theme/app_colors.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/theme/app_typography.dart';
-import '../../core/utils/image_source.dart';
 import '../../core/widgets/app_button.dart';
-import '../../core/widgets/app_chip.dart';
 import '../../core/widgets/app_message_dialog.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../../core/widgets/global_celebration_dialog.dart';
@@ -24,6 +21,7 @@ import 'card_history_screen.dart';
 import '../campaigns/data/campaigns_repository.dart';
 import '../campaigns/widgets/campaigns_carousel.dart';
 import 'providers/my_cards_provider.dart';
+import 'widgets/missions_route.dart';
 import '../../core/l10n/tr_text.dart';
 
 class MyCardsScreen extends ConsumerStatefulWidget {
@@ -396,33 +394,17 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
             ref.invalidate(campaignFeedProvider);
             return ref.read(myCardsProvider.notifier).refreshCards();
           },
-          child: ListView.builder(
-            // Espacio inferior para que la última tarjeta no quede bajo el botón.
+          child: ListView(
+            // Espacio inferior para que el último nodo no quede bajo el botón.
             padding: const EdgeInsets.fromLTRB(24, 16, 24, 140),
-            itemCount: state.cards.length + 2,
-            itemBuilder: (context, index) {
+            children: [
               // Novedades de los locales (eventos, tarjetas de regalo, rutas).
-              if (index == 0) return const CampaignsCarousel();
-              if (index == 1) {
-                return Padding(
-                  padding: const EdgeInsets.only(left: 4, bottom: 16),
-                  child: Semantics(
-                    header: true,
-                    child: Text(
-                      'ESCANEOS REGISTRADOS',
-                      style: AppTypography.label(size: 16, tracking: 0.5),
-                    ),
-                  ),
-                );
-              }
-              final card = state.cards[index - 2];
-              return _LoyaltyCardItem(
-                card: card,
-                index: index - 2,
-                sessionLastViewedAt: state.sessionLastViewedAt,
-                onTap: () => _openCard(card),
-              );
-            },
+              const CampaignsCarousel(),
+              MissionsRoute(
+                missions: [for (final card in state.cards) Mission.fromCard(card)],
+                onOpen: (mission) => _openCard(mission.card),
+              ),
+            ],
           ),
         ),
         Positioned(
@@ -494,182 +476,3 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
     );
   }
 }
-
-/// Tarjeta de un negocio: logo, nombre, premio y avance (p. ej. "6/10").
-class _LoyaltyCardItem extends StatelessWidget {
-  final Map<String, dynamic> card;
-  final int index;
-  final VoidCallback onTap;
-  final DateTime? sessionLastViewedAt;
-
-  const _LoyaltyCardItem({
-    required this.card,
-    required this.index,
-    required this.onTap,
-    this.sessionLastViewedAt,
-  });
-
-  bool get _isRecentlyUpdated {
-    final lastScan = DateTime.tryParse(card['last_scan_at']?.toString() ?? '');
-    if (lastScan == null) return false;
-    final viewedAt = sessionLastViewedAt;
-    if (viewedAt != null) return lastScan.isAfter(viewedAt);
-    // Si es la primera vez que abre la app en su vida, usamos la regla de 5 mins por si acaso
-    return DateTime.now().toUtc().difference(lastScan).inMinutes < 5;
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final business = card['businesses'];
-    final name = business['name'].toString();
-    final currentPoints = card['current_points'] as int;
-    final pointsRequired = business['points_required'] as int;
-    final reward = business['reward_description']?.toString();
-
-    // Premios ganados pero todavía no entregados por el local (status 'pending').
-    // Apenas el local lo entrega (status 'approved') deja de mostrarse.
-    // Se actualiza EN VIVO porque el realtime de rewards dispara refreshCards.
-    final rewardsList = (card['rewards'] as List?) ?? const [];
-    final unclaimedCount =
-        rewardsList.where((r) => (r as Map)['status'] == 'pending').length;
-
-    // Escaneos que el negocio aún no aprueba: el punto todavía no se suma.
-    final pendingScans = (card['pending_scans'] as int?) ?? 0;
-
-    return Semantics(
-      button: true,
-      label: 'Tarjeta de $name, $currentPoints de $pointsRequired puntos',
-      excludeSemantics: true,
-      child: Padding(
-        padding: const EdgeInsets.only(bottom: 20),
-        child: Material(
-          color: AppColors.white,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(36),
-            side: const BorderSide(color: AppColors.border, width: 1.2),
-          ),
-          child: InkWell(
-            customBorder: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(36),
-            ),
-            onTap: onTap,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 20, 16, 16),
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  _BusinessLogo(
-                    logoUrl: business['logo_url']?.toString(),
-                    category: business['business_categories']?['name']?.toString(),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          name.toUpperCase(),
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: AppTypography.display(size: 28),
-                        ),
-                        if (reward != null && reward.isNotEmpty) ...[
-                          const SizedBox(height: 4),
-                          Text(
-                            'PREMIO: ${reward.toUpperCase()}',
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: AppTypography.body(
-                              size: 15,
-                              weight: FontWeight.w300,
-                            ),
-                          ),
-                        ],
-                        if (unclaimedCount > 0 || pendingScans > 0 || _isRecentlyUpdated) ...[
-                          const SizedBox(height: 10),
-                          Wrap(
-                            spacing: 8,
-                            runSpacing: 6,
-                            children: [
-                              if (unclaimedCount > 0)
-                                AppChip(
-                                  label: unclaimedCount > 1
-                                      ? '$unclaimedCount PREMIOS LISTOS'
-                                      : 'PREMIO LISTO',
-                                  style: AppChipStyle.dark,
-                                ),
-                              if (pendingScans > 0)
-                                const AppChip(label: 'PENDIENTE')
-                              else if (_isRecentlyUpdated)
-                                const AppChip(label: 'NUEVO'),
-                            ],
-                          ),
-                        ],
-                        const SizedBox(height: 14),
-                        Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                '$currentPoints/$pointsRequired',
-                                style: AppTypography.label(size: 28, tracking: 1),
-                              ),
-                            ),
-                            const Icon(
-                              Icons.chevron_right_rounded,
-                              size: 36,
-                              color: AppColors.black,
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ),
-      ),
-    )
-        .animate(delay: (index.clamp(0, 6) * 80).ms)
-        .fadeIn(duration: 400.ms)
-        .slideY(begin: 0.08, curve: Curves.easeOutCubic, duration: 500.ms);
-  }
-}
-
-class _BusinessLogo extends StatelessWidget {
-  final String? logoUrl;
-  final String? category;
-
-  const _BusinessLogo({required this.logoUrl, required this.category});
-
-  static const double _size = 88;
-
-  @override
-  Widget build(BuildContext context) {
-    final fallback = Icon(
-      AppTheme.getCategoryIcon(category ?? 'Otra'),
-      color: AppColors.black,
-      size: 38,
-    );
-    final image = imageProviderFromUrl(logoUrl);
-
-    return Container(
-      width: _size,
-      height: _size,
-      decoration: const BoxDecoration(
-        color: AppColors.surfaceMuted,
-        shape: BoxShape.circle,
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: image == null
-          ? fallback
-          : Image(
-              image: image,
-              fit: BoxFit.cover,
-              errorBuilder: (_, __, ___) => fallback,
-            ),
-    );
-  }
-}
-

@@ -21,6 +21,8 @@ import '../../feedback/feedback_inbox_screen.dart';
 import '../branches/my_businesses_screen.dart';
 import '../create_business_screen.dart';
 import '../profile/business_profile_screen.dart';
+import '../profile/campaign_settings_screen.dart';
+import 'widgets/fido_guide_strip.dart';
 import '../qr_management/qr_management_screen.dart';
 import '../rewards/rewards_management_screen.dart';
 import 'providers/dashboard_provider.dart';
@@ -149,8 +151,70 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
         icon: Icons.storefront_outlined,
         title: '¡Bienvenido a Fidelity!',
         message: '${name.isEmpty ? '¡Hola!' : '¡Hola $name!'} Tu negocio fue registrado y activado. '
-            'Desde aquí podrás administrar tus clientes, aprobar escaneos y entregar premios.',
-        primaryLabel: '¡Comenzar!',
+            'Lo primero: define tu campaña, es decir, qué premio entregas y cuántos puntos necesitan tus clientes.',
+        hint: 'Podrás cambiarla cuando quieras desde el logo de tu negocio.',
+        primaryLabel: 'Configurar mi campaña',
+        onPrimary: _openCampaignSettings,
+        secondaryLabel: 'Más tarde',
+      ),
+    );
+  }
+
+  /// Primera configuración de la campaña, ya con la cuenta activa.
+  Future<void> _openCampaignSettings() async {
+    final business = ref.read(dashboardProvider).business;
+    if (business == null || !mounted) return;
+    final saved = await Navigator.push<bool>(
+      context,
+      MaterialPageRoute(builder: (_) => CampaignSettingsScreen(business: business)),
+    );
+    if (saved == true && mounted) {
+      ref.read(dashboardProvider.notifier).loadData(silent: true);
+    }
+  }
+
+  /// La bienvenida de Fido se cierra por sesión (no vuelve hasta reabrir la app).
+  static bool _guideDismissed = false;
+
+  /// Fido, en el encabezado del dueño, ofrece accesos directos según lo que
+  /// esté pasando en su negocio.
+  Widget _fidoGuide(DashboardState state, String ownerName) {
+    if (widget.approverMode || _guideDismissed) return const SizedBox.shrink();
+
+    final pending = state.pendingScans.length;
+    final message = switch (pending) {
+      0 => ownerName.isEmpty
+          ? '¡Hola! ¿Qué hacemos hoy? Crea una campaña o revisa tus sucursales.'
+          : '¡Hola $ownerName! ¿Qué hacemos hoy? Crea una campaña o revisa tus sucursales.',
+      1 => 'Tienes 1 escaneo por aprobar. Apruébalo para que tu cliente sume su punto.',
+      _ => 'Tienes $pending escaneos por aprobar. Apruébalos para que tus clientes sumen su punto.',
+    };
+
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+      child: FidoGuideStrip(
+        message: message,
+        onDismiss: () => setState(() => _guideDismissed = true),
+        actions: [
+          if (pending > 0)
+            FidoGuideAction(
+              label: 'Aprobar escaneos',
+              icon: Icons.pending_actions_rounded,
+              onTap: () => _tabController.animateTo(1),
+            ),
+          FidoGuideAction(
+            label: 'Crear campaña',
+            icon: Icons.campaign_outlined,
+            onTap: () => _tabController.animateTo(5),
+          ),
+          FidoGuideAction(
+            label: 'Mis sucursales',
+            icon: Icons.account_tree_outlined,
+            onTap: () => Navigator.of(context).push(
+              MaterialPageRoute(builder: (_) => const MyBusinessesScreen()),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -339,7 +403,12 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
                     constraints: const BoxConstraints(maxWidth: 1000),
                     child: Padding(
                       padding: const EdgeInsets.only(top: 24),
-                      child: TabBarView(controller: _tabController, children: views),
+                      child: Column(
+                        children: [
+                          _fidoGuide(state, ownerName),
+                          Expanded(child: TabBarView(controller: _tabController, children: views)),
+                        ],
+                      ),
                     ),
                   ),
                 ),
@@ -418,6 +487,7 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
                   ],
                 ),
               ),
+              _fidoGuide(state, ownerName),
               AppPillTabBar(controller: _tabController, labels: labels, badges: badges),
               const SizedBox(height: 16),
               Expanded(child: TabBarView(controller: _tabController, children: views)),

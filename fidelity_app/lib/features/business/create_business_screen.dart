@@ -15,12 +15,11 @@ import '../payments/paga_ya_screen.dart';
 import 'data/business_repository.dart';
 import 'providers/create_business_provider.dart';
 import 'widgets/business_form_fields.dart';
-import 'widgets/campaign_form_fields.dart';
 import 'widgets/location_picker_page.dart';
 import '../../core/l10n/tr_text.dart';
 
-/// Alta de un negocio en dos pasos: "Mi negocio" (logo, datos y ubicación) y
-/// "Mi campaña" (premio y puntos).
+/// Alta de un negocio: logo, datos y ubicación. La campaña (premio y puntos)
+/// no se pide aquí: el dueño la configura cuando su cuenta ya está activa.
 class CreateBusinessScreen extends ConsumerStatefulWidget {
   /// Si se indica, se crea una **sucursal** de este negocio (sus datos sirven
   /// de punto de partida) y el flujo termina en PAGA YA.
@@ -33,10 +32,7 @@ class CreateBusinessScreen extends ConsumerStatefulWidget {
 }
 
 class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
-  int _step = 0;
-
   final _businessFormKey = GlobalKey<FormState>();
-  final _campaignFormKey = GlobalKey<FormState>();
 
   PickedImage? _logo;
 
@@ -49,9 +45,10 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
   double? _latitude;
   double? _longitude;
 
-  final _rewardController = TextEditingController();
-  final _rewardLongController = TextEditingController();
-  final _pointsController = TextEditingController(text: '10');
+  // Una sucursal hereda la campaña del negocio principal (no se edita aquí).
+  String? _inheritedReward;
+  String? _inheritedRewardLong;
+  int? _inheritedPoints;
 
   bool get _isBranch => widget.parent != null;
 
@@ -70,11 +67,9 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
     _nameController.text = '${text(p['name'])} - ';
     _phoneController.text = text(p['phone']);
     _taxIdController.text = text(p['taxId'] ?? p['tax_id']);
-    _rewardController.text = text(p['rewardDescription'] ?? p['reward_description']);
-    _rewardLongController.text =
-        text(p['rewardLongDescription'] ?? p['reward_long_description']);
-    final points = p['pointsRequired'] ?? p['points_required'];
-    if (points != null) _pointsController.text = text(points);
+    _inheritedReward = text(p['rewardDescription'] ?? p['reward_description']);
+    _inheritedRewardLong = text(p['rewardLongDescription'] ?? p['reward_long_description']);
+    _inheritedPoints = int.tryParse(text(p['pointsRequired'] ?? p['points_required']));
   }
 
   @override
@@ -83,9 +78,6 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
     _phoneController.dispose();
     _taxIdController.dispose();
     _addressController.dispose();
-    _rewardController.dispose();
-    _rewardLongController.dispose();
-    _pointsController.dispose();
     super.dispose();
   }
 
@@ -140,17 +132,11 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
   }
 
   void _next() {
-    if (_step == 0) {
-      if (_businessFormKey.currentState!.validate()) setState(() => _step = 1);
-    } else if (_campaignFormKey.currentState!.validate()) {
-      _submit();
-    }
+    if (_businessFormKey.currentState!.validate()) _submit();
   }
 
   void _back() {
-    if (_step == 1) {
-      setState(() => _step = 0);
-    } else if (_isBranch) {
+    if (_isBranch) {
       Navigator.of(context).pop();
     } else {
       _confirmExit();
@@ -184,9 +170,9 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
           latitude: _latitude,
           longitude: _longitude,
           categoryId: _selectedCategory?.id.toString(),
-          rewardDescription: _rewardController.text,
-          rewardLongDescription: _rewardLongController.text,
-          pointsRequired: int.tryParse(_pointsController.text.trim()) ?? 10,
+          rewardDescription: _inheritedReward,
+          rewardLongDescription: _inheritedRewardLong,
+          pointsRequired: _inheritedPoints,
           parentId: widget.parent?['id']?.toString(),
         );
   }
@@ -219,9 +205,7 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
           child: Column(
             children: [
               AppPageHeader(
-                title: _isBranch
-                    ? (_step == 0 ? 'Nueva sucursal' : 'Su campaña')
-                    : (_step == 0 ? 'Mi negocio' : 'Mi campaña'),
+                title: _isBranch ? 'Nueva sucursal' : 'Mi negocio',
                 onBack: createState.isLoading ? () {} : _back,
               ),
               Expanded(
@@ -229,7 +213,7 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
                   padding: const EdgeInsets.fromLTRB(32, 16, 32, 24),
                   child: AnimatedSwitcher(
                     duration: const Duration(milliseconds: 250),
-                    child: _step == 0 ? _buildBusinessStep() : _buildCampaignStep(),
+                    child: _buildBusinessStep(),
                   ),
                 ),
               ),
@@ -238,7 +222,7 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(24, 8, 32, 32),
                   child: AppCircleButton(
-                    tooltip: _step == 0 ? 'Continuar con la campaña' : 'Crear mi negocio',
+                    tooltip: _isBranch ? 'Crear sucursal' : 'Crear mi negocio',
                     isLoading: createState.isLoading,
                     onPressed: _next,
                   ),
@@ -278,31 +262,6 @@ class _CreateBusinessScreenState extends ConsumerState<CreateBusinessScreen> {
             categories: _categories,
             onCategoryChanged: (c) => setState(() => _selectedCategory = c),
             onRetryCategories: _loadCategories,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildCampaignStep() {
-    return Form(
-      key: _campaignFormKey,
-      child: Column(
-        key: const ValueKey('step-campaign'),
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          const _SectionLabel('TU PRIMER SISTEMA DE PUNTOS'),
-          Padding(
-            padding: const EdgeInsets.only(left: 8, bottom: 20),
-            child: Text(
-              '¿Qué ganan tus clientes y cuántos puntos necesitan?',
-              style: AppTypography.body(size: 15, weight: FontWeight.w300),
-            ),
-          ),
-          CampaignFormFields(
-            rewardController: _rewardController,
-            rewardLongController: _rewardLongController,
-            pointsController: _pointsController,
           ),
         ],
       ),

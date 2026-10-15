@@ -39,7 +39,9 @@ class CreateBusinessNotifier extends Notifier<CreateBusinessState> {
     return CreateBusinessState();
   }
 
-  /// Crea el negocio con su campaña y genera el QR inicial. El nombre y el
+  /// Crea el negocio y genera el QR inicial. Un negocio nuevo no define su
+  /// campaña aquí: la configura cuando su cuenta ya está activa. Una sucursal
+  /// hereda la campaña del negocio principal. El nombre y el
   /// teléfono del dueño ya se guardaron al registrarse; se editan después
   /// desde "Ajustar mis datos".
   Future<void> submitBusiness({
@@ -51,9 +53,9 @@ class CreateBusinessNotifier extends Notifier<CreateBusinessState> {
     required double? latitude,
     required double? longitude,
     String? categoryId,
-    required String rewardDescription,
+    String? rewardDescription,
     String? rewardLongDescription,
-    required int pointsRequired,
+    int? pointsRequired,
     String? parentId,
   }) async {
     final authUser = ref.read(authRepositoryProvider).currentUser;

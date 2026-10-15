@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart' hide Text;
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -66,28 +67,20 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     }
   }
 
-  Future<void> _resetPassword(String email) async {
-    try {
-      await ref.read(authRepositoryProvider).resetPassword(email);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Revisa tu correo para recuperar la contraseña.'),
-            backgroundColor: AppColors.black,
-          ),
-        );
-      }
-    } catch (e) {
-      if (mounted) _showError(e);
-    }
-  }
-
   Future<void> _showRecoveryDialog() async {
-    final email = await showDialog<String>(
+    final done = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (_) => _RecoveryDialog(initialEmail: _emailController.text),
     );
-    if (email != null && mounted) await _resetPassword(email);
+    if (done == true && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Contraseña actualizada. Ya puedes iniciar sesión.'),
+          backgroundColor: AppColors.black,
+        ),
+      );
+    }
   }
 
   @override
@@ -212,33 +205,66 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 }
 
-/// Diálogo de recuperación de contraseña. Es un widget propio para que el
-/// controlador del campo viva y se libere junto con el diálogo.
-class _RecoveryDialog extends StatefulWidget {
+/// Recuperación de contraseña en dos pasos dentro de un diálogo: 1) el correo,
+/// al que se envía un código de 6 dígitos; 2) el código y la nueva contraseña.
+/// Cierra con `true` si la contraseña se cambió.
+class _RecoveryDialog extends ConsumerStatefulWidget {
   final String initialEmail;
 
   const _RecoveryDialog({required this.initialEmail});
 
   @override
-  State<_RecoveryDialog> createState() => _RecoveryDialogState();
+  ConsumerState<_RecoveryDialog> createState() => _RecoveryDialogState();
 }
 
-class _RecoveryDialogState extends State<_RecoveryDialog> {
-  late final TextEditingController _controller =
+class _RecoveryDialogState extends ConsumerState<_RecoveryDialog> {
+  late final TextEditingController _email =
       TextEditingController(text: widget.initialEmail.trim());
+  final _code = TextEditingController();
+  final _password = TextEditingController();
   final _formKey = GlobalKey<FormState>();
+
+  bool _codeSent = false;
+  bool _isLoading = false;
+  String? _error;
 
   @override
   void dispose() {
-    _controller.dispose();
+    _email.dispose();
+    _code.dispose();
+    _password.dispose();
     super.dispose();
   }
 
-  void _submit() {
-    if (_formKey.currentState!.validate()) {
-      Navigator.of(context).pop(_controller.text.trim());
+  Future<void> _run(Future<void> Function() action, {VoidCallback? onDone}) async {
+    if (!_formKey.currentState!.validate()) return;
+    setState(() {
+      _isLoading = true;
+      _error = null;
+    });
+    try {
+      await action();
+      if (mounted) onDone?.call();
+    } catch (e) {
+      if (mounted) setState(() => _error = AuthErrorTranslator.translate(e));
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
+
+  Future<void> _sendCode() => _run(
+        () => ref.read(authRepositoryProvider).forgotPassword(_email.text),
+        onDone: () => setState(() => _codeSent = true),
+      );
+
+  Future<void> _changePassword() => _run(
+        () => ref.read(authRepositoryProvider).resetPassword(
+              email: _email.text,
+              code: _code.text,
+              newPassword: _password.text,
+            ),
+        onDone: () => Navigator.of(context).pop(true),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -250,39 +276,80 @@ class _RecoveryDialogState extends State<_RecoveryDialog> {
         textAlign: TextAlign.center,
         style: AppTypography.display(size: 24),
       ),
-      content: Form(
-        key: _formKey,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(
-              'Te enviaremos un enlace para crear una nueva contraseña.',
-              textAlign: TextAlign.center,
-              style: AppTypography.body(size: 15, weight: FontWeight.w300),
-            ),
-            const SizedBox(height: 20),
-            AppTextField(
-              controller: _controller,
-              hint: 'Correo electrónico',
-              icon: Icons.mail_outline_rounded,
-              keyboardType: TextInputType.emailAddress,
-              textInputAction: TextInputAction.done,
-              onSubmitted: (_) => _submit(),
-              validator: AppValidators.validateEmail,
-            ),
-          ],
+      content: SingleChildScrollView(
+        child: Form(
+          key: _formKey,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                _codeSent
+                    ? 'Si el correo está registrado, te enviamos un código de 6 dígitos. '
+                        'Vence en 15 minutos.'
+                    : 'Te enviaremos un código para crear una nueva contraseña.',
+                textAlign: TextAlign.center,
+                style: AppTypography.body(size: 15, weight: FontWeight.w300),
+              ),
+              const SizedBox(height: 20),
+              AppTextField(
+                controller: _email,
+                hint: 'Correo electrónico',
+                icon: Icons.mail_outline_rounded,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: _codeSent ? TextInputAction.next : TextInputAction.done,
+                enabled: !_codeSent && !_isLoading,
+                onSubmitted: (_) => _codeSent ? null : _sendCode(),
+                validator: AppValidators.validateEmail,
+              ),
+              if (_codeSent) ...[
+                const SizedBox(height: 12),
+                AppTextField(
+                  controller: _code,
+                  hint: 'Código de 6 dígitos',
+                  icon: Icons.pin_outlined,
+                  keyboardType: TextInputType.number,
+                  textInputAction: TextInputAction.next,
+                  inputFormatters: [
+                    FilteringTextInputFormatter.digitsOnly,
+                    LengthLimitingTextInputFormatter(6),
+                  ],
+                  validator: (v) =>
+                      RegExp(r'^\d{6}$').hasMatch(v?.trim() ?? '') ? null : 'Escribe los 6 dígitos',
+                ),
+                const SizedBox(height: 12),
+                AppTextField(
+                  controller: _password,
+                  hint: 'Nueva contraseña',
+                  icon: Icons.lock_outline_rounded,
+                  isPassword: true,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _changePassword(),
+                  validator: (v) =>
+                      (v?.length ?? 0) >= 6 ? null : 'Mínimo 6 caracteres',
+                ),
+              ],
+              if (_error != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  _error!,
+                  textAlign: TextAlign.center,
+                  style: AppTypography.body(size: 14, color: AppColors.error),
+                ),
+              ],
+            ],
+          ),
         ),
       ),
       actionsAlignment: MainAxisAlignment.spaceBetween,
       actionsPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(),
+          onPressed: _isLoading ? null : () => Navigator.of(context).pop(false),
           child: const Text('Cancelar'),
         ),
         ElevatedButton(
-          onPressed: _submit,
-          child: const Text('ENVIAR'),
+          onPressed: _isLoading ? null : (_codeSent ? _changePassword : _sendCode),
+          child: Text(_codeSent ? 'CAMBIAR CONTRASEÑA' : 'ENVIAR CÓDIGO'),
         ),
       ],
     );

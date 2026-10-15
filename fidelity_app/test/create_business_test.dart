@@ -31,7 +31,7 @@ void main() {
     expect(find.text('Dirección'), findsOneWidget);
   });
 
-  testWidgets('no avanza al paso 2 si faltan datos obligatorios', (
+  testWidgets('el registro no pide la campaña: eso va cuando la cuenta está activa', (
     WidgetTester tester,
   ) async {
     await tester.pumpWidget(
@@ -40,11 +40,25 @@ void main() {
       ),
     );
 
-    await tester.tap(find.byTooltip('Continuar con la campaña'));
+    expect(find.text('¿Qué premio entregas?'), findsNothing);
+    expect(find.text('TU PRIMER SISTEMA DE PUNTOS'), findsNothing);
+    expect(find.byTooltip('Continuar con la campaña'), findsNothing);
+    expect(find.byTooltip('Crear mi negocio'), findsOneWidget);
+  });
+
+  testWidgets('no crea el negocio si faltan datos obligatorios', (
+    WidgetTester tester,
+  ) async {
+    await tester.pumpWidget(
+      ProviderScope(
+        child: spanishApp(const CreateBusinessScreen()),
+      ),
+    );
+
+    await tester.tap(find.byTooltip('Crear mi negocio'));
     await tester.pump();
 
     expect(find.text('MI NEGOCIO'), findsOneWidget);
-    expect(find.text('MI CAMPAÑA'), findsNothing);
     expect(find.text('Ingresa el nombre de tu negocio'), findsOneWidget);
     expect(find.text('Ingresa un teléfono de atención'), findsOneWidget);
     expect(find.text('Ingresa tu cédula o RUC'), findsOneWidget);

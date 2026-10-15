@@ -65,18 +65,12 @@ void main() {
   });
 
   group('métodos de pago del plan', () {
-    PaymentOrder order() => PaymentOrder.fromJson({
-          'id': 'p1',
-          'amount': 20,
-          'reference': 'FID-ABC234',
-        });
-
-    test('sin cuenta ni enlace no hay métodos disponibles', () {
+    test('sin cuenta ni PayPhone no hay métodos disponibles', () {
       final plan = PaymentPlan.fromJson({'currency': 'USD', 'registrationFee': 20, 'branchFee': 10});
 
       expect(plan.availableMethods, isEmpty);
       expect(plan.bankAccounts, isEmpty);
-      expect(plan.cardPaymentUri(order()), isNull);
+      expect(plan.cardEnabled, isFalse);
     });
 
     test('con cuenta bancaria se ofrece la transferencia', () {
@@ -100,22 +94,10 @@ void main() {
       expect(plan.bankAccounts.first.holder, 'Titular Uno');
     });
 
-    test('con enlace de pasarela se ofrece la tarjeta y se rellena la referencia', () {
-      final plan = PaymentPlan.fromJson({
-        'cardPaymentUrl': 'https://pay.example.com/c?ref={reference}&amount={amount}',
-      });
+    test('con PayPhone configurado se ofrece la tarjeta', () {
+      final plan = PaymentPlan.fromJson({'cardEnabled': true});
 
       expect(plan.availableMethods, [PaymentMethod.card]);
-      expect(
-        plan.cardPaymentUri(order()).toString(),
-        'https://pay.example.com/c?ref=FID-ABC234&amount=20.00',
-      );
-    });
-
-    test('un enlace que no es http(s) se descarta', () {
-      final plan = PaymentPlan.fromJson({'cardPaymentUrl': 'javascript:alert(1)'});
-
-      expect(plan.cardPaymentUri(order()), isNull);
     });
 
     test('con las dos configuraciones se ofrecen ambos métodos', () {
@@ -123,7 +105,7 @@ void main() {
         'bankAccounts': [
           {'accountNumber': '1'},
         ],
-        'cardPaymentUrl': 'https://pay.example.com',
+        'cardEnabled': true,
       });
 
       expect(plan.availableMethods, [PaymentMethod.transfer, PaymentMethod.card]);
