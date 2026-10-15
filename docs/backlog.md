@@ -55,15 +55,15 @@
 - [ ] **HU-09:** Modos reactivos (calma, alerta de cooldown, euforia de canje).
 
 ### 🏢 Épica 10: Panel Empresarial Multi-sucursal y Campañas
-- [ ] **HU-10:** Matriz de control centralizado de múltiples sucursales para comercios.
-- [ ] **HU-10:** Creador de campañas de marketing segmentadas para clientes fidelizados.
-- [ ] **HU-10:** Selector global de idiomas en tiempo real para el panel de escritorio.
+- [x] **HU-10:** Matriz de control centralizado de múltiples sucursales para comercios. *(Mis negocios: estado, clientes, escaneos y equipo por negocio y sucursal.)*
+- [x] **HU-10:** Creador de campañas de marketing segmentadas para clientes fidelizados. *(Eventos, tarjetas de regalo y rutas/pasaporte; programables; llegan a los clientes de los locales participantes.)*
+- [x] **HU-10:** Selector global de idiomas en tiempo real para el panel de escritorio. *(Español e inglés; cambia al instante y se recuerda.)*
 
 ### 💳 Épica 11: Módulo Transaccional "PAGA YA" y Rol Aprobador
-- [ ] **HU-11:** Asistente interactivo guiado por Fido para activación de planes y sucursales (PAGA YA).
-- [ ] **HU-11:** Control de acceso avanzado con rol de "Aprobador" para validación de premios especiales.
+- [x] **HU-11:** Asistente interactivo guiado por Fido para activación de planes y sucursales (PAGA YA). *(Orden de pago con referencia, reporte con comprobante y validación del administrador; sin pasarela de pago.)*
+- [x] **HU-11:** Control de acceso avanzado con rol de "Aprobador" para validación de premios especiales. *(Aprueba escaneos, valida premios y canjea tarjetas; no anula transacciones.)*
 - [ ] **HU-11:** Monitor visual de estado de conectividad API y puntos de venta.
 
 ### 💬 Épica 12: Buzón de Sugerencias Conversacional Post-Escaneo
-- [ ] **HU-12:** Hoja interactiva post-escaneo para calificación ágil de atención.
-- [ ] **HU-12:** Enrutamiento privado de comentarios y reclamos al panel de dueños y aprobadores.
+- [x] **HU-12:** Hoja interactiva post-escaneo para calificación ágil de atención.
+- [x] **HU-12:** Enrutamiento privado de comentarios y reclamos al panel de dueños y aprobadores. *(También llegan al administrador.)*
