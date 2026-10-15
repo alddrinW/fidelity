@@ -29,8 +29,9 @@ Este documento detalla las reglas que gobiernan el comportamiento de Fidelity. M
 -   Mientras está inactivo, su dueño ve la pantalla **"Activa tu cuenta"** con el botón **PAGA YA**, y sus QR no se pueden escanear.
 -   **PAGA YA** es un asistente guiado por Fido en tres pasos: (1) plan y costo, (2) **elegir cómo pagar** y (3) confirmar. Se paga dentro de la app, sin pedir los datos por WhatsApp ni correo:
     -   **Transferencia bancaria:** la app muestra la cuenta (banco, número, tipo, beneficiario y CI/RUC, cada dato con botón de copiar), el monto y la referencia del pago. Después el dueño **sube la foto del comprobante** (obligatoria) y, si quiere, el número de transacción.
-    -   **Tarjeta débito/crédito:** la app lleva a la **pasarela de pago** (enlace configurable con la referencia y el monto) y el dueño vuelve a confirmar "Ya pagué". La app nunca recibe ni guarda datos de la tarjeta.
-    -   Los métodos se configuran en el servidor (`BANK_*` y `CARD_PAYMENT_URL`); si uno no está configurado, la app no lo ofrece. No hay confirmación automática de la pasarela: el administrador valida el pago.
+    -   **Tarjeta débito/crédito (PayPhone):** la app lleva a la página de pago de PayPhone y el cliente vuelve a la app. El servidor **confirma el cobro directamente con PayPhone** (monto y transacción deben coincidir con la orden); el dueño no puede marcarlo como pagado a mano. Con el cobro aprobado **el pago se valida solo y la cuenta se activa sola** (sin administrador; el comprobante lleva los datos de PayPhone). La app nunca recibe ni guarda datos de la tarjeta.
+    -   **Precios:** los fija el **administrador** desde *Pagos → Precios del registro* (registro de negocio y alta de sucursal). Un cambio vale para las órdenes nuevas; las ya emitidas conservan su monto. Sin precios guardados se usan `REGISTRATION_FEE` y `BRANCH_FEE` del servidor.
+    -   Los métodos se configuran en el servidor (`BANK_ACCOUNTS` y `PAYPHONE_TOKEN`, `PUBLIC_API_URL`; `PAYPHONE_STORE_ID` es opcional). El dominio de `PUBLIC_API_URL` debe ser el "Dominio web" de la app en PayPhone. Si un método no está configurado, la app no lo ofrece. Una **transferencia** sí la valida el administrador con la foto del comprobante.
 -   Estados del pago: `pending` (orden creada) → `reported` (el dueño avisó) → `paid` (validado) o `rejected` (con motivo; el dueño puede reportarlo de nuevo).
 -   Al abrir un pago (*Panel admin → Pagos → tocar el pago*), el administrador ve el **detalle completo**: la foto del comprobante (ampliable), los datos del pago, **toda la información del negocio** (logo, categoría, estado, descripción, teléfono, cédula/RUC, dirección con enlace al mapa, premio y puntos, fecha de registro) y los datos del **dueño** (nombre, correo, teléfono), cada dato con botón de copiar. Desde ahí valida o rechaza.
 -   El **administrador valida** desde *Panel admin → Pagos*: al validar se activa la cuenta, se emite el **comprobante digital** (`FID-R-AAAAMMDD-XXXXXX`) y el dueño recibe una notificación. Activar manualmente un negocio desde *Negocios* equivale a confirmar el pago y también emite el comprobante.
@@ -76,6 +77,16 @@ Este documento detalla las reglas que gobiernan el comportamiento de Fidelity. M
 -   La app funciona en el navegador (Flutter Web). En pantallas anchas (≥ 960 px) el **panel del negocio y del aprobador** reemplaza las pestañas por una **barra lateral** (con avisos de pendientes, *Mis negocios*, idioma y cierre de sesión) y ocupa más ancho; el **panel de administración** muestra sus tarjetas y módulos en cuadrícula, y las listas y detalles se ensanchan hasta 1,5 veces su ancho móvil.
 -   Los formularios (inicio de sesión, registro, alta de negocio) conservan un ancho angosto para leerse bien.
 -   Los carruseles y filas de filtros se pueden arrastrar con el ratón. Escanear un QR en PC usa la cámara del navegador (requiere HTTPS o `localhost`).
+
+## 11a. Ruta de Misiones (pantalla principal del cliente)
+-   Las tarjetas del cliente se muestran como una **ruta en zigzag**: cada negocio es un **nodo** con su logo dentro de un anillo que se llena con los puntos, el premio, los **sellos** (un círculo por punto requerido; con más de 12 se resume en una barra) y el avance (p. ej. `6/10`).
+-   Arriba, un aviso destaca la próxima meta: un **premio listo** para reclamar o, si no hay, el negocio **más cerca de completarse** ("Te falta 1 punto en...") con su barra de progreso.
+-   Un nodo con premio sin entregar se marca con un regalo; uno con escaneo pendiente de aprobación, con un reloj de arena. Tocar un nodo abre el historial de esa tarjeta.
+
+## 11b. Seguridad de cuentas y datos
+-   **Recuperar contraseña:** desde *¿Olvidaste tu contraseña?* se envía un **código de 6 dígitos** al correo (vence en **15 minutos**; se puede pedir otro cada minuto). Con el código el usuario crea su nueva contraseña. El código se guarda cifrado, se usa **una sola vez** y se bloquea tras **5 intentos fallidos**. La respuesta es la misma exista o no el correo (no se revela qué cuentas existen). El envío usa SMTP (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`); sin SMTP, fuera de producción, el código se escribe en el log del servidor.
+-   **Registro:** solo se puede crear una cuenta de *cliente* o de *negocio*. El administrador lo asigna el sistema y el aprobador lo asigna un dueño desde su equipo.
+-   **Listado de negocios:** requiere sesión. Un usuario normal ve solo los negocios activos con datos públicos (nombre, categoría, ubicación, premio...), **sin** el perfil del dueño, sus clientes ni su cédula/RUC. Ver inactivos (`all=true`) y los datos del dueño y los clientes es solo del administrador. Los tokens de notificaciones push no se devuelven a nadie.
 
 ## 12. Roles y Permisos
 | Rol | Capacidades |

@@ -45,14 +45,14 @@
 - [x] **HU-07:** Desacople completo de `Supabase.initialize()` y validación estática de la app.
 
 ### 🎮 Épica 8: Gamificación y Rutas de Progreso Estilo Duolingo
-- [ ] **HU-08:** Dashboard interactivo en formato "Ruta de Misiones" con barras de progreso a la siguiente recompensa.
+- [x] **HU-08:** Dashboard interactivo en formato "Ruta de Misiones" con barras de progreso a la siguiente recompensa. *(Pantalla principal del cliente: cada negocio es un nodo en un camino en zigzag con anillo de progreso y sellos; aviso de cuánto falta para el próximo premio.)*
 - [ ] **HU-08:** Módulo de mini-juegos (Ruleta de beneficios y Raspa y Gana digital).
 - [ ] **HU-08:** Sistema de rachas y multiplicadores de puntos por constancia de visita.
 
 ### 🐾 Épica 9: Mascota Guía "Fido" y Micro-interacciones
-- [ ] **HU-09:** Integración de Fido como guía en flujos de bienvenida, escaneo y soporte.
-- [ ] **HU-09:** Micro-animaciones de celebración con confeti y reacciones dinámicas de estado.
-- [ ] **HU-09:** Modos reactivos (calma, alerta de cooldown, euforia de canje).
+- [x] **HU-09:** Integración de Fido como guía en flujos de bienvenida, escaneo y soporte. *(Bienvenida del dueño con accesos directos; consejo en el escáner; asistentes de pago y buzón.)*
+- [x] **HU-09:** Micro-animaciones de celebración con confeti y reacciones dinámicas de estado. *(Salto de victoria con confeti al escanear.)*
+- [x] **HU-09:** Modos reactivos (calma, alerta de cooldown, euforia de canje). *(`FidoMascot`: calma, celebración, pensativo con reloj de arena y euforia; se detienen solos y respetan "reducir movimiento".)*
 
 ### 🏢 Épica 10: Panel Empresarial Multi-sucursal y Campañas
 - [x] **HU-10:** Matriz de control centralizado de múltiples sucursales para comercios. *(Mis negocios: estado, clientes, escaneos y equipo por negocio y sucursal.)*
