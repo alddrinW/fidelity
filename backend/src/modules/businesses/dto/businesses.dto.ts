@@ -4,6 +4,7 @@ import {
   IsString,
   IsNumber,
   IsBoolean,
+  IsUUID,
   Matches,
   Min,
 } from 'class-validator';
@@ -16,6 +17,11 @@ export class CreateBusinessDto {
   @IsString()
   @IsNotEmpty({ message: 'El nombre del negocio es requerido' })
   name: string;
+
+  /** Negocio principal del que este es una sucursal (debe ser del mismo dueño). */
+  @IsUUID()
+  @IsOptional()
+  parentId?: string;
 
   @IsString()
   @IsOptional()

@@ -45,7 +45,7 @@ export class ScansController {
   }
 
   @Get('business/:businessId')
-  @Roles(UserRole.BUSINESS, UserRole.ADMIN)
+  @Roles(UserRole.BUSINESS, UserRole.ADMIN, UserRole.APPROVER)
   async getBusinessScans(
     @CurrentUser() user: AuthenticatedUser,
     @Param('businessId') businessId: string,
@@ -55,7 +55,7 @@ export class ScansController {
   }
 
   @Patch(':id/status')
-  @Roles(UserRole.BUSINESS, UserRole.ADMIN)
+  @Roles(UserRole.BUSINESS, UserRole.ADMIN, UserRole.APPROVER)
   async updateScanStatus(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') scanId: string,

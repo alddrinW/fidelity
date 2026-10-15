@@ -9,9 +9,13 @@ import { Business } from '../../database/entities/business.entity';
 import { LoyaltyCard } from '../../database/entities/loyalty-card.entity';
 import { Reward } from '../../database/entities/reward.entity';
 import { Profile } from '../../database/entities/profile.entity';
+import { BusinessesModule } from '../businesses/businesses.module';
+import { CampaignsModule } from '../campaigns/campaigns.module';
 
 @Module({
   imports: [
+    BusinessesModule,
+    CampaignsModule,
     TypeOrmModule.forFeature([
       Scan,
       ScanAttempt,

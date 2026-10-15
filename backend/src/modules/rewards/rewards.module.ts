@@ -1,4 +1,5 @@
 import { Module } from '@nestjs/common';
+import { BusinessesModule } from '../businesses/businesses.module';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { RewardsService } from './rewards.service';
 import { RewardsController } from './rewards.controller';
@@ -10,6 +11,7 @@ import { Profile } from '../../database/entities/profile.entity';
 
 @Module({
   imports: [
+    BusinessesModule,
     TypeOrmModule.forFeature([
       Reward,
       RewardTransferHistory,

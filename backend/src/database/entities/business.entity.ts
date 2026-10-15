@@ -59,7 +59,11 @@ export class Business {
   @Column({ name: 'cooldown_hours', type: 'int', default: 24 })
   cooldownHours: number;
 
-  @Column({ name: 'is_active', type: 'boolean', default: true })
+  /**
+   * Un negocio nuevo nace inactivo: el administrador lo activa cuando valida
+   * el pago del registro. Mientras esté inactivo no se pueden escanear sus QR.
+   */
+  @Column({ name: 'is_active', type: 'boolean', default: false })
   isActive: boolean;
 
   @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
@@ -77,6 +81,17 @@ export class Business {
   /** Cedula (10 digitos) o RUC (13 digitos) del propietario. */
   @Column({ name: 'tax_id', type: 'varchar', length: 13, nullable: true })
   taxId: string;
+
+  /**
+   * Si este negocio es una sucursal, el negocio principal al que pertenece
+   * (siempre del mismo dueño). Un negocio principal tiene `parentId = null`.
+   */
+  @Column({ name: 'parent_id', type: 'uuid', nullable: true })
+  parentId: string | null;
+
+  @ManyToOne(() => Business, { nullable: true, onDelete: 'SET NULL' })
+  @JoinColumn({ name: 'parent_id' })
+  parent: Business | null;
 
   @OneToMany(() => LoyaltyCard, (card) => card.business)
   loyaltyCards: LoyaltyCard[];

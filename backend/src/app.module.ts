@@ -15,6 +15,13 @@ import {
   Reward,
   RewardTransferHistory,
   SupportTicket,
+  Payment,
+  Feedback,
+  BusinessMember,
+  Campaign,
+  CampaignBusiness,
+  CampaignClaim,
+  CampaignStamp,
 } from './database/entities';
 
 // Feature Modules
@@ -29,6 +36,9 @@ import { SupportTicketsModule } from './modules/support-tickets/support-tickets.
 import { NotificationsModule } from './modules/notifications/notifications.module';
 import { RealtimeModule } from './modules/realtime/realtime.module';
 import { AdminModule } from './modules/admin/admin.module';
+import { PaymentsModule } from './modules/payments/payments.module';
+import { FeedbackModule } from './modules/feedback/feedback.module';
+import { CampaignsModule } from './modules/campaigns/campaigns.module';
 
 @Module({
   imports: [
@@ -59,6 +69,13 @@ import { AdminModule } from './modules/admin/admin.module';
           Reward,
           RewardTransferHistory,
           SupportTicket,
+          Payment,
+          Feedback,
+          BusinessMember,
+          Campaign,
+          CampaignBusiness,
+          CampaignClaim,
+          CampaignStamp,
         ],
       }),
       inject: [ConfigService],
@@ -73,6 +90,9 @@ import { AdminModule } from './modules/admin/admin.module';
     RewardsModule,
     QrCodesModule,
     SupportTicketsModule,
+    PaymentsModule,
+    FeedbackModule,
+    CampaignsModule,
     AdminModule,
   ],
 })

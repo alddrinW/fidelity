@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Injectable,
   NotFoundException,
   ForbiddenException,
@@ -6,8 +7,10 @@ import {
   OnModuleInit,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Business } from '../../database/entities/business.entity';
+import { BusinessMember } from '../../database/entities/business-member.entity';
+import { PaymentConcept } from '../../database/entities/payment.entity';
 import { BusinessCategory } from '../../database/entities/business-category.entity';
 import { LoyaltyCard } from '../../database/entities/loyalty-card.entity';
 import { Scan, ScanStatus } from '../../database/entities/scan.entity';
@@ -19,6 +22,8 @@ import {
   CreateCategoryDto,
 } from './dto/businesses.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PaymentsService } from '../payments/payments.service';
+import { BusinessAccessService } from './business-access.service';
 
 /**
  * Categorias base. Las crea el backend al arrancar si la tabla esta vacia
@@ -52,6 +57,10 @@ export class BusinessesService implements OnModuleInit {
     @InjectRepository(Profile)
     private readonly profileRepository: Repository<Profile>,
     private readonly notificationsService: NotificationsService,
+    private readonly paymentsService: PaymentsService,
+    private readonly businessAccess: BusinessAccessService,
+    @InjectRepository(BusinessMember)
+    private readonly memberRepository: Repository<BusinessMember>,
   ) {}
 
   async onModuleInit() {
@@ -106,12 +115,36 @@ export class BusinessesService implements OnModuleInit {
       await this.profileRepository.save(owner);
     }
 
+    // Siempre inactivo al crearse, sin importar lo que envíe el cliente: lo
+    // activa el administrador al validar el pago del registro.
+    // Una sucursal cuelga de un negocio principal del mismo dueño.
+    if (dto.parentId) {
+      const parent = await this.businessRepository.findOne({
+        where: { id: dto.parentId },
+        select: ['id', 'ownerId', 'parentId'],
+      });
+      if (!parent || parent.ownerId !== ownerId) {
+        throw new BadRequestException('El negocio principal no existe o no es tuyo');
+      }
+      if (parent.parentId) {
+        throw new BadRequestException('Una sucursal no puede tener sus propias sucursales');
+      }
+    }
+
     const business = this.businessRepository.create({
       ...dto,
       ownerId,
+      isActive: false,
     });
 
     const saved = await this.businessRepository.save(business);
+
+    // La cuenta queda inactiva hasta que se valide el pago: se crea su orden
+    // (las sucursales tienen su propio precio).
+    const payment = await this.paymentsService.createOrder(
+      saved,
+      saved.parentId ? PaymentConcept.BRANCH : PaymentConcept.REGISTRATION,
+    );
 
     // Notify admins of new business
     await this.notificationsService.broadcastToAdmins(
@@ -120,7 +153,7 @@ export class BusinessesService implements OnModuleInit {
       '/admin_businesses',
     );
 
-    return saved;
+    return Object.assign(saved, { payment });
   }
 
   async findAll(activeOnly: boolean = true) {
@@ -158,6 +191,93 @@ export class BusinessesService implements OnModuleInit {
     });
   }
 
+  /**
+   * Negocios con los que trabaja un usuario: los suyos (dueño) o aquellos donde
+   * fue asignado como aprobador.
+   */
+  async findForUser(userId: string, role: UserRole) {
+    if (role !== UserRole.APPROVER) return this.findByOwner(userId);
+    const ids = await this.businessAccess.businessIdsForMember(userId);
+    if (ids.length === 0) return [];
+    return this.businessRepository.find({
+      where: { id: In(ids) },
+      relations: ['categoryRef'],
+      order: { createdAt: 'DESC' },
+    });
+  }
+
+  /**
+   * Matriz de control del dueño: por cada uno de sus negocios y sucursales,
+   * su estado y sus cifras de actividad.
+   */
+  async getOverview(ownerId: string) {
+    const businesses = await this.businessRepository.find({
+      where: { ownerId },
+      order: { createdAt: 'ASC' },
+    });
+    if (businesses.length === 0) return [];
+    const ids = businesses.map((b) => b.id);
+
+    // Medianoche de Ecuador (UTC-5) en UTC: las 05:00.
+    const now = new Date();
+    const todayStart = new Date(
+      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate(), 5),
+    );
+    if (todayStart > now) todayStart.setUTCDate(todayStart.getUTCDate() - 1);
+
+    const [cards, scans, today, staff] = await Promise.all([
+      this.cardRepository
+        .createQueryBuilder('card')
+        .select('card.businessId', 'businessId')
+        .addSelect('COUNT(*)', 'n')
+        .where('card.businessId IN (:...ids)', { ids })
+        .groupBy('card.businessId')
+        .getRawMany(),
+      this.scanRepository
+        .createQueryBuilder('scan')
+        .select('scan.businessId', 'businessId')
+        .addSelect('scan.status', 'status')
+        .addSelect('COUNT(*)', 'n')
+        .where('scan.businessId IN (:...ids)', { ids })
+        .groupBy('scan.businessId')
+        .addGroupBy('scan.status')
+        .getRawMany(),
+      this.scanRepository
+        .createQueryBuilder('scan')
+        .select('scan.businessId', 'businessId')
+        .addSelect('COUNT(*)', 'n')
+        .where('scan.businessId IN (:...ids)', { ids })
+        .andWhere('scan.scannedAt >= :todayStart', { todayStart })
+        .groupBy('scan.businessId')
+        .getRawMany(),
+      this.memberRepository
+        .createQueryBuilder('member')
+        .select('member.businessId', 'businessId')
+        .addSelect('COUNT(*)', 'n')
+        .where('member.businessId IN (:...ids)', { ids })
+        .groupBy('member.businessId')
+        .getRawMany(),
+    ]);
+
+    const count = (rows: any[], id: string, status?: string) =>
+      rows
+        .filter((r) => r.businessId === id && (status === undefined || r.status === status))
+        .reduce((sum, r) => sum + Number(r.n), 0);
+
+    return businesses.map((b) => ({
+      id: b.id,
+      name: b.name,
+      logoUrl: b.logoUrl,
+      parentId: b.parentId,
+      isActive: b.isActive,
+      customers: count(cards, b.id),
+      scansToday: count(today, b.id),
+      scansTotal: count(scans, b.id),
+      pendingScans: count(scans, b.id, ScanStatus.PENDING),
+      approvers: count(staff, b.id),
+    }));
+  }
+
   async updateBusiness(
     id: string,
     ownerId: string,
@@ -174,13 +294,37 @@ export class BusinessesService implements OnModuleInit {
     return this.businessRepository.save(business);
   }
 
-  async toggleStatus(id: string, isActive: boolean, role: UserRole) {
+  async toggleStatus(id: string, isActive: boolean, role: UserRole, adminId?: string) {
     if (role !== UserRole.ADMIN) {
       throw new ForbiddenException('Solo los administradores pueden cambiar el estado del negocio');
     }
     const business = await this.findById(id);
+    const wasActive = business.isActive;
     business.isActive = isActive;
-    return this.businessRepository.save(business);
+    const saved = await this.businessRepository.save(business);
+
+    // Activar a mano equivale a confirmar el pago: se cierran sus órdenes
+    // abiertas y el dueño recibe su comprobante.
+    if (isActive && !wasActive && adminId) {
+      await this.paymentsService.settleOpenForBusiness(saved.id, adminId);
+    }
+
+    // Al activar la cuenta, avisamos al dueño. Un fallo de la notificación
+    // no debe deshacer la activación.
+    if (isActive && !wasActive) {
+      try {
+        await this.notificationsService.sendToBusinessOwner(
+          saved.id,
+          '¡Tu negocio fue activado!',
+          `${saved.name} ya está activo en Fidelity. Vuelve a iniciar sesión para empezar.`,
+          { type: 'business_activated' },
+        );
+      } catch (error) {
+        this.logger.warn(`No se pudo notificar la activación: ${error.message}`);
+      }
+    }
+
+    return saved;
   }
 
   async getBusinessStats(businessId: string, ownerId: string, role: UserRole) {

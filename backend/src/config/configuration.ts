@@ -1,3 +1,35 @@
+export interface BankAccountConfig {
+  name: string;
+  accountNumber: string;
+  accountType: string;
+  holder: string;
+  taxId: string;
+}
+
+/**
+ * Lee las cuentas bancarias de `BANK_ACCOUNTS`, una lista en JSON:
+ * `[{"name":"Banco","accountNumber":"123","accountType":"Ahorros","holder":"Titular","taxId":"110..."}]`.
+ * Ignora las entradas sin número de cuenta; un JSON inválido da una lista vacía.
+ */
+export function parseBankAccounts(raw?: string): BankAccountConfig[] {
+  if (!raw || !raw.trim()) return [];
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((a) => a && typeof a.accountNumber === 'string' && a.accountNumber.trim())
+      .map((a) => ({
+        name: String(a.name ?? '').trim(),
+        accountNumber: String(a.accountNumber).trim(),
+        accountType: String(a.accountType ?? '').trim(),
+        holder: String(a.holder ?? '').trim(),
+        taxId: String(a.taxId ?? '').trim(),
+      }));
+  } catch {
+    return [];
+  }
+}
+
 export const configuration = () => ({
   port: parseInt(process.env.PORT, 10) || 3000,
   nodeEnv: process.env.NODE_ENV || 'development',
@@ -19,6 +51,19 @@ export const configuration = () => ({
   firebase: {
     serviceAccount: process.env.FIREBASE_SERVICE_ACCOUNT || '',
     credentialsPath: process.env.FIREBASE_CREDENTIALS_PATH || '',
+  },
+  // Precios del registro. Son valores de ejemplo: define los reales con
+  // REGISTRATION_FEE y BRANCH_FEE en el .env.
+  payments: {
+    registrationFee: parseFloat(process.env.REGISTRATION_FEE) || 20,
+    branchFee: parseFloat(process.env.BRANCH_FEE) || 10,
+    currency: process.env.PAYMENT_CURRENCY || 'USD',
+    // Cuentas bancarias para transferencias y depósitos (BANK_ACCOUNTS es una
+    // lista en JSON). Sin cuentas, la app no ofrece el pago por transferencia.
+    bankAccounts: parseBankAccounts(process.env.BANK_ACCOUNTS),
+    // Enlace de pago de la pasarela (Payphone, Datafast, Stripe...). Puede llevar
+    // {reference} y {amount}. Sin enlace, la app no ofrece el pago con tarjeta.
+    cardPaymentUrl: process.env.CARD_PAYMENT_URL || '',
   },
   webhookSecret: process.env.WEBHOOK_SECRET || 'fidelity_webhook_secure_secret_2026',
 });

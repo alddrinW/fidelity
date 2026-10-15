@@ -5,13 +5,15 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Profile, UserRole } from '../../database/entities/profile.entity';
 import { Business } from '../../database/entities/business.entity';
 import { Scan, ScanStatus } from '../../database/entities/scan.entity';
 import { Reward, RewardStatus } from '../../database/entities/reward.entity';
 import { LoyaltyCard } from '../../database/entities/loyalty-card.entity';
 import { RewardTransferHistory } from '../../database/entities/reward-transfer-history.entity';
+import { PaymentsService } from '../payments/payments.service';
+import { FeedbackService } from '../feedback/feedback.service';
 
 @Injectable()
 export class AdminService {
@@ -30,6 +32,8 @@ export class AdminService {
     private readonly cardRepository: Repository<LoyaltyCard>,
     @InjectRepository(RewardTransferHistory)
     private readonly transferRepository: Repository<RewardTransferHistory>,
+    private readonly paymentsService: PaymentsService,
+    private readonly feedbackService: FeedbackService,
   ) {}
 
   async getDashboardStats() {
@@ -47,6 +51,8 @@ export class AdminService {
       pendingRewards,
       claimedRewards,
       totalTransfers,
+      openPayments,
+      openFeedback,
     ] = await Promise.all([
       this.profileRepository.count(),
       this.profileRepository.count({ where: { role: UserRole.CLIENT } }),
@@ -61,6 +67,8 @@ export class AdminService {
       this.rewardRepository.count({ where: { status: RewardStatus.PENDING } }),
       this.rewardRepository.count({ where: { status: RewardStatus.CLAIMED } }),
       this.transferRepository.count(),
+      this.paymentsService.countOpen(),
+      this.feedbackService.countOpen(),
     ]);
 
     return {
@@ -88,6 +96,14 @@ export class AdminService {
       transfers: {
         total: totalTransfers,
       },
+      payments: {
+        // Pagos que esperan validación del administrador.
+        open: openPayments,
+      },
+      feedback: {
+        // Sugerencias y reclamos sin resolver.
+        open: openFeedback,
+      },
     };
   }
 
@@ -107,7 +123,24 @@ export class AdminService {
     }
 
     query.orderBy('profile.createdAt', 'DESC').take(100);
-    return query.getMany();
+    const users = await query.getMany();
+    if (users.length === 0) return users;
+
+    // El perfil no tiene relación con sus negocios: se adjuntan aparte para
+    // mostrar de qué negocio es dueño cada usuario.
+    const businesses = await this.businessRepository.find({
+      where: { ownerId: In(users.map((u) => u.id)) },
+      select: ['id', 'name', 'ownerId', 'isActive'],
+      order: { createdAt: 'ASC' },
+    });
+    const byOwner = new Map<string, Pick<Business, 'id' | 'name' | 'isActive'>[]>();
+    for (const b of businesses) {
+      const list = byOwner.get(b.ownerId) ?? [];
+      list.push({ id: b.id, name: b.name, isActive: b.isActive });
+      byOwner.set(b.ownerId, list);
+    }
+
+    return users.map((u) => Object.assign(u, { businesses: byOwner.get(u.id) ?? [] }));
   }
 
   async getRecentActivity(

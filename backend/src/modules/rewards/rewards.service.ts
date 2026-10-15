@@ -14,6 +14,7 @@ import { LoyaltyCard } from '../../database/entities/loyalty-card.entity';
 import { Profile, UserRole } from '../../database/entities/profile.entity';
 import { UpdateRewardStatusDto, TransferRewardDto } from './dto/rewards.dto';
 import { NotificationsService } from '../notifications/notifications.service';
+import { BusinessAccessService } from '../businesses/business-access.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 @Injectable()
@@ -34,6 +35,7 @@ export class RewardsService {
     private readonly notificationsService: NotificationsService,
     private readonly realtimeGateway: RealtimeGateway,
     private readonly dataSource: DataSource,
+    private readonly businessAccess: BusinessAccessService,
   ) {}
 
   async getUserRewards(userId: string, status?: RewardStatus) {
@@ -60,7 +62,7 @@ export class RewardsService {
     const business = await this.businessRepository.findOne({ where: { id: businessId } });
     if (!business) throw new NotFoundException('Negocio no encontrado');
 
-    if (business.ownerId !== callerId && callerRole !== UserRole.ADMIN) {
+    if (!(await this.businessAccess.canOperate(callerId, callerRole, business.id))) {
       throw new ForbiddenException('No autorizado para ver premios de este negocio');
     }
 
@@ -91,7 +93,7 @@ export class RewardsService {
 
     if (!reward) throw new NotFoundException('Premio no encontrado');
 
-    if (reward.business.ownerId !== callerId && callerRole !== UserRole.ADMIN) {
+    if (!(await this.businessAccess.canOperate(callerId, callerRole, reward.businessId))) {
       throw new ForbiddenException('No autorizado para gestionar este premio');
     }
 

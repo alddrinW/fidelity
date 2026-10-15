@@ -9,6 +9,7 @@ import { LoyaltyCard } from '../../database/entities/loyalty-card.entity';
 import { Profile } from '../../database/entities/profile.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
+import { BusinessAccessService } from '../businesses/business-access.service';
 import { BadRequestException, ForbiddenException, NotFoundException } from '@nestjs/common';
 
 describe('RewardsService', () => {
@@ -16,8 +17,10 @@ describe('RewardsService', () => {
   let rewardRepo: any;
   let profileRepo: any;
   let dataSource: any;
+  let access: any;
 
   beforeEach(async () => {
+    access = { canOperate: jest.fn().mockResolvedValue(true) };
     rewardRepo = {
       findOne: jest.fn(),
       createQueryBuilder: jest.fn(),
@@ -51,6 +54,7 @@ describe('RewardsService', () => {
         { provide: getRepositoryToken(Profile), useValue: profileRepo },
         { provide: NotificationsService, useValue: { sendToUser: jest.fn(), sendToBusinessOwner: jest.fn(), broadcastToAdmins: jest.fn() } },
         { provide: RealtimeGateway, useValue: { emitToUser: jest.fn() } },
+        { provide: BusinessAccessService, useValue: access },
         { provide: DataSource, useValue: dataSource },
       ],
     }).compile();

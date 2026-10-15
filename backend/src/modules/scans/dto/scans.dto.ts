@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsString, IsUUID, IsNumber, Min, IsEnum } from 'class-validator';
+import { IsNotEmpty, IsString, IsUUID, IsNumber, Min, IsIn } from 'class-validator';
 import { ScanStatus } from '../../../database/entities/scan.entity';
 
 export class ValidateScanDto {
@@ -20,6 +20,9 @@ export class AddManualPointsDto {
 }
 
 export class UpdateScanStatusDto {
-  @IsEnum(ScanStatus, { message: 'El estado debe ser pending, approved o rejected' })
+  /** El negocio solo puede aprobar o rechazar; 'pending' es el estado inicial. */
+  @IsIn([ScanStatus.APPROVED, ScanStatus.REJECTED], {
+    message: 'El estado debe ser approved o rejected',
+  })
   status: ScanStatus;
 }

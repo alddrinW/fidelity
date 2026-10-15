@@ -11,6 +11,8 @@ export enum UserRole {
   ADMIN = 'admin',
   BUSINESS = 'business',
   CLIENT = 'client',
+  /** Supervisor de un local (asignado por su dueño): aprueba escaneos y premios. */
+  APPROVER = 'approver',
 }
 
 @Entity('profiles')

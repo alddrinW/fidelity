@@ -58,9 +58,16 @@ export class BusinessesController {
   }
 
   @Get('my-businesses')
-  @Roles(UserRole.BUSINESS, UserRole.ADMIN)
+  @Roles(UserRole.BUSINESS, UserRole.ADMIN, UserRole.APPROVER)
   async getMyBusinesses(@CurrentUser() user: AuthenticatedUser) {
-    return this.businessesService.findByOwner(user.id);
+    return this.businessesService.findForUser(user.id, user.role);
+  }
+
+  /** Matriz de control del dueño: estado y cifras de cada negocio y sucursal. */
+  @Get('my-businesses/overview')
+  @Roles(UserRole.BUSINESS, UserRole.ADMIN)
+  async getOverview(@CurrentUser() user: AuthenticatedUser) {
+    return this.businessesService.getOverview(user.id);
   }
 
   @Public()
@@ -94,7 +101,7 @@ export class BusinessesController {
     @Param('id') id: string,
     @Body() dto: ToggleBusinessStatusDto,
   ) {
-    return this.businessesService.toggleStatus(id, dto.isActive, user.role);
+    return this.businessesService.toggleStatus(id, dto.isActive, user.role, user.id);
   }
 
   @Get(':id/stats')

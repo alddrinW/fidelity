@@ -34,7 +34,7 @@ export class RewardsController {
   }
 
   @Get('business/:businessId')
-  @Roles(UserRole.BUSINESS, UserRole.ADMIN)
+  @Roles(UserRole.BUSINESS, UserRole.ADMIN, UserRole.APPROVER)
   async getBusinessRewards(
     @CurrentUser() user: AuthenticatedUser,
     @Param('businessId') businessId: string,
@@ -44,7 +44,7 @@ export class RewardsController {
   }
 
   @Patch(':id/status')
-  @Roles(UserRole.BUSINESS, UserRole.ADMIN)
+  @Roles(UserRole.BUSINESS, UserRole.ADMIN, UserRole.APPROVER)
   async updateRewardStatus(
     @CurrentUser() user: AuthenticatedUser,
     @Param('id') rewardId: string,

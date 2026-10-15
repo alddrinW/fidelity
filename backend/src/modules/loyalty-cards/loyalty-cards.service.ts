@@ -8,8 +8,8 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { LoyaltyCard } from '../../database/entities/loyalty-card.entity';
 import { Business } from '../../database/entities/business.entity';
-import { Scan } from '../../database/entities/scan.entity';
-import { Reward } from '../../database/entities/reward.entity';
+import { Scan, ScanStatus } from '../../database/entities/scan.entity';
+import { Reward, RewardStatus } from '../../database/entities/reward.entity';
 import { RewardTransferHistory } from '../../database/entities/reward-transfer-history.entity';
 import { UserRole } from '../../database/entities/profile.entity';
 
@@ -58,12 +58,43 @@ export class LoyaltyCardsService {
     return this.cardRepository.save(newCard);
   }
 
+  /**
+   * Tarjetas del cliente. Cada una incluye `pendingScans` (escaneos que el
+   * negocio aun no aprueba) y `rewards` (premios ganados sin entregar), que la
+   * app usa para mostrar "pendiente" y "premio listo".
+   */
   async getUserCards(userId: string) {
-    return this.cardRepository.find({
+    const cards = await this.cardRepository.find({
       where: { userId },
       relations: ['business', 'business.categoryRef'],
       order: { updatedAt: 'DESC' },
     });
+    if (cards.length === 0) return [];
+
+    const [pendingByBusiness, pendingRewards] = await Promise.all([
+      this.scanRepository
+        .createQueryBuilder('scan')
+        .select('scan.businessId', 'businessId')
+        .addSelect('COUNT(*)', 'count')
+        .where('scan.userId = :userId', { userId })
+        .andWhere('scan.status = :status', { status: ScanStatus.PENDING })
+        .groupBy('scan.businessId')
+        .getRawMany<{ businessId: string; count: string }>(),
+      this.rewardRepository.find({
+        where: { userId, status: RewardStatus.PENDING },
+        select: ['id', 'loyaltyCardId', 'status'],
+      }),
+    ]);
+
+    const pendingScans = new Map(pendingByBusiness.map((p) => [p.businessId, Number(p.count)]));
+
+    return cards.map((card) => ({
+      ...card,
+      pendingScans: pendingScans.get(card.businessId) ?? 0,
+      rewards: pendingRewards
+        .filter((r) => r.loyaltyCardId === card.id)
+        .map((r) => ({ id: r.id, status: r.status })),
+    }));
   }
 
   async getBusinessCards(businessId: string, ownerId: string, role: UserRole) {

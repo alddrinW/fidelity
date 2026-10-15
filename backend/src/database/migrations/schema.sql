@@ -7,7 +7,7 @@ CREATE TABLE IF NOT EXISTS public.profiles (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     email VARCHAR(255) NOT NULL UNIQUE,
     full_name VARCHAR(150),
-    role VARCHAR(20) NOT NULL DEFAULT 'client' CHECK (role IN ('admin', 'business', 'client')),
+    role VARCHAR(20) NOT NULL DEFAULT 'client' CHECK (role IN ('admin', 'business', 'client', 'approver')),
     password_hash VARCHAR(255),
     fcm_token TEXT,
     avatar_url TEXT,
@@ -49,7 +49,8 @@ CREATE TABLE IF NOT EXISTS public.businesses (
     reward_long_description TEXT,
     points_required INT NOT NULL DEFAULT 10,
     cooldown_hours INT NOT NULL DEFAULT 24,
-    is_active BOOLEAN NOT NULL DEFAULT TRUE,
+    -- Nace inactivo: el admin lo activa al validar el pago del registro.
+    is_active BOOLEAN NOT NULL DEFAULT FALSE,
     latitude DECIMAL(10, 7),
     longitude DECIMAL(10, 7),
     address TEXT,

@@ -1,11 +1,12 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import * as admin from 'firebase-admin';
 import * as fs from 'fs';
 import { Profile, UserRole } from '../../database/entities/profile.entity';
 import { Business } from '../../database/entities/business.entity';
+import { BusinessMember } from '../../database/entities/business-member.entity';
 
 @Injectable()
 export class NotificationsService implements OnModuleInit {
@@ -18,6 +19,8 @@ export class NotificationsService implements OnModuleInit {
     private readonly profileRepository: Repository<Profile>,
     @InjectRepository(Business)
     private readonly businessRepository: Repository<Business>,
+    @InjectRepository(BusinessMember)
+    private readonly memberRepository: Repository<BusinessMember>,
   ) {}
 
   onModuleInit() {
@@ -120,6 +123,70 @@ export class NotificationsService implements OnModuleInit {
     });
     if (!business || !business.owner || !business.owner.fcmToken) return false;
     return this.sendPushNotification(business.owner.fcmToken, title, body, dataPayload);
+  }
+
+  /**
+   * Avisa al dueño del negocio y a sus aprobadores (quienes atienden escaneos,
+   * premios y opiniones). Devuelve cuántos avisos se enviaron.
+   */
+  async sendToBusinessStaff(
+    businessId: string,
+    title: string,
+    body: string,
+    dataPayload: Record<string, string> = {},
+  ): Promise<number> {
+    const business = await this.businessRepository.findOne({
+      where: { id: businessId },
+      relations: ['owner'],
+    });
+    if (!business) return 0;
+
+    const members = await this.memberRepository.find({
+      where: { businessId },
+      relations: ['user'],
+    });
+    const tokens = new Set<string>();
+    if (business.owner?.fcmToken) tokens.add(business.owner.fcmToken);
+    for (const member of members) {
+      if (member.user?.fcmToken) tokens.add(member.user.fcmToken);
+    }
+
+    let sent = 0;
+    for (const token of tokens) {
+      if (await this.sendPushNotification(token, title, body, dataPayload)) sent++;
+    }
+    return sent;
+  }
+
+  /**
+   * Avisa a muchos usuarios a la vez (campañas). Consulta sus tokens en una
+   * sola pasada y envía por tandas para no saturar. Devuelve cuántos avisos
+   * se enviaron.
+   */
+  async sendToUsers(
+    userIds: string[],
+    title: string,
+    body: string,
+    dataPayload: Record<string, string> = {},
+  ): Promise<number> {
+    if (userIds.length === 0) return 0;
+    const users = await this.profileRepository.find({
+      where: { id: In(userIds) },
+      select: ['id', 'fcmToken'],
+    });
+    const tokens = [...new Set(users.map((u) => u.fcmToken).filter(Boolean))];
+
+    let sent = 0;
+    const batchSize = 20;
+    for (let i = 0; i < tokens.length; i += batchSize) {
+      const results = await Promise.allSettled(
+        tokens
+          .slice(i, i + batchSize)
+          .map((token) => this.sendPushNotification(token, title, body, dataPayload)),
+      );
+      sent += results.filter((r) => r.status === 'fulfilled' && r.value).length;
+    }
+    return sent;
   }
 
   async broadcastToAdmins(

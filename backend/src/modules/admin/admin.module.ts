@@ -7,10 +7,14 @@ import { Business } from '../../database/entities/business.entity';
 import { Scan } from '../../database/entities/scan.entity';
 import { Reward } from '../../database/entities/reward.entity';
 import { LoyaltyCard } from '../../database/entities/loyalty-card.entity';
+import { PaymentsModule } from '../payments/payments.module';
+import { FeedbackModule } from '../feedback/feedback.module';
 import { RewardTransferHistory } from '../../database/entities/reward-transfer-history.entity';
 
 @Module({
   imports: [
+    PaymentsModule,
+    FeedbackModule,
     TypeOrmModule.forFeature([
       Profile,
       Business,
