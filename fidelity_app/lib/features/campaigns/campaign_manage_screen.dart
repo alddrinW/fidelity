@@ -147,19 +147,27 @@ class _CampaignManageScreenState extends ConsumerState<CampaignManageScreen> {
                               icon: Icons.approval_rounded,
                               text: '${c.stampsNeeded} sellos para completar',
                             ),
+                          if (c.type == CampaignType.scanChallenge)
+                            AdminInfoLine(
+                              icon: Icons.qr_code_scanner_rounded,
+                              text: '${c.scansNeeded} escaneos para ganar',
+                              strong: true,
+                            ),
                         ],
                       ),
                     ),
                     if (_hasClaims) ...[
                       const SizedBox(height: 24),
                       AdminSectionLabel(
-                        c.type == CampaignType.route ? 'Premios emitidos' : 'Tarjetas emitidas',
+                        c.type == CampaignType.route || c.type == CampaignType.scanChallenge
+                            ? 'Premios emitidos'
+                            : 'Tarjetas emitidas',
                       ),
                       if (_isLoading)
                         const Center(child: CircularProgressIndicator(color: AppColors.black))
                       else if (_claims.isEmpty)
                         Text(
-                          c.type == CampaignType.route
+                          c.type == CampaignType.route || c.type == CampaignType.scanChallenge
                               ? 'Todavía no hay premios emitidos.'
                               : 'Todavía no hay tarjetas emitidas.',
                           style: AppTypography.body(size: 15, weight: FontWeight.w300),

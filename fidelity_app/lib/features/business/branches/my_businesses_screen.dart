@@ -16,6 +16,7 @@ import '../../payments/data/payments_repository.dart';
 import '../../payments/paga_ya_screen.dart';
 import '../create_business_screen.dart';
 import '../dashboard/widgets/dashboard_animated_toast.dart';
+import '../profile/business_profile_screen.dart';
 import '../team/team_screen.dart';
 import 'branches_repository.dart';
 import '../../../core/l10n/tr_text.dart';
@@ -29,6 +30,26 @@ class MyBusinessesScreen extends ConsumerWidget {
   Future<void> _select(BuildContext context, WidgetRef ref, BusinessOverview business) async {
     await ref.read(authRepositoryProvider).selectBusiness(business.id);
     if (context.mounted) Navigator.of(context).pop();
+  }
+
+  /// Edita el local: su logo, sus datos y su campaña.
+  Future<void> _edit(BuildContext context, WidgetRef ref, BusinessOverview business) async {
+    try {
+      final businesses = await ref.read(authRepositoryProvider).myBusinesses();
+      if (!context.mounted) return;
+      final data = businesses.firstWhere(
+        (b) => b['id']?.toString() == business.id,
+        orElse: () => {'id': business.id, 'name': business.name},
+      );
+      final changed = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(builder: (_) => BusinessProfileScreen(business: data)),
+      );
+      if (changed == true) ref.invalidate(businessOverviewProvider);
+    } catch (e) {
+      if (context.mounted) {
+        DashboardAnimatedToast.show(context, e.toString(), isError: true);
+      }
+    }
   }
 
   /// Un negocio sin activar se activa pagando: abre el asistente PAGA YA.
@@ -115,9 +136,7 @@ class MyBusinessesScreen extends ConsumerWidget {
                   loading: () => const Center(
                     child: CircularProgressIndicator(color: AppColors.black),
                   ),
-                  error: (e, _) => const AppEmptyState(
-                    title: 'Algo salió mal',
-                    message: 'No pudimos cargar tus negocios. Desliza para reintentar.',
+                  error: (e, _) => const AppEmptyState.error(message: 'No pudimos cargar tus negocios. Desliza para reintentar.',
                   ),
                   data: (list) => list.isEmpty
                       ? const AppEmptyState(
@@ -141,6 +160,7 @@ class MyBusinessesScreen extends ConsumerWidget {
                                   isCurrent: business.id == currentId,
                                   onSelect: () => _select(context, ref, business),
                                   onPay: () => _pay(context, ref, business),
+                                  onEdit: () => _edit(context, ref, business),
                                   onTeam: () => Navigator.of(context).push(
                                     MaterialPageRoute(
                                       builder: (_) => TeamScreen(
@@ -177,6 +197,7 @@ class _BusinessCard extends StatelessWidget {
   final bool isCurrent;
   final VoidCallback onSelect;
   final VoidCallback onPay;
+  final VoidCallback onEdit;
   final VoidCallback onTeam;
 
   const _BusinessCard({
@@ -184,6 +205,7 @@ class _BusinessCard extends StatelessWidget {
     required this.isCurrent,
     required this.onSelect,
     required this.onPay,
+    required this.onEdit,
     required this.onTeam,
   });
 
@@ -254,6 +276,10 @@ class _BusinessCard extends StatelessWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: AppTextAction(label: 'Mi equipo', onPressed: onTeam),
+          ),
+          Align(
+            alignment: Alignment.centerLeft,
+            child: AppTextAction(label: 'Editar este local', onPressed: onEdit),
           ),
         ],
       ),

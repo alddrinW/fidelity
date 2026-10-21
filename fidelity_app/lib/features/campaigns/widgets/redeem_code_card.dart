@@ -10,8 +10,8 @@ import '../../business/dashboard/widgets/dashboard_animated_toast.dart';
 import '../data/campaigns_repository.dart';
 import '../../../core/l10n/tr_text.dart';
 
-/// El local canjea el código que le muestra un cliente (tarjeta de regalo o
-/// premio de ruta). Lo usan el dueño y el aprobador.
+/// El local canjea la gift card (o el premio de ruta) que le muestra un
+/// cliente: escribiendo su código de letras. Lo usan el dueño y el aprobador.
 class RedeemCodeCard extends ConsumerStatefulWidget {
   /// Se llama tras un canje exitoso (p. ej. para refrescar contadores).
   final VoidCallback? onRedeemed;
@@ -33,7 +33,7 @@ class _RedeemCodeCardState extends ConsumerState<RedeemCodeCard> {
   }
 
   Future<void> _redeem() async {
-    final code = _controller.text.trim();
+    final code = normalizeGiftCode(_controller.text);
     if (code.length < 4) {
       DashboardAnimatedToast.show(context, 'Escribe el código del cliente', isError: true);
       return;
@@ -73,14 +73,14 @@ class _RedeemCodeCardState extends ConsumerState<RedeemCodeCard> {
           Text('CANJEAR CÓDIGO', style: AppTypography.label(size: 12, tracking: 4)),
           const SizedBox(height: 4),
           Text(
-            'Escribe el código que te muestra el cliente en su tarjeta de regalo o premio.',
+            'El cliente te muestra su gift card: escribe el código de letras que aparece.',
             style: AppTypography.body(size: 14, weight: FontWeight.w300),
           ),
           const SizedBox(height: 12),
           AppTextField(
             controller: _controller,
             hint: 'Ej. GFT-ABC234',
-            icon: Icons.qr_code_2_rounded,
+            icon: Icons.confirmation_number_outlined,
             textCapitalization: TextCapitalization.characters,
             textInputAction: TextInputAction.done,
             onSubmitted: (_) => _isLoading ? null : _redeem(),

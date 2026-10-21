@@ -276,6 +276,7 @@ class _ThankYou extends StatelessWidget {
       children: [
         FidoSays(
           celebrating: !sad,
+          sad: sad,
           message: sad
               ? 'Lamento lo que pasó. Ya avisé al local y a Fidelity para que lo revisen.'
               : '¡Gracias por contarme! Tu opinión ayuda a mejorar este local.',

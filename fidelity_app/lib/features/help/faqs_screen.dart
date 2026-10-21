@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../profile/widgets/account_actions.dart';
 import 'faq_list_screen.dart';
 
 /// Preguntas frecuentes para clientes.
 class FaqsScreen extends StatelessWidget {
   const FaqsScreen({super.key});
 
-  static const List<FaqItem> _faqs = [
+  static final List<FaqItem> _faqs = [
     FaqItem(
       icon: Icons.card_membership_rounded,
       question: '¿Qué es una tarjeta de fidelidad?',
@@ -50,16 +51,24 @@ class FaqsScreen extends StatelessWidget {
           'En Mi perfil toca "Cambiar contraseña", ingresa la actual y la nueva (mínimo 6 caracteres). Tu correo no se puede modificar.',
     ),
     FaqItem(
+      icon: Icons.logout_rounded,
+      question: '¿Cómo cierro mi sesión?',
+      answer:
+          'Si quieres salir de tu cuenta en este dispositivo, ciérrala aquí. Tus tarjetas, tus puntos y tus premios se quedan guardados: la próxima vez entras con tu correo y tu contraseña.',
+      action: (context) => const AccountLogoutAction(),
+    ),
+    FaqItem(
       icon: Icons.delete_outline_rounded,
       question: '¿Cómo elimino mi cuenta?',
       answer:
-          'Desde Mi perfil toca "Eliminar mi cuenta". La acción es irreversible: borramos todos tus datos personales conforme a la política de privacidad.',
+          'Si ya no quieres usar Fidelity, toca el botón de abajo. La acción es irreversible: borramos todos tus datos personales, tus tarjetas y tus puntos conforme a la política de privacidad. Para salir sin borrar nada, mejor cierra sesión.',
+      action: (context) => const AccountDeleteAction(),
     ),
   ];
 
   @override
   Widget build(BuildContext context) {
-    return const FaqListScreen(
+    return FaqListScreen(
       bannerTitle: 'Manual de uso',
       bannerSubtitle: 'Todo lo que necesitas saber para ganar premios con Fidelity.',
       items: _faqs,

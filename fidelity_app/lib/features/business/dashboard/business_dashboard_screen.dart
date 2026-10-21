@@ -10,6 +10,8 @@ import '../../../core/utils/image_source.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_message_dialog.dart';
+import '../../../core/widgets/app_nav_row.dart';
+import '../../../core/widgets/app_page_header.dart';
 import '../../../core/widgets/app_pill_tab_bar.dart';
 import '../../../core/widgets/app_responsive_body.dart';
 import '../../auth/data/auth_repository.dart';
@@ -23,6 +25,11 @@ import '../create_business_screen.dart';
 import '../profile/business_profile_screen.dart';
 import '../profile/campaign_settings_screen.dart';
 import 'widgets/fido_guide_strip.dart';
+import '../../campaigns/gift_cards_tab.dart';
+import '../../games/games_tab.dart';
+import '../../notifications/data/notifications_repository.dart';
+import '../../notifications/notifications_screen.dart';
+import '../../notifications/widgets/notification_bell.dart';
 import '../qr_management/qr_management_screen.dart';
 import '../rewards/rewards_management_screen.dart';
 import 'providers/dashboard_provider.dart';
@@ -69,7 +76,7 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
     WidgetsBinding.instance.addObserver(this);
 
     _tabController = TabController(
-      length: widget.approverMode ? 4 : 6,
+      length: widget.approverMode ? 4 : 3,
       vsync: this,
       initialIndex: widget.initialIndex,
     );
@@ -184,8 +191,8 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
     final pending = state.pendingScans.length;
     final message = switch (pending) {
       0 => ownerName.isEmpty
-          ? '¡Hola! ¿Qué hacemos hoy? Crea una campaña o revisa tus sucursales.'
-          : '¡Hola $ownerName! ¿Qué hacemos hoy? Crea una campaña o revisa tus sucursales.',
+          ? '¡Hola! ¿Qué hacemos hoy? Envía una gift card o revisa tus sucursales.'
+          : '¡Hola $ownerName! ¿Qué hacemos hoy? Envía una gift card o revisa tus sucursales.',
       1 => 'Tienes 1 escaneo por aprobar. Apruébalo para que tu cliente sume su punto.',
       _ => 'Tienes $pending escaneos por aprobar. Apruébalos para que tus clientes sumen su punto.',
     };
@@ -203,9 +210,23 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
               onTap: () => _tabController.animateTo(1),
             ),
           FidoGuideAction(
+            label: 'Enviar gift card',
+            icon: Icons.card_giftcard_rounded,
+            onTap: () => _openSection('Gift cards', const GiftCardsTab()),
+          ),
+          if (state.business?['id'] != null)
+            FidoGuideAction(
+              label: 'Minijuegos',
+              icon: Icons.sports_esports_rounded,
+              onTap: () => _openSection(
+                'Minijuegos',
+                GamesTab(businessId: state.business!['id'].toString()),
+              ),
+            ),
+          FidoGuideAction(
             label: 'Crear campaña',
             icon: Icons.campaign_outlined,
-            onTap: () => _tabController.animateTo(5),
+            onTap: () => _openSection('Campañas', const CampaignsTab()),
           ),
           FidoGuideAction(
             label: 'Mis sucursales',
@@ -250,6 +271,96 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
         primaryLabel: 'Cerrar sesión',
         onPrimary: () => ref.read(authStateProvider.notifier).logout(),
         secondaryLabel: 'Cancelar',
+      ),
+    );
+  }
+
+  /// Lo que el dueño crea y gestiona aparte del día a día: su código QR, sus
+  /// gift cards y sus campañas. Se abre desde el botón "+" de la esquina.
+  /// Abre una sección de "Crear y gestionar" como pantalla propia.
+  void _openSection(String title, Widget child) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => _BusinessSectionScreen(title: title, child: child)),
+    );
+  }
+
+  void _openMoreSections(Map<String, dynamic> business) {
+    final businessId = business['id'].toString();
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: AppColors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
+      ),
+      builder: (sheetCtx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 24, 24, 8),
+              child: Text(
+                'CREAR Y GESTIONAR',
+                style: AppTypography.display(size: 26),
+              ),
+            ),
+            _SectionRow(
+              icon: Icons.qr_code_2_rounded,
+              label: 'Mi código QR',
+              hint: 'Descargarlo o imprimirlo para tu local',
+              onTap: () {
+                Navigator.of(sheetCtx).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => QRManagementScreen(businessId: businessId),
+                  ),
+                );
+              },
+            ),
+            _SectionRow(
+              icon: Icons.card_giftcard_rounded,
+              label: 'Gift cards',
+              hint: 'Regala descuentos y canjea los códigos',
+              onTap: () {
+                Navigator.of(sheetCtx).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const _BusinessSectionScreen(
+                      title: 'Gift cards',
+                      child: GiftCardsTab(),
+                    ),
+                  ),
+                );
+              },
+            ),
+            _SectionRow(
+              icon: Icons.sports_esports_rounded,
+              label: 'Minijuegos',
+              hint: 'Pídelos al administrador y mándalos a tus clientes',
+              onTap: () {
+                Navigator.of(sheetCtx).pop();
+                _openSection('Minijuegos', GamesTab(businessId: businessId));
+              },
+            ),
+            _SectionRow(
+              icon: Icons.campaign_outlined,
+              label: 'Campañas',
+              hint: 'Eventos y rutas para tus clientes',
+              onTap: () {
+                Navigator.of(sheetCtx).pop();
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const _BusinessSectionScreen(
+                      title: 'Campañas',
+                      child: CampaignsTab(),
+                    ),
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+          ],
+        ),
       ),
     );
   }
@@ -332,7 +443,7 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
 
     final labels = widget.approverMode
         ? const ['Pendientes', 'Premios', 'Opiniones', 'Canjear']
-        : const ['Clientes', 'Pendientes', 'Premios', 'Métricas', 'QR', 'Campañas'];
+        : const ['Clientes', 'Pendientes', 'Métricas'];
     final icons = widget.approverMode
         ? const [
             Icons.pending_actions_rounded,
@@ -343,14 +454,11 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
         : const [
             Icons.people_alt_outlined,
             Icons.pending_actions_rounded,
-            Icons.card_giftcard_rounded,
             Icons.bar_chart_rounded,
-            Icons.qr_code_2_rounded,
-            Icons.campaign_outlined,
           ];
     final badges = widget.approverMode
         ? [state.pendingScans.length, state.pendingRewards.length, 0, 0]
-        : [0, state.pendingScans.length, state.pendingRewards.length, 0, 0, 0];
+        : [0, state.pendingScans.length, 0];
     final views = widget.approverMode
         ? <Widget>[
             const TabPendingScans(),
@@ -364,55 +472,66 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
         : <Widget>[
             const TabCustomers(),
             const TabPendingScans(),
-            RewardsManagementScreen(businessId: business['id']),
             const TabStatistics(),
-            QRManagementScreen(businessId: business['id']),
-            const CampaignsTab(),
           ];
 
     // En pantallas anchas (navegador en PC) el menú pasa a una barra lateral.
     if (context.isDesktop) {
       return Scaffold(
         body: SafeArea(
-          child: Row(
+          child: Stack(
             children: [
-              _DashboardSidebar(
-                logoUrl: business['logo_url']?.toString(),
-                businessName: business['name'].toString(),
-                greeting: ownerName.isEmpty
-                    ? null
-                    : (widget.approverMode ? 'Hola, $ownerName · Aprobador' : 'Hola, $ownerName'),
-                subtitle: widget.approverMode ? null : '${state.customers.length} clientes activos',
-                controller: _tabController,
-                labels: labels,
-                icons: icons,
-                badges: badges,
-                onProfile: widget.approverMode ? null : () => _openMyBusiness(business),
-                onBusinesses: widget.approverMode
-                    ? null
-                    : () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const MyBusinessesScreen()),
+              Row(
+                children: [
+                  _DashboardSidebar(
+                    logoUrl: business['logo_url']?.toString(),
+                    businessName: business['name'].toString(),
+                    greeting: ownerName.isEmpty
+                        ? null
+                        : (widget.approverMode ? 'Hola, $ownerName · Aprobador' : 'Hola, $ownerName'),
+                    subtitle: widget.approverMode ? null : '${state.customers.length} clientes activos',
+                    controller: _tabController,
+                    labels: labels,
+                    icons: icons,
+                    badges: badges,
+                    onProfile: widget.approverMode ? null : () => _openMyBusiness(business),
+                    onBusinesses: widget.approverMode
+                        ? null
+                        : () => Navigator.of(context).push(
+                              MaterialPageRoute(builder: (_) => const MyBusinessesScreen()),
+                            ),
+                    unreadNotifications: ref.watch(unreadCountProvider),
+                    onNotifications: () => Navigator.of(context).push(
+                      MaterialPageRoute(builder: (_) => const NotificationsScreen()),
+                    ),
+                    onLogout: _confirmLogout,
+                  ),
+                  const VerticalDivider(width: 1, thickness: 1, color: AppColors.black),
+                  Expanded(
+                    child: Align(
+                      alignment: Alignment.topCenter,
+                      child: ConstrainedBox(
+                        constraints: const BoxConstraints(maxWidth: 1000),
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 24),
+                          child: Column(
+                            children: [
+                              _fidoGuide(state, ownerName),
+                              Expanded(child: TabBarView(controller: _tabController, children: views)),
+                            ],
+                          ),
                         ),
-                onLogout: _confirmLogout,
-              ),
-              const VerticalDivider(width: 1, thickness: 1, color: AppColors.black),
-              Expanded(
-                child: Align(
-                  alignment: Alignment.topCenter,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1000),
-                    child: Padding(
-                      padding: const EdgeInsets.only(top: 24),
-                      child: Column(
-                        children: [
-                          _fidoGuide(state, ownerName),
-                          Expanded(child: TabBarView(controller: _tabController, children: views)),
-                        ],
                       ),
                     ),
                   ),
-                ),
+                ],
               ),
+              if (!widget.approverMode)
+                Positioned(
+                  right: 24,
+                  bottom: 24,
+                  child: _MoreButton(onPressed: () => _openMoreSections(business)),
+                ),
             ],
           ),
         ),
@@ -421,20 +540,27 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
 
     return Scaffold(
       body: SafeArea(
-        child: AppResponsiveBody(
-          maxWidth: 640,
-          adaptive: true,
-          child: Column(
-            children: [
+        child: Stack(
+          children: [
+            AppResponsiveBody(
+              maxWidth: 640,
+              adaptive: true,
+              child: Column(
+                children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 20, 12, 12),
                 child: Row(
                   children: [
                     Semantics(
                       button: true,
-                      label: 'Mi negocio',
+                      label: 'Mis negocios',
                       child: GestureDetector(
-                        onTap: widget.approverMode ? null : () => _openMyBusiness(business),
+                        // El logo grande lleva a la gestión de los negocios.
+                        onTap: widget.approverMode
+                            ? null
+                            : () => Navigator.of(context).push(
+                                  MaterialPageRoute(builder: (_) => const MyBusinessesScreen()),
+                                ),
                         child: Hero(
                           tag: 'business_logo',
                           child: _BusinessLogo(logoUrl: business['logo_url']?.toString()),
@@ -471,19 +597,13 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
                         ],
                       ),
                     ),
-                    if (!widget.approverMode)
+                    const NotificationBell(),
+                    if (widget.approverMode)
                       IconButton(
-                        tooltip: 'Mis negocios',
-                        icon: const Icon(Icons.store_mall_directory_outlined),
-                        onPressed: () => Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const MyBusinessesScreen()),
-                        ),
+                        tooltip: 'Cerrar sesión',
+                        icon: const Icon(Icons.logout_rounded),
+                        onPressed: _confirmLogout,
                       ),
-                    IconButton(
-                      tooltip: 'Cerrar sesión',
-                      icon: const Icon(Icons.logout_rounded),
-                      onPressed: _confirmLogout,
-                    ),
                   ],
                 ),
               ),
@@ -491,6 +611,98 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
               AppPillTabBar(controller: _tabController, labels: labels, badges: badges),
               const SizedBox(height: 16),
               Expanded(child: TabBarView(controller: _tabController, children: views)),
+                ],
+              ),
+            ),
+            // El botón "+": abre lo que el dueño crea y gestiona aparte.
+            if (!widget.approverMode)
+              Positioned(
+                right: 24,
+                bottom: 24,
+                child: _MoreButton(onPressed: () => _openMoreSections(business)),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// El botón "+" de la esquina inferior derecha: abre lo que el dueño crea
+/// y gestiona aparte del día a día.
+class _MoreButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _MoreButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Crear y gestionar',
+      excludeSemantics: true,
+      child: Tooltip(
+        message: 'Crear y gestionar',
+        child: Material(
+          color: AppColors.pink,
+          shape: CircleBorder(side: BorderSide(color: AppColors.black, width: 1.4)),
+          elevation: 0,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            child: const SizedBox(
+              width: 58,
+              height: 58,
+              child: Icon(Icons.add_rounded, color: AppColors.black, size: 30),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Una fila de la hoja "Crear y gestionar".
+class _SectionRow extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final String hint;
+  final VoidCallback onTap;
+
+  const _SectionRow({
+    required this.icon,
+    required this.label,
+    required this.hint,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 4),
+      child: AppNavRow(icon: icon, label: label, onTap: onTap),
+    );
+  }
+}
+
+/// Una sección del negocio abierta como pantalla (desde el botón "+").
+class _BusinessSectionScreen extends StatelessWidget {
+  final String title;
+  final Widget child;
+
+  const _BusinessSectionScreen({required this.title, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: AppResponsiveBody(
+          maxWidth: 640,
+          adaptive: true,
+          child: Column(
+            children: [
+              AppPageHeader(title: title),
+              Expanded(child: child),
             ],
           ),
         ),
@@ -512,6 +724,8 @@ class _DashboardSidebar extends StatelessWidget {
   final List<int> badges;
   final VoidCallback? onProfile;
   final VoidCallback? onBusinesses;
+  final int unreadNotifications;
+  final VoidCallback onNotifications;
   final VoidCallback onLogout;
 
   const _DashboardSidebar({
@@ -525,6 +739,8 @@ class _DashboardSidebar extends StatelessWidget {
     required this.badges,
     required this.onProfile,
     required this.onBusinesses,
+    required this.unreadNotifications,
+    required this.onNotifications,
     required this.onLogout,
   });
 
@@ -602,6 +818,13 @@ class _DashboardSidebar extends StatelessWidget {
                     selected: false,
                     onTap: onBusinesses!,
                   ),
+                _SidebarItem(
+                  icon: Icons.notifications_none_rounded,
+                  label: 'Notificaciones',
+                  badge: unreadNotifications,
+                  selected: false,
+                  onTap: onNotifications,
+                ),
                 const Align(alignment: Alignment.centerLeft, child: LanguageButton()),
                 _SidebarItem(
                   icon: Icons.logout_rounded,

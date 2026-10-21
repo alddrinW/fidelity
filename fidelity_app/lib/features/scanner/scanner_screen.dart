@@ -90,6 +90,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       context: context,
       builder: (_) => AppMessageDialog(
         icon: Icons.qr_code_scanner_rounded,
+        leading: const FidoMascot(mood: FidoMood.sad, height: 120),
         title: 'No se pudo escanear',
         message: message,
         primaryLabel: 'Reintentar',

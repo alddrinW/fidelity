@@ -6,22 +6,38 @@ import 'package:share_plus/share_plus.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/utils/date_utils.dart';
+import '../../core/utils/image_source.dart';
 import '../../core/validators/app_validators.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/app_chip.dart';
 import '../../core/widgets/app_empty_state.dart';
-import '../../core/widgets/app_page_header.dart';
 import '../../core/widgets/app_pill_tab_bar.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../../core/widgets/app_text_field.dart';
 import '../feedback/widgets/feedback_sheet.dart';
+import '../campaigns/campaign_detail_screen.dart';
+import '../campaigns/data/campaigns_repository.dart';
+import '../campaigns/widgets/gift_claim_tile.dart';
+import '../games/data/games_repository.dart';
+import '../games/game_invite_screen.dart';
+import '../games/widgets/game_invite_tile.dart';
 import 'providers/card_history_provider.dart';
+import 'widgets/missions_route.dart';
+import '../../core/l10n/translator.dart';
 import '../../core/l10n/tr_text.dart';
 
-/// Historial de una tarjeta: escaneos (con su estado de aprobación) y premios
-/// (por reclamar, entregados o rechazados), con transferencia de premios.
+/// Un local del cliente: arriba su cabecera con los sellos y el premio, y
+/// debajo tres pestañas: los **premios** (por reclamar, entregados o rechazados,
+/// con transferencia), las **gift cards** que el local le dio y los
+/// **minijuegos** que le mandó.
 class CardHistoryScreen extends ConsumerStatefulWidget {
+  /// Las pestañas, para abrir la pantalla en una de ellas.
+  static const int rewardsTab = 0;
+  static const int giftCardsTab = 1;
+  static const int gamesTab = 2;
+
+
   final String loyaltyCardId;
   final String businessId;
   final String businessName;
@@ -106,97 +122,120 @@ class _CardHistoryScreenState extends ConsumerState<CardHistoryScreen> {
   Widget build(BuildContext context) {
     final state = ref.watch(cardHistoryProvider);
     final range = state.dateRange;
+    final card = state.card;
+    final name = card['name']?.toString().trim().isNotEmpty == true
+        ? card['name'].toString()
+        : widget.businessName;
 
     return DefaultTabController(
-      length: 2,
+      length: 3,
       initialIndex: widget.initialTabIndex,
       child: Scaffold(
-        body: SafeArea(
-          child: AppResponsiveBody(
-            adaptive: true,
-            child: Column(
-              children: [
-                AppPageHeader(
-                  title: widget.businessName,
-                  trailing: IconButton(
-                    tooltip: 'Filtrar por fechas',
-                    icon: Icon(
-                      Icons.calendar_today_outlined,
-                      color: AppColors.black,
-                      size: range == null ? 26 : 22,
-                    ),
-                    style: range == null
-                        ? null
-                        : IconButton.styleFrom(backgroundColor: AppColors.pink),
-                    onPressed: () => _selectDateRange(range),
-                  ),
-                ),
-                if (range != null)
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AppChip(
-                          label: '${_formatDay(range.start)} - ${_formatDay(range.end)}',
-                          icon: Icons.filter_alt_outlined,
+        body: AppResponsiveBody(
+          adaptive: true,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              Builder(
+                builder: (context) {
+                  final tabs = DefaultTabController.of(context);
+                  return RefreshIndicator(
+                    color: AppColors.black,
+                    edgeOffset: MediaQuery.paddingOf(context).top + 110,
+                    onRefresh: () => ref.read(cardHistoryProvider.notifier).loadHistory(),
+                    child: CustomScrollView(
+                      physics: const AlwaysScrollableScrollPhysics(),
+                      slivers: [
+                        // La cabecera con los datos del local y su avance.
+                        SliverToBoxAdapter(
+                          child: _CardHeader(
+                            name: name,
+                            logoUrl: card['logo_url']?.toString(),
+                            subtitle: _subtitle(card),
+                            points: (card['current_points'] as num?)?.toInt() ?? 0,
+                            required: (card['points_required'] as num?)?.toInt() ?? 10,
+                            reward: card['reward_description']?.toString().trim() ?? '',
+                            hasData: card.isNotEmpty,
+                            range: range,
+                            rangeLabel: range == null
+                                ? null
+                                : '${_formatDay(range.start)} - ${_formatDay(range.end)}',
+                            onFilter: () => _selectDateRange(range),
+                            onClearFilter: () =>
+                                ref.read(cardHistoryProvider.notifier).updateDateRange(null),
+                          ),
                         ),
-                        IconButton(
-                          tooltip: 'Quitar filtro',
-                          icon: const Icon(Icons.close_rounded, size: 20),
-                          onPressed: () =>
-                              ref.read(cardHistoryProvider.notifier).updateDateRange(null),
+                        // Las pestañas se quedan fijas arriba al desplazar.
+                        const SliverPersistentHeader(
+                          pinned: true,
+                          delegate: _PinnedTabs(labels: ['Premios', 'Tarjetas', 'Minijuegos']),
                         ),
+                        AnimatedBuilder(
+                          animation: tabs,
+                          builder: (context, _) => _tabContent(state, tabs.index),
+                        ),
+                        // Espacio extra abajo para que el botón flotante no tape
+                        // el último movimiento de la lista.
+                        const SliverToBoxAdapter(child: SizedBox(height: 96)),
                       ],
                     ),
-                  ),
-                Align(
-                  alignment: Alignment.center,
-                  child: AppTextAction(
-                    label: 'Sugerencia o reclamo',
-                    onPressed: () => showFeedbackSheet(
-                      context,
-                      businessId: widget.businessId,
-                      businessName: widget.businessName,
-                    ),
+                  );
+                },
+              ),
+              // Sugerencia o reclamo: un botón flotante en la esquina, sin
+              // texto, para no competir con las pestañas ni con el historial.
+              Positioned(
+                right: 24,
+                bottom: 24,
+                child: _FeedbackButton(
+                  onPressed: () => showFeedbackSheet(
+                    context,
+                    businessId: widget.businessId,
+                    businessName: widget.businessName,
                   ),
                 ),
-                const AppPillTabBar(labels: ['Escaneos', 'Premios']),
-                const SizedBox(height: 16),
-                Expanded(
-                  child: state.isLoading
-                      ? const Center(child: CircularProgressIndicator())
-                      : TabBarView(
-                          children: [
-                            _buildList(
-                              state,
-                              state.scans,
-                              emptyTitle: 'Sin actividad',
-                              emptyMessage: 'Tus escaneos aparecerán aquí.',
-                              tileBuilder: (item) => _ScanTile(item: item),
-                            ),
-                            _buildList(
-                              state,
-                              state.rewards,
-                              emptyTitle: 'Sin premios',
-                              emptyMessage: 'Cuando completes la tarjeta, tu premio aparecerá aquí.',
-                              tileBuilder: (item) => _RewardTile(
-                                item: item,
-                                onTransfer: _canTransfer(item) ? () => _openTransferSheet(item) : null,
-                              ),
-                            ),
-                          ],
-                        ),
-                ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildList(
+  /// "Cafetería · Av. 12 de Octubre N24, Quito": la categoría y dónde queda.
+  String? _subtitle(Map<String, dynamic> card) {
+    final parts = [card['category'], card['address']]
+        .map((v) => v?.toString().trim() ?? '')
+        .where((v) => v.isNotEmpty)
+        .toList();
+    return parts.isEmpty ? null : parts.join(' · ');
+  }
+
+  /// El contenido de la pestaña elegida, como sliver.
+  Widget _tabContent(CardHistoryState state, int tab) {
+    if (state.isLoading) {
+      return const SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(child: CircularProgressIndicator()),
+      );
+    }
+    return switch (tab) {
+      CardHistoryScreen.rewardsTab => _itemsSliver(
+          state,
+          state.rewards,
+          emptyTitle: 'Sin premios',
+          emptyMessage: 'Cuando completes la tarjeta, tu premio aparecerá aquí.',
+          tileBuilder: (item) => _RewardTile(
+            item: item,
+            onTransfer: _canTransfer(item) ? () => _openTransferSheet(item) : null,
+          ),
+        ),
+      CardHistoryScreen.giftCardsTab => _GiftCardsSliver(businessId: widget.businessId),
+      _ => _GamesSliver(businessId: widget.businessId),
+    };
+  }
+
+  Widget _itemsSliver(
     CardHistoryState state,
     List<Map<String, dynamic>> items, {
     required String emptyTitle,
@@ -204,26 +243,522 @@ class _CardHistoryScreenState extends ConsumerState<CardHistoryScreen> {
     required Widget Function(Map<String, dynamic>) tileBuilder,
   }) {
     if (items.isEmpty) {
-      if (state.error != null) {
-        return const AppEmptyState(
-          title: 'Algo salió mal',
-          message: 'No pudimos cargar tu historial. Desliza hacia abajo o vuelve a intentarlo.',
-        );
-      }
-      return AppEmptyState(title: emptyTitle, message: emptyMessage);
+      return SliverFillRemaining(
+        hasScrollBody: false,
+        child: state.error != null
+            ? const AppEmptyState.error(
+                message: 'No pudimos cargar tu historial. Desliza hacia abajo o vuelve a intentarlo.',
+              )
+            : AppEmptyState(title: emptyTitle, message: emptyMessage),
+      );
     }
 
-    return RefreshIndicator(
-      color: AppColors.black,
-      onRefresh: () => ref.read(cardHistoryProvider.notifier).loadHistory(),
-      child: ListView.separated(
-        padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
+    return SliverPadding(
+      padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
+      sliver: SliverList.separated(
         itemCount: items.length,
         separatorBuilder: (_, __) => const SizedBox(height: 14),
         itemBuilder: (context, index) => tileBuilder(items[index])
             .animate(delay: (index.clamp(0, 6) * 60).ms)
             .fadeIn(duration: 350.ms)
             .slideY(begin: 0.06, curve: Curves.easeOutCubic),
+      ),
+    );
+  }
+}
+
+/// La pestaña "Tarjetas": las gift cards que este local le dio al cliente.
+class _GiftCardsSliver extends ConsumerWidget {
+  final String businessId;
+
+  const _GiftCardsSliver({required this.businessId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final claims = ref.watch(myClaimsProvider);
+
+    return claims.when(
+      loading: () => const SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (_, __) => const SliverFillRemaining(
+        hasScrollBody: false,
+        child: AppEmptyState.error(message: 'No pudimos cargar tus gift cards. Desliza para reintentar.'),
+      ),
+      data: (all) {
+        final mine = claimsOfBusiness(all, businessId);
+        if (mine.isEmpty) {
+          return const SliverFillRemaining(
+            hasScrollBody: false,
+            child: AppEmptyState(
+              title: 'Sin gift cards',
+              message: 'Cuando este local te regale una gift card, aparecerá aquí.',
+            ),
+          );
+        }
+        return SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
+          sliver: SliverList.separated(
+            itemCount: mine.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 14),
+            itemBuilder: (context, index) => GiftClaimTile(
+              claim: mine[index],
+              onTap: () async {
+                final campaign = mine[index].campaign;
+                if (campaign == null) return;
+                await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => CampaignDetailScreen(campaign: campaign, claim: mine[index]),
+                  ),
+                );
+                ref.invalidate(myClaimsProvider);
+              },
+            )
+                .animate(delay: (index.clamp(0, 6) * 60).ms)
+                .fadeIn(duration: 350.ms)
+                .slideY(begin: 0.06, curve: Curves.easeOutCubic),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// La pestaña "Minijuegos": los juegos que este local le mandó al cliente.
+class _GamesSliver extends ConsumerWidget {
+  final String businessId;
+
+  const _GamesSliver({required this.businessId});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final invites = ref.watch(myGameInvitesProvider);
+
+    return invites.when(
+      loading: () => const SliverFillRemaining(
+        hasScrollBody: false,
+        child: Center(child: CircularProgressIndicator()),
+      ),
+      error: (_, __) => const SliverFillRemaining(
+        hasScrollBody: false,
+        child: AppEmptyState.error(message: 'No pudimos cargar tus minijuegos. Desliza para reintentar.'),
+      ),
+      data: (all) {
+        final mine = invitesOfBusiness(all, businessId);
+        if (mine.isEmpty) {
+          return const SliverFillRemaining(
+            hasScrollBody: false,
+            child: AppEmptyState(
+              title: 'Sin minijuegos',
+              message: 'Cuando este local te mande un juego para ganar un premio, aparecerá aquí.',
+            ),
+          );
+        }
+        return SliverPadding(
+          padding: const EdgeInsets.fromLTRB(24, 4, 24, 0),
+          sliver: SliverList.separated(
+            itemCount: mine.length,
+            separatorBuilder: (_, __) => const SizedBox(height: 12),
+            itemBuilder: (context, index) => GameInviteTile(
+              invite: mine[index],
+              onTap: () async {
+                await Navigator.of(context).push(
+                  MaterialPageRoute(builder: (_) => GameInviteScreen(inviteId: mine[index].id)),
+                );
+                ref.invalidate(myGameInvitesProvider);
+                ref.invalidate(myClaimsProvider);
+              },
+            )
+                .animate(delay: (index.clamp(0, 6) * 60).ms)
+                .fadeIn(duration: 350.ms)
+                .slideY(begin: 0.06, curve: Curves.easeOutCubic),
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Las pestañas (Premios, Tarjetas, Minijuegos), fijas bajo la cabecera.
+class _PinnedTabs extends SliverPersistentHeaderDelegate {
+  final List<String> labels;
+
+  const _PinnedTabs({required this.labels});
+
+  static const double _height = 64;
+
+  @override
+  double get minExtent => _height;
+
+  @override
+  double get maxExtent => _height;
+
+  @override
+  Widget build(BuildContext context, double shrinkOffset, bool overlapsContent) {
+    return ColoredBox(
+      color: AppColors.white,
+      child: Align(
+        alignment: Alignment.center,
+        child: AppPillTabBar(labels: labels),
+      ),
+    );
+  }
+
+  @override
+  bool shouldRebuild(covariant _PinnedTabs oldDelegate) => oldDelegate.labels != labels;
+}
+
+/// La cabecera de la tarjeta de un local: una franja rosa con el logo del
+/// negocio, su nombre y dónde queda, y debajo sus sellos y su premio.
+class _CardHeader extends StatelessWidget {
+  final String name;
+  final String? logoUrl;
+  final String? subtitle;
+  final int points;
+  final int required;
+  final String reward;
+
+  /// Si ya llegaron los datos de la tarjeta (antes solo se sabe el nombre).
+  final bool hasData;
+  final DateTimeRange? range;
+  final String? rangeLabel;
+  final VoidCallback onFilter;
+  final VoidCallback onClearFilter;
+
+  const _CardHeader({
+    required this.name,
+    required this.logoUrl,
+    required this.subtitle,
+    required this.points,
+    required this.required,
+    required this.reward,
+    required this.hasData,
+    required this.range,
+    required this.rangeLabel,
+    required this.onFilter,
+    required this.onClearFilter,
+  });
+
+  static const double _logoSize = 88;
+
+  @override
+  Widget build(BuildContext context) {
+    final topInset = MediaQuery.paddingOf(context).top;
+    final image = imageProviderFromUrl(logoUrl);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // La franja rosa: volver y filtrar por fechas.
+            Container(
+              height: topInset + 112,
+              padding: EdgeInsets.fromLTRB(8, topInset + 8, 8, 0),
+              decoration: const BoxDecoration(
+                color: AppColors.pink,
+                border: Border(bottom: BorderSide(color: AppColors.black, width: 1.5)),
+              ),
+              alignment: Alignment.topCenter,
+              child: Row(
+                children: [
+                  IconButton(
+                    tooltip: context.tr('Volver'),
+                    icon: const Icon(Icons.chevron_left_rounded, size: 40, color: AppColors.black),
+                    onPressed: () => Navigator.of(context).maybePop(),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    tooltip: context.tr('Filtrar por fechas'),
+                    icon: Icon(
+                      Icons.calendar_today_outlined,
+                      color: AppColors.black,
+                      size: range == null ? 26 : 22,
+                    ),
+                    style: range == null
+                        ? null
+                        : IconButton.styleFrom(backgroundColor: AppColors.white),
+                    onPressed: onFilter,
+                  ),
+                ],
+              ),
+            ),
+            // El logo del negocio, montado sobre el borde de la franja.
+            Positioned(
+              left: 24,
+              bottom: -_logoSize / 2,
+              child: Container(
+                width: _logoSize,
+                height: _logoSize,
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: AppColors.white,
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.black, width: 2),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: image == null
+                    ? const Icon(Icons.storefront_outlined, color: AppColors.black, size: 34)
+                    : Image(image: image, fit: BoxFit.contain),
+              ),
+            ),
+          ],
+        ),
+        SizedBox(height: _logoSize / 2 + 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Semantics(
+                header: true,
+                child: Text(
+                  name.toUpperCase(),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.display(size: 32),
+                ),
+              ),
+              if (subtitle != null) ...[
+                const SizedBox(height: 2),
+                Text(
+                  subtitle!,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.body(size: 14, weight: FontWeight.w300, color: AppColors.textSecondary),
+                ),
+              ],
+              if (rangeLabel != null) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    AppChip(label: rangeLabel!, icon: Icons.filter_alt_outlined),
+                    IconButton(
+                      tooltip: context.tr('Quitar filtro'),
+                      icon: const Icon(Icons.close_rounded, size: 20),
+                      onPressed: onClearFilter,
+                    ),
+                  ],
+                ),
+              ],
+              if (hasData) ...[
+                const SizedBox(height: 16),
+                _StampsCard(points: points, required: required, reward: reward),
+                if (reward.isNotEmpty) ...[
+                  const SizedBox(height: 10),
+                  _PrizeStrip(reward: reward),
+                ],
+              ],
+              const SizedBox(height: 8),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// "TUS SELLOS": un círculo por cada punto; el último es el premio.
+class _StampsCard extends StatelessWidget {
+  final int points;
+  final int required;
+  final String reward;
+
+  const _StampsCard({required this.points, required this.required, required this.reward});
+
+  /// A partir de aquí los círculos no caben bien y se usa una barra.
+  static const int maxStamps = 12;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = required < 1 ? 1 : required;
+    final done = points.clamp(0, total);
+    final left = total - done;
+
+    final String message;
+    if (left == 0) {
+      message = '¡Tu premio está listo!';
+    } else if (left == 1) {
+      message = reward.isEmpty ? 'Te falta 1 punto para tu premio' : 'Un punto más y consigues: $reward';
+    } else {
+      message = reward.isEmpty ? 'Te faltan $left puntos para tu premio' : 'Te faltan $left puntos para: $reward';
+    }
+
+    return AppCard(
+      radius: 28,
+      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Expanded(child: Text('TUS SELLOS', style: AppTypography.label(size: 12, tracking: 3))),
+              Text('$done / $total', style: AppTypography.display(size: 22)),
+            ],
+          ),
+          const SizedBox(height: 14),
+          if (total > maxStamps)
+            ProgressBar(value: done / total, height: 14)
+          else
+            GridView.count(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              crossAxisCount: total <= 4 ? total : (total <= 8 ? 4 : 6),
+              mainAxisSpacing: 10,
+              crossAxisSpacing: 10,
+              children: [
+                for (var i = 0; i < total; i++)
+                  Center(
+                    child: _Stamp(
+                      key: ValueKey(i < done ? 'sello-$i-ganado' : 'sello-$i-falta'),
+                      filled: i < done,
+                      isPrize: i == total - 1 && left > 0,
+                    ),
+                  ),
+              ],
+            ),
+          const SizedBox(height: 14),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: AppTypography.body(size: 14, weight: FontWeight.w300),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Un sello: ganado (rosa con visto), por ganar (vacío) o el premio (regalo
+/// con el borde punteado).
+class _Stamp extends StatelessWidget {
+  final bool filled;
+  final bool isPrize;
+
+  const _Stamp({super.key, required this.filled, required this.isPrize});
+
+  static const double size = 38;
+
+  @override
+  Widget build(BuildContext context) {
+    if (isPrize) {
+      return CustomPaint(
+        painter: _DashedCirclePainter(),
+        child: const SizedBox(
+          width: size,
+          height: size,
+          child: Icon(Icons.card_giftcard_rounded, size: 20, color: AppColors.black),
+        ),
+      );
+    }
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: filled ? AppColors.pink : AppColors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.black, width: 1.2),
+      ),
+      child: filled ? const Icon(Icons.check_rounded, size: 21, color: AppColors.black) : null,
+    );
+  }
+}
+
+class _DashedCirclePainter extends CustomPainter {
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.black
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2;
+    final radius = size.width / 2 - 0.6;
+    final center = Offset(size.width / 2, size.height / 2);
+    const dashes = 14;
+    const sweep = 2 * 3.1415926535 / dashes;
+    for (var i = 0; i < dashes; i++) {
+      canvas.drawArc(Rect.fromCircle(center: center, radius: radius), i * sweep, sweep * 0.55, false, paint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
+}
+
+/// La franja negra con el premio del local.
+class _PrizeStrip extends StatelessWidget {
+  final String reward;
+
+  const _PrizeStrip({required this.reward});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
+      decoration: BoxDecoration(color: AppColors.black, borderRadius: BorderRadius.circular(22)),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            decoration: const BoxDecoration(color: AppColors.pink, shape: BoxShape.circle),
+            child: const Icon(Icons.card_giftcard_rounded, size: 20, color: AppColors.black),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('TU PREMIO', style: AppTypography.display(size: 15, color: AppColors.white)),
+                Text(
+                  reward,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: AppTypography.body(size: 13, weight: FontWeight.w300, color: AppColors.white),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Botón flotante de "Sugerencia o reclamo": un círculo rosa con el ícono de
+/// conversación. Va en la esquina inferior y no lleva texto para no cargar la
+/// pantalla; el tooltip explica qué hace.
+class _FeedbackButton extends StatelessWidget {
+  final VoidCallback onPressed;
+
+  const _FeedbackButton({required this.onPressed});
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: 'Sugerencia o reclamo',
+      excludeSemantics: true,
+      child: Tooltip(
+        message: context.tr('Sugerencia o reclamo'),
+        child: Material(
+          color: AppColors.pink,
+          shape: CircleBorder(side: BorderSide(color: AppColors.black, width: 1.4)),
+          elevation: 0,
+          child: InkWell(
+            customBorder: const CircleBorder(),
+            onTap: onPressed,
+            child: const SizedBox(
+              width: 58,
+              height: 58,
+              child: Icon(
+                Icons.chat_bubble_outline_rounded,
+                color: AppColors.black,
+                size: 26,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }
@@ -242,71 +777,6 @@ class _TileIcon extends StatelessWidget {
       height: 48,
       decoration: const BoxDecoration(color: AppColors.surfaceMuted, shape: BoxShape.circle),
       child: Icon(icon, size: 24, color: AppColors.black),
-    );
-  }
-}
-
-class _ScanTile extends StatelessWidget {
-  final Map<String, dynamic> item;
-
-  const _ScanTile({required this.item});
-
-  @override
-  Widget build(BuildContext context) {
-    final status = (item['status'] ?? 'approved').toString();
-    // Sin QR el punto lo otorgó el negocio a mano.
-    final isGifted = item['qr_code_id'] == null;
-
-    final IconData icon;
-    final String title;
-    final String subtitle;
-    final AppChip? chip;
-
-    switch (status) {
-      case 'pending':
-        icon = Icons.hourglass_top_rounded;
-        title = 'Escaneo en revisión';
-        subtitle = 'El local aún debe aprobarlo';
-        chip = const AppChip(label: 'Pendiente');
-      case 'rejected':
-        icon = Icons.block_rounded;
-        title = 'Escaneo rechazado';
-        subtitle = 'No se sumó ningún punto';
-        chip = const AppChip(label: 'Rechazado', style: AppChipStyle.outline);
-      default:
-        icon = isGifted ? Icons.redeem_rounded : Icons.qr_code_scanner_rounded;
-        title = '+1 punto';
-        subtitle = isGifted ? 'Regalo del negocio' : 'Por escaneo de QR';
-        chip = null;
-    }
-
-    return AppCard(
-      child: Row(
-        children: [
-          _TileIcon(icon),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(title.toUpperCase(), style: AppTypography.label(size: 14, tracking: 1)),
-                const SizedBox(height: 2),
-                Text(subtitle, style: AppTypography.body(size: 14, weight: FontWeight.w300)),
-                const SizedBox(height: 4),
-                Text(
-                  EcuadorDateUtils.formatEcuadorTime(item['scanned_at']).toUpperCase(),
-                  style: AppTypography.body(
-                    size: 11,
-                    weight: FontWeight.w400,
-                    color: AppColors.textSecondary,
-                  ),
-                ),
-              ],
-            ),
-          ),
-          if (chip != null) ...[const SizedBox(width: 8), chip],
-        ],
-      ),
     );
   }
 }

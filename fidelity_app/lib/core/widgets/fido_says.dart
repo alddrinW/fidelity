@@ -14,11 +14,15 @@ class FidoSays extends StatelessWidget {
   /// Fido celebrando (brazos arriba) en lugar de su pose neutra.
   final bool celebrating;
 
+  /// Fido triste: para avisos de algo que no salió bien.
+  final bool sad;
+
   const FidoSays({
     super.key,
     required this.message,
     this.fidoHeight = 96,
     this.celebrating = false,
+    this.sad = false,
   });
 
   @override
@@ -27,7 +31,7 @@ class FidoSays extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
         FidoMascot(
-          mood: celebrating ? FidoMood.celebrate : FidoMood.calm,
+          mood: sad ? FidoMood.sad : (celebrating ? FidoMood.celebrate : FidoMood.calm),
           height: fidoHeight,
         ),
         const SizedBox(width: 8),

@@ -15,8 +15,8 @@ import 'widgets/campaign_visuals.dart';
 import 'widgets/redeem_code_card.dart';
 import '../../core/l10n/tr_text.dart';
 
-/// Pestaña "Campañas" del dueño: canje de códigos, campañas y botón para crear
-/// una nueva.
+/// Pestaña "Campañas" del dueño: eventos y rutas (las gift cards tienen su propia
+/// pestaña), con el canje de premios de ruta y el botón para crear una nueva.
 class CampaignsTab extends ConsumerWidget {
   const CampaignsTab({super.key});
 
@@ -52,18 +52,19 @@ class CampaignsTab extends ConsumerWidget {
             ),
             error: (e, _) => const SizedBox(
               height: 260,
-              child: AppEmptyState(
-                title: 'Algo salió mal',
-                message: 'No pudimos cargar tus campañas. Desliza para reintentar.',
+              child: AppEmptyState.error(message: 'No pudimos cargar tus campañas. Desliza para reintentar.',
                 imageHeight: 110,
               ),
             ),
-            data: (list) => list.isEmpty
+            data: (all) {
+              // Las gift cards tienen su propia pestaña.
+              final list = all.where((c) => c.type != CampaignType.giftCard).toList();
+              return list.isEmpty
                 ? const SizedBox(
                     height: 300,
                     child: AppEmptyState(
                       title: 'Sin campañas',
-                      message: 'Crea eventos, tarjetas de regalo o rutas para tus clientes.',
+                      message: 'Crea eventos o rutas para tus clientes.',
                       imageHeight: 120,
                     ),
                   )
@@ -84,7 +85,8 @@ class CampaignsTab extends ConsumerWidget {
                         const SizedBox(height: 12),
                       ],
                     ],
-                  ),
+                  );
+            },
           ),
         ],
       ),
@@ -153,7 +155,9 @@ class _CampaignCard extends StatelessWidget {
             Row(
               children: [
                 _Stat(
-                  label: campaign.type == CampaignType.route ? 'Premios' : 'Tarjetas',
+                  label: campaign.type == CampaignType.route || campaign.type == CampaignType.scanChallenge
+                      ? 'Premios'
+                      : 'Tarjetas',
                   value: stats.claims,
                 ),
                 _Stat(label: 'Canjes', value: stats.redeemed),

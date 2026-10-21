@@ -280,7 +280,8 @@ class _MissionNodeRow extends StatelessWidget {
   }
 }
 
-/// El nodo: el logo del negocio dentro de un anillo que se llena con los puntos.
+/// El nodo: el logo del negocio dentro de un círculo, con su badge de premio
+/// listo o de escaneo pendiente. El logo se muestra completo, sin recortes.
 class MissionNode extends StatelessWidget {
   final Mission mission;
   final double size;
@@ -298,23 +299,6 @@ class MissionNode extends StatelessWidget {
     );
     final image = imageProviderFromUrl(m.logoUrl);
 
-    final ring = CustomPaint(
-      painter: _RingPainter(progress: m.hasReadyReward ? 1 : m.progress, ready: m.hasReadyReward),
-      child: Padding(
-        padding: const EdgeInsets.all(9),
-        child: Container(
-          decoration: BoxDecoration(
-            color: m.hasReadyReward ? AppColors.pink : AppColors.surfaceMuted,
-            shape: BoxShape.circle,
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: image == null
-              ? fallback
-              : Image(image: image, fit: BoxFit.cover, errorBuilder: (_, __, ___) => fallback),
-        ),
-      ),
-    );
-
     return Semantics(
       button: true,
       label: '${m.name}, ${m.points} de ${m.required} puntos',
@@ -327,12 +311,31 @@ class MissionNode extends StatelessWidget {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              const Positioned.fill(
+              // El círculo del logo: fondo claro (rosa si hay premio listo) y
+              // el contorno de marca.
+              Positioned.fill(
                 child: DecoratedBox(
-                  decoration: BoxDecoration(color: AppColors.white, shape: BoxShape.circle),
+                  decoration: BoxDecoration(
+                    color: m.hasReadyReward ? AppColors.pink : AppColors.surfaceMuted,
+                    shape: BoxShape.circle,
+                    border: Border.all(color: AppColors.black, width: 1.2),
+                  ),
                 ),
               ),
-              Positioned.fill(child: ring),
+              // El logo entra entero (contain) y con aire para que no se toque
+              // el borde del círculo.
+              Positioned.fill(
+                child: Padding(
+                  padding: EdgeInsets.all(size * 0.15),
+                  child: image == null
+                      ? fallback
+                      : Image(
+                          image: image,
+                          fit: BoxFit.contain,
+                          errorBuilder: (_, __, ___) => fallback,
+                        ),
+                ),
+              ),
               if (m.hasReadyReward)
                 Positioned(
                   right: -4,
@@ -464,44 +467,6 @@ class StampRow extends StatelessWidget {
       ],
     );
   }
-}
-
-class _RingPainter extends CustomPainter {
-  final double progress;
-  final bool ready;
-
-  _RingPainter({required this.progress, required this.ready});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const stroke = 7.0;
-    final rect = Offset(stroke / 2, stroke / 2) & Size(size.width - stroke, size.height - stroke);
-    canvas.drawArc(
-      rect,
-      0,
-      math.pi * 2,
-      false,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = stroke
-        ..color = AppColors.surfaceMuted,
-    );
-    if (progress <= 0) return;
-    canvas.drawArc(
-      rect,
-      -math.pi / 2,
-      math.pi * 2 * progress,
-      false,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeCap = StrokeCap.round
-        ..strokeWidth = stroke
-        ..color = AppColors.black,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_RingPainter old) => old.progress != progress || old.ready != ready;
 }
 
 /// El camino punteado que une un nodo con el siguiente.

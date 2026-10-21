@@ -10,15 +10,17 @@ import '../../core/widgets/app_card.dart';
 import '../../core/widgets/app_page_header.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../../core/widgets/app_text_field.dart';
-import '../admin/data/admin_date_filter.dart';
 import '../admin/widgets/admin_widgets.dart';
 import '../business/branches/branches_repository.dart';
 import '../business/dashboard/widgets/dashboard_animated_toast.dart';
 import 'data/campaigns_repository.dart';
+import 'widgets/campaign_image_picker.dart';
+import 'widgets/schedule_row.dart';
 import '../../core/l10n/tr_text.dart';
 
-/// Crea una campaña: evento, tarjeta de regalo o ruta (pasaporte). Se puede
-/// lanzar ya o programar para una fecha futura, con fin opcional.
+/// Crea una campaña: evento, ruta (pasaporte) o reto de escaneos. Se puede
+/// lanzar ya o programar para una fecha futura, con fin opcional. En un reto el
+/// dueño dice cuántos escaneos debe hacer el cliente para ganar el premio.
 class CampaignFormScreen extends ConsumerStatefulWidget {
   const CampaignFormScreen({super.key});
 
@@ -33,6 +35,7 @@ class _CampaignFormScreenState extends ConsumerState<CampaignFormScreen> {
   final _valueController = TextEditingController(text: '10');
   final _labelController = TextEditingController();
   final _stampsController = TextEditingController();
+  final _scansController = TextEditingController(text: '5');
 
   CampaignType _type = CampaignType.event;
   CampaignBenefit _benefit = CampaignBenefit.discountPercent;
@@ -53,6 +56,7 @@ class _CampaignFormScreenState extends ConsumerState<CampaignFormScreen> {
     _valueController.dispose();
     _labelController.dispose();
     _stampsController.dispose();
+    _scansController.dispose();
     super.dispose();
   }
 
@@ -71,44 +75,6 @@ class _CampaignFormScreenState extends ConsumerState<CampaignFormScreen> {
     } catch (_) {
       if (mounted) _showError('No se pudo seleccionar la imagen.');
     }
-  }
-
-  /// Fecha y hora con los selectores del sistema, en los colores de marca.
-  Future<DateTime?> _pickDateTime(DateTime? initial) async {
-    final now = DateTime.now();
-    Widget themed(Widget? child) => Theme(
-          data: Theme.of(context).copyWith(
-            colorScheme: const ColorScheme.light(
-              primary: AppColors.black,
-              onPrimary: AppColors.white,
-              surface: AppColors.white,
-              onSurface: AppColors.black,
-            ),
-          ),
-          child: child!,
-        );
-
-    final date = await showDatePicker(
-      context: context,
-      initialDate: initial ?? now,
-      firstDate: now,
-      lastDate: now.add(const Duration(days: 365 * 2)),
-      builder: (_, child) => themed(child),
-    );
-    if (date == null || !mounted) return null;
-    final time = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.fromDateTime(initial ?? now.add(const Duration(hours: 1))),
-      builder: (_, child) => themed(child),
-    );
-    if (time == null) return null;
-    return DateTime(date.year, date.month, date.day, time.hour, time.minute);
-  }
-
-  String _formatDateTime(DateTime d) {
-    final hh = d.hour.toString().padLeft(2, '0');
-    final mm = d.minute.toString().padLeft(2, '0');
-    return '${formatShortDate(d)} $hh:$mm';
   }
 
   String? _validate() {
@@ -141,6 +107,9 @@ class _CampaignFormScreenState extends ConsumerState<CampaignFormScreen> {
 
     final isGift = _type == CampaignType.giftCard;
     final isRoute = _type == CampaignType.route;
+    final isChallenge = _type == CampaignType.scanChallenge;
+    // El premio del reto es, como una gift card, un descuento o un mini premio.
+    final hasBenefit = isGift || isChallenge;
 
     setState(() => _isSaving = true);
     try {
@@ -150,14 +119,15 @@ class _CampaignFormScreenState extends ConsumerState<CampaignFormScreen> {
             description: _descriptionController.text,
             imageDataUri: _image?.dataUri,
             businessIds: _businessIds.toList(),
-            benefitType: isGift ? _benefit : null,
-            benefitValue: isGift && _benefit == CampaignBenefit.discountPercent
+            benefitType: hasBenefit ? _benefit : null,
+            benefitValue: hasBenefit && _benefit == CampaignBenefit.discountPercent
                 ? int.tryParse(_valueController.text.trim())
                 : null,
-            benefitLabel: (isGift && _benefit == CampaignBenefit.miniPrize) || isRoute
+            benefitLabel: (hasBenefit && _benefit == CampaignBenefit.miniPrize) || isRoute
                 ? _labelController.text
                 : null,
             requiredStamps: isRoute ? int.tryParse(_stampsController.text.trim()) : null,
+            requiredScans: isChallenge ? int.tryParse(_scansController.text.trim()) : null,
             startsAt: _scheduleStart ? _startsAt : null,
             endsAt: _hasEnd ? _endsAt : null,
           );
@@ -188,8 +158,9 @@ class _CampaignFormScreenState extends ConsumerState<CampaignFormScreen> {
       });
     }
 
-    final isGift = _type == CampaignType.giftCard;
     final isRoute = _type == CampaignType.route;
+    final isChallenge = _type == CampaignType.scanChallenge;
+    final hasBenefit = _type == CampaignType.giftCard || isChallenge;
 
     return Scaffold(
       body: SafeArea(
@@ -206,7 +177,7 @@ class _CampaignFormScreenState extends ConsumerState<CampaignFormScreen> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         const AdminSectionLabel('Tipo de campaña'),
-                        for (final type in CampaignType.values) ...[
+                        for (final type in CampaignType.values.where((t) => t != CampaignType.giftCard)) ...[
                           _TypeOption(
                             type: type,
                             selected: _type == type,
@@ -240,14 +211,39 @@ class _CampaignFormScreenState extends ConsumerState<CampaignFormScreen> {
                               (v?.trim().length ?? 0) > 1000 ? 'Máximo 1000 caracteres' : null,
                         ),
                         const SizedBox(height: 14),
-                        _ImagePicker(
-                          image: _image,
+                        CampaignImagePicker(
+                          bytes: _image?.bytes,
                           onPick: _pickImage,
                           onRemove: () => setState(() => _image = null),
                         ),
-                        if (isGift) ...[
+                        if (isChallenge) ...[
                           const SizedBox(height: 24),
-                          const AdminSectionLabel('Beneficio'),
+                          const AdminSectionLabel('Escaneos que pides'),
+                          AppTextField(
+                            controller: _scansController,
+                            hint: 'Cuántos escaneos debe hacer el cliente',
+                            icon: Icons.qr_code_scanner_rounded,
+                            keyboardType: TextInputType.number,
+                            inputFormatters: [
+                              FilteringTextInputFormatter.digitsOnly,
+                              LengthLimitingTextInputFormatter(3),
+                            ],
+                            validator: (v) {
+                              final n = int.tryParse(v?.trim() ?? '');
+                              return (n == null || n < 2 || n > 100)
+                                  ? 'Ingresa un número entre 2 y 100'
+                                  : null;
+                            },
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            'Cuentan los escaneos reales de tu código QR, aprobados, mientras dure la campaña.',
+                            style: AppTypography.body(size: 13, weight: FontWeight.w300, color: AppColors.textSecondary),
+                          ),
+                        ],
+                        if (hasBenefit) ...[
+                          const SizedBox(height: 24),
+                          AdminSectionLabel(isChallenge ? 'Premio del reto' : 'Beneficio'),
                           Row(
                             children: [
                               for (final b in CampaignBenefit.values) ...[
@@ -338,34 +334,34 @@ class _CampaignFormScreenState extends ConsumerState<CampaignFormScreen> {
                           ),
                         const SizedBox(height: 24),
                         const AdminSectionLabel('Cuándo'),
-                        _ScheduleRow(
+                        ScheduleRow(
                           title: 'Empieza',
                           offLabel: 'Ahora',
                           onLabel: 'Programar',
                           isOn: _scheduleStart,
-                          value: _startsAt == null ? null : _formatDateTime(_startsAt!),
+                          value: _startsAt == null ? null : formatCampaignDateTime(_startsAt!),
                           onToggle: (on) => setState(() {
                             _scheduleStart = on;
                             if (!on) _startsAt = null;
                           }),
                           onPick: () async {
-                            final picked = await _pickDateTime(_startsAt);
+                            final picked = await pickCampaignDateTime(context, _startsAt);
                             if (picked != null) setState(() => _startsAt = picked);
                           },
                         ),
                         const SizedBox(height: 12),
-                        _ScheduleRow(
+                        ScheduleRow(
                           title: 'Termina',
                           offLabel: 'Sin fin',
                           onLabel: 'Elegir fecha',
                           isOn: _hasEnd,
-                          value: _endsAt == null ? null : _formatDateTime(_endsAt!),
+                          value: _endsAt == null ? null : formatCampaignDateTime(_endsAt!),
                           onToggle: (on) => setState(() {
                             _hasEnd = on;
                             if (!on) _endsAt = null;
                           }),
                           onPick: () async {
-                            final picked = await _pickDateTime(_endsAt ?? _startsAt);
+                            final picked = await pickCampaignDateTime(context, _endsAt ?? _startsAt);
                             if (picked != null) setState(() => _endsAt = picked);
                           },
                         ),
@@ -444,104 +440,3 @@ class _TypeOption extends StatelessWidget {
   }
 }
 
-class _ImagePicker extends StatelessWidget {
-  final PickedImage? image;
-  final VoidCallback onPick;
-  final VoidCallback onRemove;
-
-  const _ImagePicker({required this.image, required this.onPick, required this.onRemove});
-
-  @override
-  Widget build(BuildContext context) {
-    if (image == null) {
-      return OutlinedButton.icon(
-        onPressed: onPick,
-        icon: const Icon(Icons.image_outlined),
-        label: const Text('AGREGAR IMAGEN (OPCIONAL)'),
-        style: OutlinedButton.styleFrom(
-          foregroundColor: AppColors.black,
-          side: const BorderSide(color: AppColors.black, width: 1.2),
-          padding: const EdgeInsets.symmetric(vertical: 18),
-          shape: const StadiumBorder(),
-          textStyle: AppTypography.label(size: 13, tracking: 1.5),
-        ),
-      );
-    }
-    return Stack(
-      alignment: Alignment.topRight,
-      children: [
-        ClipRRect(
-          borderRadius: BorderRadius.circular(28),
-          child: Image.memory(image!.bytes, height: 160, width: double.infinity, fit: BoxFit.cover),
-        ),
-        IconButton.filled(
-          tooltip: 'Quitar imagen',
-          style: IconButton.styleFrom(backgroundColor: AppColors.black),
-          icon: const Icon(Icons.close_rounded, color: AppColors.white),
-          onPressed: onRemove,
-        ),
-      ],
-    );
-  }
-}
-
-/// Una fila de programación: título, dos opciones (p. ej. "Ahora" / "Programar")
-/// y, si se eligió la segunda, la fecha elegida con su botón para cambiarla.
-class _ScheduleRow extends StatelessWidget {
-  final String title;
-  final String offLabel;
-  final String onLabel;
-  final bool isOn;
-  final String? value;
-  final ValueChanged<bool> onToggle;
-  final VoidCallback onPick;
-
-  const _ScheduleRow({
-    required this.title,
-    required this.offLabel,
-    required this.onLabel,
-    required this.isOn,
-    required this.value,
-    required this.onToggle,
-    required this.onPick,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(title.toUpperCase(), style: AppTypography.label(size: 12, tracking: 3)),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            AdminFilterPill(label: offLabel, selected: !isOn, onTap: () => onToggle(false)),
-            const SizedBox(width: 8),
-            AdminFilterPill(
-              label: onLabel,
-              icon: Icons.event_rounded,
-              selected: isOn,
-              onTap: () {
-                onToggle(true);
-                onPick();
-              },
-            ),
-            if (isOn && value != null) ...[
-              const SizedBox(width: 12),
-              Flexible(
-                child: GestureDetector(
-                  onTap: onPick,
-                  child: Text(
-                    value!,
-                    overflow: TextOverflow.ellipsis,
-                    style: AppTypography.body(size: 15, weight: FontWeight.w500),
-                  ),
-                ),
-              ),
-            ],
-          ],
-        ),
-      ],
-    );
-  }
-}

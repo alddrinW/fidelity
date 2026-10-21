@@ -17,6 +17,7 @@ Map<String, dynamic> card({
   String? reward = 'Café gratis',
   List<Map<String, dynamic>> rewards = const [],
   int pendingScans = 0,
+  String? logo,
 }) =>
     {
       'id': 'c-$name',
@@ -28,10 +29,14 @@ Map<String, dynamic> card({
         'name': name,
         'points_required': required,
         'reward_description': reward,
-        'logo_url': null,
+        'logo_url': logo,
         'business_categories': {'name': 'Cafeterías'},
       },
     };
+
+/// Un PNG de 1x1 en data URI: sirve para comprobar que el logo se pinta.
+const tinyLogo =
+    'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==';
 
 void main() {
   setUpAll(() {
@@ -182,6 +187,24 @@ void main() {
 
       expect(stamps('on'), findsNothing);
       expect(find.byType(ProgressBar), findsWidgets);
+    });
+
+    testWidgets('el nodo muestra el logo completo y sin anillo de avance', (tester) async {
+      await open(tester, [card(name: 'Café Aurora', logo: tinyLogo)]);
+
+      final node = find.byType(MissionNode);
+
+      // El logo entra entero: no se recorta.
+      final image = tester.widget<Image>(
+        find.descendant(of: node, matching: find.byType(Image)),
+      );
+      expect(image.fit, BoxFit.contain);
+
+      // Y ya no hay anillo de progreso alrededor.
+      expect(
+        find.descendant(of: node, matching: find.byType(CustomPaint)),
+        findsNothing,
+      );
     });
 
     testWidgets('tocar un nodo abre su tarjeta', (tester) async {

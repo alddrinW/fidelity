@@ -7,7 +7,9 @@ enum CampaignType {
   event('event', 'Evento', 'Avisa de una novedad a tus clientes', Icons.celebration_outlined),
   giftCard('gift_card', 'Tarjeta de regalo', 'Un descuento o mini premio para reclamar',
       Icons.card_giftcard_rounded),
-  route('route', 'Ruta', 'Pasaporte: visitar varios locales y juntar sellos', Icons.route_rounded);
+  route('route', 'Ruta', 'Pasaporte: visitar varios locales y juntar sellos', Icons.route_rounded),
+  scanChallenge('scan_challenge', 'Reto de escaneos',
+      'El cliente gana un premio al hacer varios escaneos', Icons.qr_code_scanner_rounded);
 
   final String apiValue;
   final String label;
@@ -59,6 +61,37 @@ enum CampaignBenefit {
   }
 }
 
+/// A quién le llega una gift card: a todos los clientes o solo a los elegidos.
+enum CampaignAudience {
+  all('all', 'Todos mis clientes'),
+  selected('selected', 'Clientes elegidos');
+
+  final String apiValue;
+  final String label;
+
+  const CampaignAudience(this.apiValue, this.label);
+
+  static CampaignAudience parse(Object? value) =>
+      value == 'selected' ? selected : all;
+}
+
+/// Cliente de un negocio (para elegir a quién le llega una gift card).
+class CampaignCustomer {
+  final String id;
+  final String? fullName;
+  final String email;
+
+  const CampaignCustomer({required this.id, required this.email, this.fullName});
+
+  String get displayName => (fullName?.trim().isNotEmpty ?? false) ? fullName!.trim() : email;
+
+  factory CampaignCustomer.fromJson(Map<String, dynamic> json) => CampaignCustomer(
+        id: json['id'].toString(),
+        fullName: json['fullName']?.toString(),
+        email: json['email']?.toString() ?? '',
+      );
+}
+
 /// Negocio participante de una campaña.
 class CampaignBusinessRef {
   final String id;
@@ -102,7 +135,7 @@ class CampaignClaim {
       id: json['id'].toString(),
       code: json['code']?.toString() ?? '',
       isRedeemed: json['status'] == 'redeemed',
-      isRoutePrize: json['source'] == 'route_complete',
+      isRoutePrize: json['source'] == 'route_complete' || json['source'] == 'challenge_complete',
       createdAt: DateTime.tryParse('${json['createdAt'] ?? ''}')?.toLocal(),
       redeemedAt: DateTime.tryParse('${json['redeemedAt'] ?? ''}')?.toLocal(),
       campaign: campaign is Map ? Campaign.fromJson(Map<String, dynamic>.from(campaign)) : null,
@@ -115,7 +148,15 @@ class CampaignStats {
   final int redeemed;
   final int participants;
 
-  const CampaignStats({this.claims = 0, this.redeemed = 0, this.participants = 0});
+  /// Clientes elegidos (gift cards con audiencia elegida).
+  final int recipients;
+
+  const CampaignStats({
+    this.claims = 0,
+    this.redeemed = 0,
+    this.participants = 0,
+    this.recipients = 0,
+  });
 }
 
 class Campaign {
@@ -128,6 +169,13 @@ class Campaign {
   final int? benefitValue;
   final String? benefitLabel;
   final int? requiredStamps;
+
+  /// Reto de escaneos: cuántos escaneos debe hacer el cliente.
+  final int? requiredScans;
+
+  /// Reto de escaneos: cuántos lleva el cliente (vista de cliente).
+  final int scanProgress;
+  final CampaignAudience audience;
   final DateTime? startsAt;
   final DateTime? endsAt;
   final CampaignPhase phase;
@@ -155,6 +203,9 @@ class Campaign {
     this.benefitValue,
     this.benefitLabel,
     this.requiredStamps,
+    this.requiredScans,
+    this.scanProgress = 0,
+    this.audience = CampaignAudience.all,
     this.startsAt,
     this.endsAt,
     this.claim,
@@ -165,6 +216,9 @@ class Campaign {
 
   /// Sellos necesarios para completar la ruta.
   int get stampsNeeded => requiredStamps ?? businesses.length;
+
+  /// Escaneos necesarios para completar el reto.
+  int get scansNeeded => requiredScans ?? 0;
 
   bool get isActive => phase == CampaignPhase.active;
 
@@ -183,6 +237,9 @@ class Campaign {
       benefitValue: (json['benefitValue'] as num?)?.toInt(),
       benefitLabel: json['benefitLabel']?.toString(),
       requiredStamps: (json['requiredStamps'] as num?)?.toInt(),
+      requiredScans: (json['requiredScans'] as num?)?.toInt(),
+      scanProgress: (json['scanProgress'] as num?)?.toInt() ?? 0,
+      audience: CampaignAudience.parse(json['audience']),
       startsAt: DateTime.tryParse('${json['startsAt'] ?? ''}')?.toLocal(),
       endsAt: DateTime.tryParse('${json['endsAt'] ?? ''}')?.toLocal(),
       phase: CampaignPhase.parse(json['phase']),
@@ -198,6 +255,7 @@ class Campaign {
               claims: number(stats, 'claims'),
               redeemed: number(stats, 'redeemed'),
               participants: number(stats, 'participants'),
+              recipients: number(stats, 'recipients'),
             )
           : null,
     );
@@ -227,7 +285,7 @@ class IssuedClaim {
   factory IssuedClaim.fromJson(Map<String, dynamic> json) => IssuedClaim(
         code: json['code']?.toString() ?? '',
         isRedeemed: json['status'] == 'redeemed',
-        isRoutePrize: json['source'] == 'route_complete',
+        isRoutePrize: json['source'] == 'route_complete' || json['source'] == 'challenge_complete',
         userName: json['userName']?.toString(),
         userEmail: json['userEmail']?.toString(),
         createdAt: DateTime.tryParse('${json['createdAt'] ?? ''}')?.toLocal(),
@@ -258,6 +316,10 @@ class RedeemResult {
 }
 
 final campaignsRepositoryProvider = Provider<CampaignsRepository>((ref) => CampaignsRepository());
+
+/// Normaliza el código de letras que escribe el local: sin espacios y en
+/// mayúsculas (el de la gift card siempre es `GFT-XXXXXX`).
+String normalizeGiftCode(String raw) => raw.trim().toUpperCase();
 
 /// Novedades del cliente: campañas vigentes de sus locales.
 final campaignFeedProvider = FutureProvider.autoDispose<List<Campaign>>(
@@ -310,6 +372,9 @@ class CampaignsRepository {
     int? benefitValue,
     String? benefitLabel,
     int? requiredStamps,
+    int? requiredScans,
+    CampaignAudience audience = CampaignAudience.all,
+    List<String> recipientIds = const [],
     DateTime? startsAt,
     DateTime? endsAt,
   }) async {
@@ -323,10 +388,51 @@ class CampaignsRepository {
       if (benefitValue != null) 'benefitValue': benefitValue,
       if (benefitLabel != null && benefitLabel.trim().isNotEmpty) 'benefitLabel': benefitLabel.trim(),
       if (requiredStamps != null) 'requiredStamps': requiredStamps,
+      if (requiredScans != null) 'requiredScans': requiredScans,
+      if (type == CampaignType.giftCard) 'audience': audience.apiValue,
+      if (type == CampaignType.giftCard && audience == CampaignAudience.selected)
+        'recipientIds': recipientIds,
       if (startsAt != null) 'startsAt': startsAt.toUtc().toIso8601String(),
       if (endsAt != null) 'endsAt': endsAt.toUtc().toIso8601String(),
     });
     return Campaign.fromJson(Map<String, dynamic>.from(response as Map));
+  }
+
+  /// Edita una campaña (en una gift card: título, descripción, beneficio, fin e
+  /// imagen de fondo).
+  ///
+  /// [imageDataUri] en `null` deja la imagen como está; una cadena vacía la
+  /// quita.
+  Future<Campaign> update(
+    String campaignId, {
+    String? title,
+    String? description,
+    int? benefitValue,
+    String? benefitLabel,
+    DateTime? endsAt,
+    String? imageDataUri,
+  }) async {
+    final response = await _api.patch('campaigns/$campaignId', body: {
+      if (title != null) 'title': title.trim(),
+      if (description != null) 'description': description.trim(),
+      if (benefitValue != null) 'benefitValue': benefitValue,
+      if (benefitLabel != null) 'benefitLabel': benefitLabel.trim(),
+      if (endsAt != null) 'endsAt': endsAt.toUtc().toIso8601String(),
+      if (imageDataUri != null) 'imageUrl': imageDataUri,
+    });
+    return Campaign.fromJson(Map<String, dynamic>.from(response as Map));
+  }
+
+  /// Clientes de los negocios indicados, para elegir a quién le llega una gift card.
+  Future<List<CampaignCustomer>> customers(List<String> businessIds, {String? query}) async {
+    final response = await _api.get('campaigns/customers', queryParams: {
+      'businessIds': businessIds.join(','),
+      if (query != null && query.trim().isNotEmpty) 'q': query.trim(),
+    });
+    if (response is! List) return [];
+    return response
+        .map((c) => CampaignCustomer.fromJson(Map<String, dynamic>.from(c as Map)))
+        .toList();
   }
 
   Future<void> cancel(String campaignId) async {

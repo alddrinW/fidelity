@@ -12,6 +12,7 @@ import '../../../../../core/widgets/app_empty_state.dart';
 import '../../../../../core/widgets/app_text_field.dart';
 import '../../../../../core/widgets/person_avatar.dart';
 import '../../providers/dashboard_provider.dart';
+import '../client_detail_screen.dart';
 import '../pending_reward_notice.dart';
 import '../../../../../core/l10n/tr_text.dart';
 
@@ -36,6 +37,19 @@ class _TabCustomersState extends ConsumerState<TabCustomers> {
     if (points != null) {
       ref.read(dashboardProvider.notifier).addManualPoints(card['user_id'], points);
     }
+  }
+
+  /// La ficha del cliente: sus puntos y sus premios.
+  void _openClient(
+    BuildContext context,
+    Map<String, dynamic> card,
+    Map<String, dynamic> business,
+  ) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ClientDetailScreen(card: card, business: business),
+      ),
+    );
   }
 
   @override
@@ -77,7 +91,8 @@ class _TabCustomersState extends ConsumerState<TabCustomers> {
                       : 'Prueba con otro nombre.',
                 )
               : ListView.separated(
-                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
+                  // Abajo hay espacio para el botón "+" de la esquina.
+                  padding: const EdgeInsets.fromLTRB(24, 0, 24, 110),
                   itemCount: filtered.length,
                   separatorBuilder: (_, __) => const SizedBox(height: 14),
                   itemBuilder: (context, index) {
@@ -93,6 +108,7 @@ class _TabCustomersState extends ConsumerState<TabCustomers> {
 
                     return AppCard(
                       padding: const EdgeInsets.all(16),
+                      onTap: () => _openClient(context, card, business),
                       child: Row(
                         children: [
                           PersonAvatar(

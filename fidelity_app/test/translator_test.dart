@@ -161,4 +161,12 @@ void main() {
       expect(find.textContaining('Language'), findsOneWidget);
     });
   });
+
+  group('idioma en el servidor', () {
+    test('sin sesión iniciada no hace nada y no falla', () async {
+      // Sin token no se llama al servidor: el aviso se manda al iniciar sesión.
+      await syncLanguageToServer(AppLanguage.en);
+      await syncLanguageToServer(AppLanguage.es);
+    });
+  });
 }

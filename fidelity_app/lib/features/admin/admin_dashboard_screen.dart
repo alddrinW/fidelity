@@ -15,6 +15,8 @@ import '../business/dashboard/widgets/dashboard_stat_card.dart';
 import 'admin_activity_screen.dart';
 import 'admin_businesses_screen.dart';
 import 'admin_payments_screen.dart';
+import 'admin_games_screen.dart';
+import '../notifications/widgets/notification_bell.dart';
 import '../feedback/data/feedback_repository.dart';
 import '../feedback/feedback_inbox_screen.dart';
 import 'admin_categories_screen.dart';
@@ -133,6 +135,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
     final modules = <(IconData, String, Widget)>[
       (Icons.payments_rounded, 'Pagos de registro', const AdminPaymentsScreen()),
+      (Icons.sports_esports_rounded, 'Minijuegos', const AdminGamesScreen()),
       (Icons.storefront_rounded, 'Gestión de negocios', const AdminBusinessesScreen()),
       (Icons.category_rounded, 'Gestión de categorías', const AdminCategoriesScreen()),
       (Icons.people_alt_rounded, 'Gestión de usuarios', const AdminUsersScreen()),
@@ -144,10 +147,18 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
 
     return AdminPageFrame(
       title: 'Administración',
-      headerTrailing: IconButton(
-        tooltip: 'Cerrar sesión',
-        icon: const Icon(Icons.logout_rounded, color: AppColors.black),
-        onPressed: _logout,
+      // La campana y "cerrar sesión": dos botones, no caben en el hueco de uno.
+      headerTrailingWidth: 96,
+      headerTrailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const NotificationBell(),
+          IconButton(
+            tooltip: 'Cerrar sesión',
+            icon: const Icon(Icons.logout_rounded, color: AppColors.black),
+            onPressed: _logout,
+          ),
+        ],
       ),
       body: _isLoading
           ? const AdminLoading()

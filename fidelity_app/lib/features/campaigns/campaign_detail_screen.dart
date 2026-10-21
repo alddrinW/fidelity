@@ -2,7 +2,6 @@ import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
@@ -13,8 +12,10 @@ import '../../core/widgets/app_chip.dart';
 import '../../core/widgets/app_page_header.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../business/dashboard/widgets/dashboard_animated_toast.dart';
+import '../cards/widgets/missions_route.dart' show ProgressBar;
 import 'data/campaigns_repository.dart';
 import 'widgets/campaign_visuals.dart';
+import 'widgets/gift_card_voucher.dart';
 import '../../core/l10n/tr_text.dart';
 
 /// Detalle de una campaña para el cliente: el evento, la tarjeta de regalo (que
@@ -54,6 +55,47 @@ class _CampaignDetailScreenState extends ConsumerState<CampaignDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final image = imageProviderFromUrl(_campaign.imageUrl);
+    final business = _campaign.businesses.firstOrNull;
+
+    // La gift card se muestra solo como cheque: el diseño ya lleva el local,
+    // el nombre, el beneficio y la vigencia.
+    final content = _campaign.type == CampaignType.giftCard
+        ? _giftCardContent(business)
+        : [
+            if (image != null)
+              ClipRRect(
+                borderRadius: BorderRadius.circular(32),
+                child: Image(image: image, height: 180, fit: BoxFit.cover),
+              ),
+            if (image != null) const SizedBox(height: 16),
+            Text(
+              _campaign.title.toUpperCase(),
+              style: AppTypography.display(size: 36),
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                AppChip(
+                  label: campaignValidity(_campaign),
+                  style: AppChipStyle.outline,
+                  icon: Icons.schedule_rounded,
+                ),
+                for (final b in _campaign.businesses)
+                  AppChip(label: b.name, icon: Icons.storefront_outlined),
+              ],
+            ),
+            if (_campaign.description?.isNotEmpty == true) ...[
+              const SizedBox(height: 16),
+              Text(
+                _campaign.description!,
+                style: AppTypography.body(size: 16, weight: FontWeight.w300),
+              ),
+            ],
+            const SizedBox(height: 24),
+            ..._typeSection(),
+          ];
 
     return Scaffold(
       body: SafeArea(
@@ -65,41 +107,7 @@ class _CampaignDetailScreenState extends ConsumerState<CampaignDetailScreen> {
               Expanded(
                 child: ListView(
                   padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
-                  children: [
-                    if (image != null)
-                      ClipRRect(
-                        borderRadius: BorderRadius.circular(32),
-                        child: Image(image: image, height: 180, fit: BoxFit.cover),
-                      ),
-                    if (image != null) const SizedBox(height: 16),
-                    Text(
-                      _campaign.title.toUpperCase(),
-                      style: AppTypography.display(size: 36),
-                    ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        AppChip(
-                          label: campaignValidity(_campaign),
-                          style: AppChipStyle.outline,
-                          icon: Icons.schedule_rounded,
-                        ),
-                        for (final b in _campaign.businesses)
-                          AppChip(label: b.name, icon: Icons.storefront_outlined),
-                      ],
-                    ),
-                    if (_campaign.description?.isNotEmpty == true) ...[
-                      const SizedBox(height: 16),
-                      Text(
-                        _campaign.description!,
-                        style: AppTypography.body(size: 16, weight: FontWeight.w300),
-                      ),
-                    ],
-                    const SizedBox(height: 24),
-                    ..._typeSection(),
-                  ].animate(interval: 50.ms).fadeIn().slideY(begin: 0.05),
+                  children: content.animate(interval: 50.ms).fadeIn().slideY(begin: 0.05),
                 ),
               ),
             ],
@@ -109,14 +117,54 @@ class _CampaignDetailScreenState extends ConsumerState<CampaignDetailScreen> {
     );
   }
 
+  /// El cheque de la gift card y lo que falta: pedirla o mostrar el código.
+  List<Widget> _giftCardContent(CampaignBusinessRef? business) {
+    return [
+      GiftCardVoucher(
+        campaign: _campaign,
+        code: _claim?.code,
+        redeemed: _claim?.isRedeemed ?? false,
+        logoUrl: business?.logoUrl,
+        businessName: business?.name,
+      ),
+      const SizedBox(height: 16),
+      if (_claim == null)
+        AppPrimaryButton(
+          label: 'Obtener tarjeta',
+          isLoading: _isClaiming,
+          onPressed: _campaign.isActive ? _claimGift : null,
+        )
+      else ...[
+        Text(
+          _claim!.isRedeemed
+              ? 'Ya usaste esta tarjeta.'
+              : 'Muestra este código${business == null ? '' : ' en ${business.name}'} para canjearlo.',
+          textAlign: TextAlign.center,
+          style: AppTypography.body(size: 14, weight: FontWeight.w300),
+        ),
+        if (!_claim!.isRedeemed) ...[
+          const SizedBox(height: 4),
+          AppTextAction(
+            label: 'Copiar código',
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: _claim!.code));
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Código copiado')),
+              );
+            },
+          ),
+        ],
+      ],
+    ];
+  }
+
   List<Widget> _typeSection() {
     switch (_campaign.type) {
       case CampaignType.event:
         return const [];
       case CampaignType.giftCard:
         return [
-          _BenefitCard(label: _campaign.benefitLabel ?? 'Tarjeta de regalo'),
-          const SizedBox(height: 16),
           if (_claim == null)
             AppPrimaryButton(
               label: 'Obtener tarjeta',
@@ -124,7 +172,34 @@ class _CampaignDetailScreenState extends ConsumerState<CampaignDetailScreen> {
               onPressed: _campaign.isActive ? _claimGift : null,
             )
           else
+            _ClaimCodeCard(
+              claim: _claim!,
+              placeName: _campaign.businesses.firstOrNull?.name,
+            ),
+        ];
+      case CampaignType.scanChallenge:
+        final needed = _campaign.scansNeeded;
+        final done = _claim != null ? needed : _campaign.scanProgress.clamp(0, needed);
+        final places = _campaign.businesses.map((b) => b.name).join(', ');
+        return [
+          Text(
+            'TU AVANCE · $done DE $needed ESCANEOS',
+            style: AppTypography.label(size: 13, tracking: 4),
+          ),
+          const SizedBox(height: 12),
+          ProgressBar(value: needed == 0 ? 0 : done / needed, height: 14),
+          const SizedBox(height: 16),
+          Text(
+            _claim != null
+                ? '¡Lo lograste! Tu premio: ${_campaign.benefitLabel ?? 'un premio'}.'
+                : 'Haz $needed escaneos en $places mientras dure el reto y ganas: '
+                    '${_campaign.benefitLabel ?? 'un premio'}.',
+            style: AppTypography.body(size: 15, weight: FontWeight.w300),
+          ),
+          if (_claim != null) ...[
+            const SizedBox(height: 16),
             _ClaimCodeCard(claim: _claim!, placeName: _campaign.businesses.firstOrNull?.name),
+          ],
         ];
       case CampaignType.route:
         final stamped = _campaign.stampedBusinessIds.toSet();
@@ -155,38 +230,6 @@ class _CampaignDetailScreenState extends ConsumerState<CampaignDetailScreen> {
           ],
         ];
     }
-  }
-}
-
-class _BenefitCard extends StatelessWidget {
-  final String label;
-
-  const _BenefitCard({required this.label});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(color: AppColors.black, borderRadius: BorderRadius.circular(32)),
-      child: Row(
-        children: [
-          Container(
-            width: 56,
-            height: 56,
-            decoration: const BoxDecoration(color: AppColors.pink, shape: BoxShape.circle),
-            child: const Icon(Icons.card_giftcard_rounded, size: 28),
-          ),
-          const SizedBox(width: 16),
-          Expanded(
-            child: Text(
-              label.toUpperCase(),
-              style: AppTypography.display(size: 28, color: AppColors.white),
-            ),
-          ),
-        ],
-      ),
-    );
   }
 }
 
@@ -236,7 +279,7 @@ class _StampSpot extends StatelessWidget {
   }
 }
 
-/// Código de canje (con QR) que el cliente muestra en el local.
+/// El código de canje (de letras) que el cliente muestra en el local.
 class _ClaimCodeCard extends StatelessWidget {
   final CampaignClaim claim;
   final String? placeName;
@@ -254,16 +297,6 @@ class _ClaimCodeCard extends StatelessWidget {
             icon: claim.isRedeemed ? Icons.check_rounded : Icons.confirmation_number_outlined,
           ),
           const SizedBox(height: 16),
-          Opacity(
-            opacity: claim.isRedeemed ? 0.35 : 1,
-            child: QrImageView(
-              data: claim.code,
-              size: 168,
-              padding: EdgeInsets.zero,
-              backgroundColor: AppColors.white,
-            ),
-          ),
-          const SizedBox(height: 12),
           SelectableText(claim.code, style: AppTypography.display(size: 32)),
           const SizedBox(height: 4),
           Text(

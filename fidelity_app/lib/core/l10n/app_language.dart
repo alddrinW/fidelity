@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../services/api_client.dart';
+
 /// Idiomas de la aplicación. El español es el idioma base: el texto de la app
 /// está escrito en español y el inglés se traduce desde él (ver `Translator`).
 enum AppLanguage {
@@ -48,6 +50,19 @@ class LanguageStore {
   }
 }
 
+/// Le dice al servidor en qué idioma está la app, para que sus avisos (las
+/// notificaciones) salgan en ese idioma. Sin sesión no hace nada y un fallo
+/// nunca molesta al usuario: se vuelve a enviar al iniciar sesión.
+Future<void> syncLanguageToServer(AppLanguage language) async {
+  final api = ApiClient();
+  if (!api.isAuthenticated) return;
+  try {
+    await api.patch('users/language', body: {'language': language.code});
+  } catch (_) {
+    // Se reintenta en el próximo inicio de sesión o cambio de idioma.
+  }
+}
+
 /// Idioma con el que arranca la app (`main` lo lee antes de mostrar nada).
 final initialLanguageProvider = Provider<AppLanguage>((ref) => AppLanguage.es);
 
@@ -60,6 +75,7 @@ class LanguageNotifier extends Notifier<AppLanguage> {
     if (language == state) return;
     state = language;
     await LanguageStore.save(language);
+    await syncLanguageToServer(language);
   }
 }
 

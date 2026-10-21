@@ -259,7 +259,7 @@ class _TabStatisticsState extends ConsumerState<TabStatistics> {
                 style: AppTypography.label(size: 13, tracking: 3, color: AppColors.white),
               ),
               const SizedBox(height: 18),
-              _CampaignRow(label: 'Inicio', value: formattedDate),
+              _CampaignRow(label: 'Desde', value: formattedDate),
               const SizedBox(height: 10),
               _CampaignRow(label: 'Tiempo activo', value: '$daysLive días'),
             ],

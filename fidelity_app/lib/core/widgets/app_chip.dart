@@ -50,9 +50,14 @@ class AppChip extends StatelessWidget {
             Icon(icon, size: 12, color: foreground),
             const SizedBox(width: 4),
           ],
-          Text(
-            label.toUpperCase(),
-            style: AppTypography.label(size: 10, tracking: 1.5, color: foreground),
+          // Flexible: si la etiqueta es larga, se acorta en vez de salirse.
+          Flexible(
+            child: Text(
+              label.toUpperCase(),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.label(size: 10, tracking: 1.5, color: foreground),
+            ),
           ),
         ],
       ),

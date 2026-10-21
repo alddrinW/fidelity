@@ -59,9 +59,7 @@ class MyPaymentsScreen extends ConsumerWidget {
                   loading: () => const Center(
                     child: CircularProgressIndicator(color: AppColors.black),
                   ),
-                  error: (e, _) => AppEmptyState(
-                    title: 'Algo salió mal',
-                    message: 'No pudimos cargar tus pagos. Desliza para reintentar.',
+                  error: (e, _) => AppEmptyState.error(message: 'No pudimos cargar tus pagos. Desliza para reintentar.',
                   ),
                   data: (list) => list.isEmpty
                       ? const AppEmptyState(

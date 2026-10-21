@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 
+import '../profile/widgets/account_actions.dart';
 import 'faq_list_screen.dart';
 
 /// Preguntas frecuentes para negocios.
 class BusinessFaqsScreen extends StatelessWidget {
   const BusinessFaqsScreen({super.key});
 
-  static const List<FaqItem> _faqs = [
+  static final List<FaqItem> _faqs = [
     FaqItem(
       icon: Icons.storefront_outlined,
       question: '¿Cómo activo mi negocio?',
@@ -74,16 +75,24 @@ class BusinessFaqsScreen extends StatelessWidget {
           'Sí. Toca el logo de tu negocio, entra a "Ajustar mi campaña" y cambia los puntos, el premio y su descripción. También puedes tocar REQUISITO en MÉTRICAS. Los cambios aplican desde el próximo escaneo de tus clientes.',
     ),
     FaqItem(
+      icon: Icons.logout_rounded,
+      question: '¿Cómo cierro mi sesión?',
+      answer:
+          'Si quieres salir de tu cuenta en este dispositivo, ciérrala aquí. Tu negocio, tus clientes y tus premios se quedan guardados: la próxima vez entras con tu correo y tu contraseña.',
+      action: (context) => const AccountLogoutAction(),
+    ),
+    FaqItem(
       icon: Icons.delete_outline_rounded,
       question: '¿Cómo elimino mi cuenta de negocio?',
       answer:
-          'Toca el logo de tu negocio, entra a "Ajustar mis datos" y al final elige "Eliminar mi cuenta". Deberás escribir ELIMINAR para confirmar. La acción es irreversible y borra los datos de tu negocio.',
+          'Si ya no quieres usar Fidelity, toca el botón de abajo. La acción es irreversible y borra los datos de tu negocio, tus clientes, los premios y los puntos. Para salir sin borrar nada, mejor cierra sesión.',
+      action: (context) => const AccountDeleteAction(),
     ),
   ];
 
   @override
   Widget build(BuildContext context) {
-    return const FaqListScreen(
+    return FaqListScreen(
       bannerTitle: 'Guía para negocios',
       bannerSubtitle: 'Todo para gestionar tus clientes, escaneos y premios.',
       supportMessage: 'Hola, tengo una pregunta sobre mi negocio en Fidelity.',

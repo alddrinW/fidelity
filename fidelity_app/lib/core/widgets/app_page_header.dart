@@ -15,11 +15,16 @@ class AppPageHeader extends StatelessWidget {
   /// espacio que la flecha para que el título quede centrado.
   final Widget? trailing;
 
+  /// Ancho de la acción de la derecha (y del hueco de la flecha, para que el
+  /// título siga centrado). Se amplía cuando hay más de un botón.
+  final double trailingWidth;
+
   const AppPageHeader({
     super.key,
     required this.title,
     this.onBack,
     this.trailing,
+    this.trailingWidth = _slot,
   });
 
   static const double _slot = 56;
@@ -32,7 +37,7 @@ class AppPageHeader extends StatelessWidget {
       child: Row(
         children: [
           SizedBox(
-            width: _slot,
+            width: trailingWidth,
             child: canPop
                 ? IconButton(
                     tooltip: context.tr('Volver'),
@@ -58,7 +63,7 @@ class AppPageHeader extends StatelessWidget {
               ),
             ),
           ),
-          SizedBox(width: _slot, child: trailing),
+          SizedBox(width: trailingWidth, child: trailing),
         ],
       ),
     );

@@ -10,12 +10,24 @@ class AppEmptyState extends StatelessWidget {
   final String message;
   final double imageHeight;
 
+  /// Cómo se ve Fido (tranquilo por defecto; triste en los errores).
+  final FidoMood mood;
+
   const AppEmptyState({
     super.key,
     required this.title,
     required this.message,
     this.imageHeight = 170,
+    this.mood = FidoMood.calm,
   });
+
+  /// Cuando algo no se pudo cargar: Fido triste y el título de siempre.
+  const AppEmptyState.error({
+    super.key,
+    required this.message,
+    this.imageHeight = 170,
+  })  : title = 'Algo salió mal',
+        mood = FidoMood.sad;
 
   @override
   Widget build(BuildContext context) {
@@ -25,7 +37,7 @@ class AppEmptyState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            FidoMascot(mood: FidoMood.calm, height: imageHeight),
+            FidoMascot(mood: mood, height: imageHeight),
             const SizedBox(height: 8),
             Text(
               title.toUpperCase(),

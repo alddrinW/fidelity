@@ -24,6 +24,8 @@ import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_message_dialog.dart';
+import '../../../core/widgets/app_page_header.dart';
+import '../../../core/widgets/app_responsive_body.dart';
 import '../dashboard/widgets/dashboard_animated_toast.dart';
 import '../../../core/l10n/tr_text.dart';
 
@@ -402,6 +404,24 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
 
   @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      body: SafeArea(
+        child: AppResponsiveBody(
+          maxWidth: 640,
+          adaptive: true,
+          child: Column(
+            children: [
+              const AppPageHeader(title: 'Mi código QR'),
+              Expanded(child: _content()),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Los códigos QR del local.
+  Widget _content() {
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
     }

@@ -1,4 +1,3 @@
-// lib/features/business/rewards/rewards_management_screen.dart
 import 'dart:async';
 
 import 'package:flutter/material.dart' hide Text;
@@ -29,6 +28,39 @@ class RewardsManagementScreen extends ConsumerStatefulWidget {
 }
 
 class _RewardsManagementScreenState extends ConsumerState<RewardsManagementScreen> {
+  @override
+  Widget build(BuildContext context) {
+    return RewardsList(businessId: widget.businessId);
+  }
+}
+
+/// La lista de premios del negocio, o solo los de un cliente.
+///
+/// Sin [userId] salen todos los premios del local; con [userId], únicamente
+/// los de ese cliente (es lo que ve el dueño al abrir a un cliente).
+class RewardsList extends ConsumerStatefulWidget {
+  final String businessId;
+
+  /// Si es `null`, se muestran todos los premios del negocio.
+  final String? userId;
+
+  /// Texto cuando no hay premios.
+  final String emptyTitle;
+  final String emptyMessage;
+
+  const RewardsList({
+    super.key,
+    required this.businessId,
+    this.userId,
+    this.emptyTitle = 'Sin premios aún',
+    this.emptyMessage = 'Aquí verás los premios por entregar y los ya entregados.',
+  });
+
+  @override
+  ConsumerState<RewardsList> createState() => _RewardsListState();
+}
+
+class _RewardsListState extends ConsumerState<RewardsList> {
   StreamSubscription<void>? _rewardsSub;
 
   @override
@@ -58,7 +90,9 @@ class _RewardsManagementScreenState extends ConsumerState<RewardsManagementScree
       DashboardAnimatedToast.show(context, 'Premio marcado como entregado');
     } else {
       final error = ref.read(rewardsManagementProvider).error;
-      DashboardAnimatedToast.show(context, 'Error: $error', isError: true);
+      if (mounted) {
+        DashboardAnimatedToast.show(context, 'Error: $error', isError: true);
+      }
     }
   }
 
@@ -69,7 +103,9 @@ class _RewardsManagementScreenState extends ConsumerState<RewardsManagementScree
       DashboardAnimatedToast.show(context, 'Premio rechazado');
     } else {
       final error = ref.read(rewardsManagementProvider).error;
-      DashboardAnimatedToast.show(context, 'Error: $error', isError: true);
+      if (mounted) {
+        DashboardAnimatedToast.show(context, 'Error: $error', isError: true);
+      }
     }
   }
 
@@ -91,25 +127,27 @@ class _RewardsManagementScreenState extends ConsumerState<RewardsManagementScree
   Widget build(BuildContext context) {
     final state = ref.watch(rewardsManagementProvider);
 
+    // Solo los premios del cliente (si estamos en su ficha).
+    final rewards = widget.userId == null
+        ? state.rewards
+        : state.rewards.where((r) => r['user_id'] == widget.userId).toList();
+
     if (state.isLoading && state.rewards.isEmpty) {
       return const Center(child: CircularProgressIndicator());
     }
     if (state.error != null && state.rewards.isEmpty) {
-      return AppEmptyState(title: 'Algo salió mal', message: state.error!);
+      return AppEmptyState.error(message: state.error!);
     }
-    if (state.rewards.isEmpty) {
-      return const AppEmptyState(
-        title: 'Sin premios aún',
-        message: 'Aquí verás los premios por entregar y los ya entregados.',
-      );
+    if (rewards.isEmpty) {
+      return AppEmptyState(title: widget.emptyTitle, message: widget.emptyMessage);
     }
 
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
-      itemCount: state.rewards.length,
+      itemCount: rewards.length,
       separatorBuilder: (_, __) => const SizedBox(height: 14),
       itemBuilder: (context, index) {
-        final reward = state.rewards[index];
+        final reward = rewards[index];
         final name = (reward['display_name'] ?? 'Usuario').toString();
         final status = (reward['status'] ?? 'pending').toString();
         final date = EcuadorDateUtils.formatEcuadorTime(reward['earned_at']).toUpperCase();

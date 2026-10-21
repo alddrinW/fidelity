@@ -6,15 +6,29 @@ final cardHistoryRepositoryProvider = Provider<CardHistoryRepository>((ref) {
   return CardHistoryRepository();
 });
 
+/// Lo que trae el historial de una tarjeta: sus escaneos, sus premios y la
+/// ficha de la tarjeta.
+class CardHistoryData {
+  final List<Map<String, dynamic>> scans;
+  final List<Map<String, dynamic>> rewards;
+  final Map<String, dynamic> card;
+
+  const CardHistoryData({
+    this.scans = const [],
+    this.rewards = const [],
+    this.card = const {},
+  });
+}
+
 class CardHistoryRepository {
   final ApiClient _api = ApiClient();
 
   CardHistoryRepository();
 
-  Future<List<List<Map<String, dynamic>>>> fetchHistory(String cardId, String businessId, DateTimeRange? range) async {
+  Future<CardHistoryData> fetchHistory(String cardId, String businessId, DateTimeRange? range) async {
     final response = await _api.get('loyalty-cards/$cardId/history');
     if (response is! Map<String, dynamic>) {
-      return [[], []];
+      return const CardHistoryData();
     }
 
     final card = response['card'] as Map<String, dynamic>? ?? {};
@@ -64,9 +78,29 @@ class CardHistoryRepository {
       return dt.isAfter(range.start.toUtc()) && dt.isBefore(range.end.add(const Duration(days: 1)).toUtc());
     }).toList();
 
-    return [
-      scans,
-      rewards,
-    ];
+    return CardHistoryData(
+      scans: scans,
+      rewards: rewards,
+      card: _cardInfo(card),
+    );
+  }
+
+  /// La ficha de la tarjeta: con qué local es, su premio y cuánto lleva.
+  Map<String, dynamic> _cardInfo(Map<String, dynamic> card) {
+    final business = card['business'] as Map<String, dynamic>? ?? {};
+    return {
+      'name': business['name'] ?? '',
+      'logo_url': business['logoUrl'] ?? business['logo_url'],
+      'category': business['category'],
+      'address': business['address'],
+      'reward_description':
+          business['rewardDescription'] ?? business['reward_description'] ?? '',
+      'current_points': card['currentPoints'] ?? card['current_points'] ?? 0,
+      'total_points': card['totalPointsLifetime'] ?? card['total_points_lifetime'] ?? 0,
+      'rewards_claimed': card['rewardsClaimed'] ?? card['rewards_claimed'] ?? 0,
+      'points_required': business['pointsRequired'] ?? business['points_required'] ?? 10,
+      'last_scan_at': card['lastScanAt'] ?? card['last_scan_at'],
+      'created_at': card['createdAt'] ?? card['created_at'],
+    };
   }
 }

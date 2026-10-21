@@ -13,6 +13,10 @@ import '../../features/admin/admin_businesses_screen.dart';
 import '../../features/admin/admin_activity_screen.dart';
 import '../../features/admin/admin_rewards_screen.dart';
 import '../widgets/global_celebration_dialog.dart';
+import '../../features/campaigns/my_gifts_screen.dart';
+import 'inbox_events.dart';
+import '../../features/games/game_invite_screen.dart';
+import '../../features/admin/admin_games_screen.dart';
 
 class PushNotificationService {
   static final _localNotifications = FlutterLocalNotificationsPlugin();
@@ -76,6 +80,8 @@ class PushNotificationService {
         );
 
         FirebaseMessaging.onMessage.listen((RemoteMessage message) {
+          // Con la app abierta, la campana de la bandeja se actualiza al instante.
+          notifyInboxChanged();
           RemoteNotification? notification = message.notification;
           AndroidNotification? android = message.notification?.android;
 
@@ -126,6 +132,10 @@ class PushNotificationService {
     }
   }
 
+  /// Abre lo que corresponde a los datos de una notificación (los mismos que
+  /// trae el push). Lo usa también la bandeja de notificaciones.
+  static void openFromData(Map<String, dynamic> data) => _handleRoutingData(data);
+
   static void _handleRoutingData(Map<String, dynamic> data) {
     _localNotifications.cancelAll();
 
@@ -145,6 +155,19 @@ class PushNotificationService {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminActivityScreen()));
     } else if (route == '/admin_rewards') {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminRewardsScreen()));
+    } else if (route == '/play_game') {
+      final inviteId = data['invite_id'] as String?;
+      if (inviteId != null && inviteId.isNotEmpty) {
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => GameInviteScreen(inviteId: inviteId)),
+        );
+      }
+    } else if (route == '/admin_games') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminGamesScreen()));
+    } else if (route == '/business_dashboard/games') {
+      // Los juegos del dueño viven en "Crear y gestionar": se vuelve al panel.
+    } else if (route == '/my_gifts') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyGiftsScreen()));
     } else if (route == '/business_dashboard/pending') {
       BusinessDashboardScreen.goToTab(1);
     } else if (route == '/business_dashboard/rewards') {
@@ -162,7 +185,7 @@ class PushNotificationService {
               loyaltyCardId: loyaltyCardId,
               businessId: businessId,
               businessName: businessName,
-              initialTabIndex: 0,
+              initialTabIndex: CardHistoryScreen.rewardsTab,
             ),
           ),
         );
@@ -191,7 +214,7 @@ class PushNotificationService {
               loyaltyCardId: loyaltyCardId,
               businessId: businessId,
               businessName: businessName,
-              initialTabIndex: 1,
+              initialTabIndex: CardHistoryScreen.rewardsTab,
             ),
           ),
         );
@@ -209,7 +232,7 @@ class PushNotificationService {
               loyaltyCardId: loyaltyCardId,
               businessId: businessId,
               businessName: businessName,
-              initialTabIndex: 1,
+              initialTabIndex: CardHistoryScreen.rewardsTab,
             ),
           ),
         );

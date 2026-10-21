@@ -4,8 +4,10 @@ import 'login_screen.dart';
 import '../business/dashboard/business_dashboard_screen.dart';
 import '../business/create_business_screen.dart';
 import '../payments/account_activation_screen.dart';
-import '../cards/my_cards_screen.dart';
+import '../cards/customer_home_view.dart';
+import '../cards/customer_shell_screen.dart';
 import '../admin/admin_dashboard_screen.dart';
+import '../../core/l10n/app_language.dart';
 import '../../core/services/push_notification_service.dart';
 import '../../core/services/realtime_sync_service.dart';
 import '../../core/widgets/global_celebration_dialog.dart';
@@ -63,6 +65,8 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
           next is AuthApprover ||
           next is AuthClient) {
         PushNotificationService.initialize();
+        // El servidor manda sus avisos en el idioma de la app.
+        syncLanguageToServer(ref.read(languageProvider));
         // Recién acá (ya autenticado) suscribimos el realtime, para que el canal
         // lleve el JWT del usuario y RLS le entregue sus cambios en vivo.
         RealtimeSyncService().initialize();
@@ -71,7 +75,7 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
         // y reseteamos los flags de sesión (bienvenida / recordatorio de premio) para
         // que el próximo usuario los vea correctamente.
         RealtimeSyncService().reset();
-        MyCardsScreen.resetSessionFlags();
+        CustomerHomeView.resetSessionFlags();
       }
     });
 
@@ -106,7 +110,7 @@ class _AuthWrapperState extends ConsumerState<AuthWrapper> {
     }
 
     if (authState is AuthClient) {
-      return const MyCardsScreen();
+      return const CustomerShellScreen();
     }
 
     return const Scaffold(body: Center(child: CircularProgressIndicator()));

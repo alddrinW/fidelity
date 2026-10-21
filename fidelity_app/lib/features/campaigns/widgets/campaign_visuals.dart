@@ -28,6 +28,8 @@ String campaignHeadline(Campaign campaign) {
       return campaign.benefitLabel ?? 'Tarjeta de regalo';
     case CampaignType.route:
       return 'Gana: ${campaign.benefitLabel ?? 'un premio'}';
+    case CampaignType.scanChallenge:
+      return '${campaign.scansNeeded} escaneos y ganas: ${campaign.benefitLabel ?? 'un premio'}';
     case CampaignType.event:
       final text = campaign.description?.trim() ?? '';
       return text.isEmpty ? 'Novedades de ${campaign.businesses.firstOrNull?.name ?? 'tu local'}' : text;
@@ -40,4 +42,5 @@ String campaignHeadline(Campaign campaign) {
       CampaignType.event => (background: AppColors.pink, foreground: AppColors.black),
       CampaignType.giftCard => (background: AppColors.black, foreground: AppColors.white),
       CampaignType.route => (background: AppColors.white, foreground: AppColors.black),
+      CampaignType.scanChallenge => (background: AppColors.white, foreground: AppColors.black),
     };

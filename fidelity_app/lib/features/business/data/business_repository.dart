@@ -7,6 +7,13 @@ final businessRepositoryProvider = Provider<BusinessRepository>((ref) {
   return BusinessRepository();
 });
 
+/// Negocios activos que puede visitar el cliente (datos públicos): los que
+/// aparecen en "Explorar" del panel de usuario.
+final businessesDirectoryProvider =
+    FutureProvider.autoDispose<List<Map<String, dynamic>>>((ref) {
+  return ref.watch(businessRepositoryProvider).getBusinesses();
+});
+
 /// Resultado de crear un negocio: su id y la orden de pago que se generó.
 class CreatedBusiness {
   final String id;
@@ -24,6 +31,16 @@ class BusinessRepository {
     final response = await _api.get('businesses/categories');
     if (response is! List) return [];
     return response.map((c) => BusinessCategory.fromJson(Map<String, dynamic>.from(c as Map))).toList();
+  }
+
+  /// Negocios activos con sus datos públicos. El cliente los usa para elegir
+  /// a dónde ir a escanear.
+  Future<List<Map<String, dynamic>>> getBusinesses() async {
+    final response = await _api.get('businesses');
+    if (response is! List) return [];
+    return response
+        .map((b) => Map<String, dynamic>.from(b as Map))
+        .toList();
   }
 
   /// Crea el negocio. [logoDataUri] es la imagen como data URI base64

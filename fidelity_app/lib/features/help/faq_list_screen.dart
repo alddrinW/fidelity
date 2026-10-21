@@ -13,7 +13,15 @@ class FaqItem {
   final String question;
   final String answer;
 
-  const FaqItem({required this.icon, required this.question, required this.answer});
+  /// Acción opcional debajo de la respuesta (p. ej. "Eliminar mi cuenta").
+  final Widget Function(BuildContext context)? action;
+
+  const FaqItem({
+    required this.icon,
+    required this.question,
+    required this.answer,
+    this.action,
+  });
 }
 
 /// Pantalla de preguntas frecuentes con el estilo de marca. La comparten la
@@ -125,6 +133,10 @@ class _FaqCard extends StatelessWidget {
                 style: AppTypography.body(size: 15, weight: FontWeight.w300),
               ),
             ),
+            if (item.action != null) ...[
+              const SizedBox(height: 16),
+              item.action!(context),
+            ],
           ],
         ),
       ),

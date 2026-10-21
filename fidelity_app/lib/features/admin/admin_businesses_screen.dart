@@ -395,7 +395,7 @@ class _BusinessCard extends StatelessWidget {
                 ),
                 _CampaignRow(label: 'Puntos', value: '${business['points_required'] ?? 0} pts'),
                 _CampaignRow(
-                  label: 'Inicio',
+                  label: 'Desde',
                   value: createdAt == null || createdAt.isEmpty
                       ? 'N/A'
                       : EcuadorDateUtils.formatEcuadorDate(createdAt),

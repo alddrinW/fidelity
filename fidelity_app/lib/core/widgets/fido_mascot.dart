@@ -15,7 +15,11 @@ enum FidoMood {
   thinking,
 
   /// Euforia: saltos rápidos y meneo. Canje o premio ganado.
-  euphoric;
+  euphoric,
+
+  /// Tristeza: se encorva y se balancea despacio. Errores, juegos perdidos,
+  /// retos vencidos y cosas que no salieron bien.
+  sad;
 
   bool get usesCelebrationPose => this == celebrate || this == euphoric;
 }
@@ -38,15 +42,18 @@ class FidoMascot extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final fido = Image.asset(
-      mood.usesCelebrationPose
-          ? 'assets/images/fido_celebra.png'
-          : 'assets/images/logo_transparente.png',
+      switch (mood) {
+        FidoMood.celebrate || FidoMood.euphoric => 'assets/images/fido_celebra.png',
+        FidoMood.sad => 'assets/images/fido_triste.png',
+        _ => 'assets/images/logo_transparente.png',
+      },
       height: height,
       width: width,
       fit: BoxFit.contain,
       semanticLabel: switch (mood) {
         FidoMood.celebrate || FidoMood.euphoric => 'Fido celebrando',
         FidoMood.thinking => 'Fido pensativo',
+        FidoMood.sad => 'Fido triste',
         FidoMood.calm => 'Fido',
       },
     );
@@ -71,6 +78,23 @@ class FidoMascot extends StatelessWidget {
           .moveY(begin: 0, end: 22, duration: 220.ms, curve: Curves.easeIn)
           .rotate(begin: 0, end: -0.02, duration: 220.ms)
           .then(delay: 150.ms),
+      // Un suspiro: se encorva un poco y se balancea, despacio.
+      FidoMood.sad => fido
+          .animate(onPlay: (c) => c.repeat(reverse: true, count: 6))
+          .scale(
+            begin: const Offset(1, 1),
+            end: const Offset(1.02, 0.96),
+            duration: 1800.ms,
+            curve: Curves.easeInOut,
+            alignment: Alignment.bottomCenter,
+          )
+          .rotate(
+            begin: -0.02,
+            end: 0.02,
+            duration: 2600.ms,
+            curve: Curves.easeInOut,
+            alignment: Alignment.bottomCenter,
+          ),
       FidoMood.thinking => fido
           .animate(onPlay: (c) => c.repeat(reverse: true, count: 6))
           .rotate(

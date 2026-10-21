@@ -19,6 +19,10 @@ class AppTextField extends StatefulWidget {
   final Iterable<String>? autofillHints;
   final String? Function(String?)? validator;
   final ValueChanged<String>? onSubmitted;
+
+  /// Se avisa de cada tecla que se escribe (p. ej. para filtrar al escribir).
+  final ValueChanged<String>? onChanged;
+
   final bool enabled;
 
   /// Campo de solo lectura (p. ej. correo registrado). Si se pasa [onTap]
@@ -45,6 +49,7 @@ class AppTextField extends StatefulWidget {
     this.autofillHints,
     this.validator,
     this.onSubmitted,
+    this.onChanged,
     this.enabled = true,
     this.readOnly = false,
     this.onTap,
@@ -76,6 +81,7 @@ class _AppTextFieldState extends State<AppTextField> {
       autofillHints: widget.autofillHints,
       validator: widget.validator,
       onFieldSubmitted: widget.onSubmitted,
+      onChanged: widget.onChanged,
       // Estilo completo de AppTypography: `copyWith(fontWeight:)` sobre un
       // estilo de google_fonts no cambia el archivo de fuente y caería a Roboto.
       style: AppTypography.body(size: 17, weight: FontWeight.w300),

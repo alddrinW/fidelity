@@ -240,6 +240,7 @@ class _PagaYaScreenState extends ConsumerState<PagaYaScreen> with WidgetsBinding
                             ),
                           ),
                           error: (e, _) => const FidoSays(
+                            sad: true,
                             message: 'No pudimos cargar los métodos de pago. '
                                 'Vuelve atrás e inténtalo de nuevo.',
                           ),
@@ -422,6 +423,7 @@ class _MethodStep extends StatelessWidget {
         key: ValueKey('step-method'),
         children: [
           FidoSays(
+            sad: true,
             message: 'Los métodos de pago aún no están disponibles. '
                 'Inténtalo más tarde.',
           ),

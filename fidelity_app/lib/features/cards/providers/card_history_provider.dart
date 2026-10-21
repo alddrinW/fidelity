@@ -8,6 +8,10 @@ class CardHistoryState {
   final String? error;
   final List<Map<String, dynamic>> scans;
   final List<Map<String, dynamic>> rewards;
+
+  /// La ficha de la tarjeta (local, premio y avance).
+  final Map<String, dynamic> card;
+
   final DateTimeRange? dateRange;
   
   // Modal state
@@ -21,6 +25,7 @@ class CardHistoryState {
     this.error,
     this.scans = const [],
     this.rewards = const [],
+    this.card = const {},
     this.dateRange,
     this.isTransferLoading = false,
     this.transferErrorMessage,
@@ -33,6 +38,7 @@ class CardHistoryState {
     String? error,
     List<Map<String, dynamic>>? scans,
     List<Map<String, dynamic>>? rewards,
+    Map<String, dynamic>? card,
     DateTimeRange? dateRange,
     bool? isTransferLoading,
     String? transferErrorMessage,
@@ -44,6 +50,7 @@ class CardHistoryState {
       error: error,
       scans: scans ?? this.scans,
       rewards: rewards ?? this.rewards,
+      card: card ?? this.card,
       dateRange: dateRange ?? this.dateRange,
       isTransferLoading: isTransferLoading ?? this.isTransferLoading,
       transferErrorMessage: transferErrorMessage,
@@ -84,8 +91,9 @@ class CardHistoryNotifier extends Notifier<CardHistoryState> {
       final results = await ref.read(cardHistoryRepositoryProvider).fetchHistory(_cardId, _businessId, state.dateRange);
       state = state.copyWith(
         isLoading: false,
-        scans: results[0],
-        rewards: results[1],
+        scans: results.scans,
+        rewards: results.rewards,
+        card: results.card,
       );
     } catch (e) {
       state = state.copyWith(isLoading: false, error: e.toString());

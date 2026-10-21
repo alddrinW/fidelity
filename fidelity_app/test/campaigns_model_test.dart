@@ -113,7 +113,7 @@ void main() {
   });
 
   test('cada tipo de campaña tiene su valor de API', () {
-    expect(CampaignType.values.map((t) => t.apiValue), ['event', 'gift_card', 'route']);
+    expect(CampaignType.values.map((t) => t.apiValue), ['event', 'gift_card', 'route', 'scan_challenge']);
     expect(CampaignType.parse('gift_card'), CampaignType.giftCard);
     expect(CampaignBenefit.parse('mini_prize'), CampaignBenefit.miniPrize);
   });

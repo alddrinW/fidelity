@@ -13,32 +13,35 @@ import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_message_dialog.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../../core/widgets/global_celebration_dialog.dart';
-import '../../core/widgets/user_avatar_circle.dart';
 import '../auth/data/auth_repository.dart';
-import '../profile/user_profile_screen.dart';
 import '../scanner/scanner_screen.dart';
 import 'card_history_screen.dart';
-import '../campaigns/data/campaigns_repository.dart';
-import '../campaigns/widgets/campaigns_carousel.dart';
 import 'providers/my_cards_provider.dart';
-import 'widgets/missions_route.dart';
+import 'widgets/registered_scans_list.dart';
+import '../games/data/games_repository.dart';
+import '../games/widgets/pending_games_strip.dart';
 import '../../core/l10n/tr_text.dart';
 
-class MyCardsScreen extends ConsumerStatefulWidget {
-  const MyCardsScreen({super.key});
+/// Inicio del cliente: los juegos que le mandaron y sus escaneos registrados
+/// (los locales donde ya escaneó, con su avance).
+///
+/// Es la primera pestaña del panel de usuario ([CustomerShellScreen]); el
+/// "escanear" vive ahora en la acción central de la barra inferior.
+class CustomerHomeView extends ConsumerStatefulWidget {
+  const CustomerHomeView({super.key});
 
   /// Resetea los flags de sesión (bienvenida / recordatorio de premio) al cerrar
   /// sesión, para que el próximo usuario en el mismo proceso los vea bien.
   static void resetSessionFlags() {
-    _MyCardsScreenState._welcomeShown = false;
-    _MyCardsScreenState._pendingRewardShown = false;
+    _CustomerHomeViewState._welcomeShown = false;
+    _CustomerHomeViewState._pendingRewardShown = false;
   }
 
   @override
-  ConsumerState<MyCardsScreen> createState() => _MyCardsScreenState();
+  ConsumerState<CustomerHomeView> createState() => _CustomerHomeViewState();
 }
 
-class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
+class _CustomerHomeViewState extends ConsumerState<CustomerHomeView> {
   late ConfettiController _confettiController;
   static bool _welcomeShown = false;
   static bool _pendingRewardShown = false;
@@ -199,7 +202,7 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
                 loyaltyCardId: card['id'],
                 businessId: business['id'],
                 businessName: business['name'],
-                initialTabIndex: 1, // pestaña PREMIOS
+                initialTabIndex: CardHistoryScreen.rewardsTab,
               ),
             ),
           );
@@ -223,24 +226,6 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
     );
   }
 
-  Future<void> _openProfile() async {
-    final result = await Navigator.push(
-      context,
-      MaterialPageRoute(builder: (_) => const UserProfileScreen()),
-    );
-    if (result == true) {
-      // Esperamos a que termine la animación de vuelta (Hero) ANTES de
-      // refrescar, para no reconstruir el avatar a mitad del vuelo (eso
-      // causaba el salto de tamaño "se agranda y se achica"). Luego
-      // actualiza foto/nombre en su lugar, sin parpadear.
-      Future.delayed(const Duration(milliseconds: 450), () {
-        if (mounted) {
-          ref.read(myCardsProvider.notifier).refreshCards(silent: true);
-        }
-      });
-    }
-  }
-
   void _openCard(Map<String, dynamic> card) {
     final business = card['businesses'];
     Navigator.push(
@@ -259,7 +244,6 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final state = ref.watch(myCardsProvider);
-
     // Listen to error state
     ref.listen<MyCardsState>(myCardsProvider, (previous, next) {
       if (next.error != null && next.error != previous?.error) {
@@ -281,27 +265,17 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
       }
     });
 
-    final displayName = _getDisplayName(state.userName);
-
     return Stack(
       children: [
-        Scaffold(
-          body: SafeArea(
-            child: AppResponsiveBody(
-              adaptive: true,
-              child: Column(
-                children: [
-                  _buildHeader(state, displayName),
-                  Expanded(
-                    child: state.isLoading && state.cards.isEmpty
-                        ? const Center(child: CircularProgressIndicator())
-                        : state.cards.isEmpty
-                            ? _buildEmptyState()
-                            : _buildCardList(state),
-                  ),
-                ],
-              ),
-            ),
+        SafeArea(
+          bottom: false,
+          child: AppResponsiveBody(
+            adaptive: true,
+            child: state.isLoading && state.cards.isEmpty
+                ? const Center(child: CircularProgressIndicator())
+                : state.cards.isEmpty
+                    ? _buildEmptyState()
+                    : _buildCardList(state),
           ),
         ),
         Align(
@@ -321,110 +295,24 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
     );
   }
 
-  Widget _buildHeader(MyCardsState state, String displayName) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(24, 28, 24, 8),
-      child: Row(
+  Widget _buildCardList(MyCardsState state) {
+    return RefreshIndicator(
+      color: AppColors.black,
+      onRefresh: () {
+        ref.invalidate(myGameInvitesProvider);
+        return ref.read(myCardsProvider.notifier).refreshCards();
+      },
+      child: ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        // Abajo hay espacio para el botón flotante de escanear.
+        padding: const EdgeInsets.fromLTRB(24, 16, 24, 110),
         children: [
-          Semantics(
-            button: true,
-            label: 'Mi perfil',
-            child: GestureDetector(
-              onTap: _openProfile,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  // Hero: anima la transición del avatar al entrar al perfil.
-                  // El mismo widget vuela como UNA sola pieza (child +
-                  // flightShuttleBuilder), sin rearmarse.
-                  Hero(
-                    tag: 'user_avatar',
-                    flightShuttleBuilder: (_, __, ___, ____, _____) =>
-                        UserAvatarCircle(avatarUrl: state.avatarUrl),
-                    child: SizedBox(
-                      width: 48,
-                      height: 48,
-                      child: UserAvatarCircle(avatarUrl: state.avatarUrl),
-                    ),
-                  ),
-                  Positioned(
-                    right: -4,
-                    bottom: -4,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: AppColors.white,
-                        shape: BoxShape.circle,
-                        border: Border.all(color: AppColors.black, width: 1),
-                      ),
-                      child: const Icon(
-                        Icons.edit_outlined,
-                        size: 11,
-                        color: AppColors.black,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(width: 20),
-          if (displayName.isNotEmpty)
-            Expanded(
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Hola, $displayName',
-                  style: AppTypography.display(size: 34),
-                ),
-              ),
-            ),
+          // Los juegos que le mandaron los locales y aún no ha jugado.
+          const PendingGamesStrip(),
+          // Los locales donde el cliente ya escaneó, con su avance.
+          RegisteredScansList(cards: state.cards, onOpen: _openCard),
         ],
       ),
-    );
-  }
-
-  Widget _buildCardList(MyCardsState state) {
-    return Stack(
-      children: [
-        RefreshIndicator(
-          color: AppColors.black,
-          onRefresh: () {
-            ref.invalidate(campaignFeedProvider);
-            return ref.read(myCardsProvider.notifier).refreshCards();
-          },
-          child: ListView(
-            // Espacio inferior para que el último nodo no quede bajo el botón.
-            padding: const EdgeInsets.fromLTRB(24, 16, 24, 140),
-            children: [
-              // Novedades de los locales (eventos, tarjetas de regalo, rutas).
-              const CampaignsCarousel(),
-              MissionsRoute(
-                missions: [for (final card in state.cards) Mission.fromCard(card)],
-                onOpen: (mission) => _openCard(mission.card),
-              ),
-            ],
-          ),
-        ),
-        Positioned(
-          left: 0,
-          right: 0,
-          bottom: 0,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(48, 32, 48, 24),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [Color(0x00FFFFFF), AppColors.white],
-                stops: [0, 0.45],
-              ),
-            ),
-            child: AppPrimaryButton(label: 'Escanear', onPressed: _openScanner),
-          ),
-        ),
-      ],
     );
   }
 
@@ -466,7 +354,7 @@ class _MyCardsScreenState extends ConsumerState<MyCardsScreen> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(48, 8, 48, 56),
+          padding: const EdgeInsets.fromLTRB(48, 8, 48, 24),
           child: AppPrimaryButton(label: 'Escanear', onPressed: _openScanner)
               .animate(delay: 300.ms)
               .fadeIn()

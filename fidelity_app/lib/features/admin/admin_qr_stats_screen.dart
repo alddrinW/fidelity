@@ -385,9 +385,7 @@ class _ErrorState extends StatelessWidget {
     return Column(
       children: [
         const Expanded(
-          child: AppEmptyState(
-            title: 'Algo salió mal',
-            message: 'No se pudieron cargar las estadísticas. Inténtalo de nuevo.',
+          child: AppEmptyState.error(message: 'No se pudieron cargar las estadísticas. Inténtalo de nuevo.',
           ),
         ),
         Padding(

@@ -17,6 +17,10 @@ const double kAdminMaxWidth = 720;
 class AdminPageFrame extends StatelessWidget {
   final String title;
   final Widget? headerTrailing;
+
+  /// Ancho del extremo derecho de la cabecera (más de un botón no cabe en el
+  /// ancho de uno).
+  final double headerTrailingWidth;
   final Widget body;
   final Widget? bottom;
 
@@ -25,6 +29,7 @@ class AdminPageFrame extends StatelessWidget {
     required this.title,
     required this.body,
     this.headerTrailing,
+    this.headerTrailingWidth = 56,
     this.bottom,
   });
 
@@ -37,7 +42,11 @@ class AdminPageFrame extends StatelessWidget {
           maxWidth: kAdminMaxWidth,
           child: Column(
             children: [
-              AppPageHeader(title: title, trailing: headerTrailing),
+              AppPageHeader(
+                title: title,
+                trailing: headerTrailing,
+                trailingWidth: headerTrailingWidth,
+              ),
               Expanded(child: body),
               if (bottom != null)
                 Padding(
