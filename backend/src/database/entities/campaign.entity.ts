@@ -17,12 +17,17 @@ export enum CampaignType {
   GIFT_CARD = 'gift_card',
   /** Ruta tipo pasaporte: visitar varios locales para juntar sellos. */
   ROUTE = 'route',
+  /** Reto de escaneos: el cliente gana el premio al hacer N escaneos mientras dura. */
+  SCAN_CHALLENGE = 'scan_challenge',
 }
 
 export enum CampaignBenefit {
   DISCOUNT_PERCENT = 'discount_percent',
   MINI_PRIZE = 'mini_prize',
 }
+
+/** A quién le llega una gift card: a todos los clientes del local o solo a los elegidos. */
+export type CampaignAudience = 'all' | 'selected';
 
 export type CampaignPhase = 'scheduled' | 'active' | 'ended' | 'cancelled';
 
@@ -67,9 +72,17 @@ export class Campaign {
   @Column({ name: 'benefit_label', type: 'varchar', length: 120, nullable: true })
   benefitLabel: string | null;
 
+  /** Gift cards: todos los clientes del local o solo los elegidos (campaign_recipients). */
+  @Column({ type: 'varchar', length: 10, default: 'all' })
+  audience: CampaignAudience;
+
   /** Sellos necesarios para completar una ruta. */
   @Column({ name: 'required_stamps', type: 'int', nullable: true })
   requiredStamps: number | null;
+
+  /** Reto de escaneos: cuántos escaneos aprobados debe hacer el cliente. */
+  @Column({ name: 'required_scans', type: 'int', nullable: true })
+  requiredScans: number | null;
 
   @Column({ name: 'starts_at', type: 'timestamptz' })
   startsAt: Date;
@@ -83,6 +96,13 @@ export class Campaign {
   /** Cuándo se avisó a los clientes de que la campaña empezó. */
   @Column({ name: 'notified_at', type: 'timestamptz', nullable: true })
   notifiedAt: Date | null;
+
+  /**
+   * Una campaña interna (como el premio de un minijuego): existe para entregar
+   * gift cards, pero no se muestra al dueño en sus listas ni se puede editar.
+   */
+  @Column({ type: 'boolean', default: false })
+  hidden: boolean;
 
   @OneToMany(() => CampaignBusiness, (p) => p.campaign)
   participants: CampaignBusiness[];

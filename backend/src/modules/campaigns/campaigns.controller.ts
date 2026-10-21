@@ -6,6 +6,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { CampaignsService } from './campaigns.service';
@@ -50,6 +51,21 @@ export class CampaignsController {
   @Roles(UserRole.BUSINESS, UserRole.ADMIN)
   listMine(@CurrentUser() user: AuthenticatedUser) {
     return this.campaignsService.listMine(user);
+  }
+
+  /** Clientes de mis negocios, para elegir a quién le llega una gift card. */
+  @Get('customers')
+  @Roles(UserRole.BUSINESS, UserRole.ADMIN)
+  customers(
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('businessIds') businessIds?: string,
+    @Query('q') q?: string,
+  ) {
+    return this.campaignsService.customersFor(
+      user,
+      (businessIds ?? '').split(',').map((id) => id.trim()).filter(Boolean),
+      q,
+    );
   }
 
   @Post()

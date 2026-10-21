@@ -48,6 +48,10 @@ export class Profile {
   @Column({ name: 'is_demo', type: 'boolean', default: false })
   isDemo: boolean;
 
+  /** Idioma de la app del usuario (`es` o `en`): los avisos del servidor salen en él. */
+  @Column({ type: 'varchar', length: 5, default: 'es' })
+  language: string;
+
   /** Código de recuperación de contraseña (solo su hash) y cuándo vence. */
   @Column({ name: 'reset_code_hash', type: 'varchar', length: 100, nullable: true, select: false })
   resetCodeHash: string | null;

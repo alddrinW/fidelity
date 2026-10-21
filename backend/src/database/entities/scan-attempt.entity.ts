@@ -5,12 +5,14 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { Profile } from './profile.entity';
 import { Business } from './business.entity';
 import { QrCode } from './qr-code.entity';
 
 @Entity('scan_attempts')
+@Index('idx_scan_attempts_created', ['createdAt'])
 export class ScanAttempt {
   @PrimaryGeneratedColumn('uuid')
   id: string;

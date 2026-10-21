@@ -22,6 +22,8 @@ export enum ClaimSource {
   CLAIM = 'claim',
   /** Premio por completar una ruta (pasaporte). */
   ROUTE_COMPLETE = 'route_complete',
+  /** Premio de un reto de escaneos completado. */
+  CHALLENGE_COMPLETE = 'challenge_complete',
 }
 
 /**

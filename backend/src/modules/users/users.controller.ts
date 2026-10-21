@@ -10,7 +10,12 @@ import {
   UseGuards,
 } from '@nestjs/common';
 import { UsersService } from './users.service';
-import { UpdateProfileDto, UpdateFcmTokenDto, ChangePasswordDto } from './dto/users.dto';
+import {
+  UpdateProfileDto,
+  UpdateFcmTokenDto,
+  UpdateLanguageDto,
+  ChangePasswordDto,
+} from './dto/users.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { CurrentUser } from '../../common/decorators/current-user.decorator';
 import { AuthenticatedUser } from '../../common/interfaces/jwt-payload.interface';
@@ -52,6 +57,15 @@ export class UsersController {
     @Body() dto: UpdateFcmTokenDto,
   ) {
     return this.usersService.updateFcmToken(user.id, dto);
+  }
+
+  /** El idioma de la app del usuario: los avisos del servidor salen en él. */
+  @Patch('language')
+  async updateLanguage(
+    @CurrentUser() user: AuthenticatedUser,
+    @Body() dto: UpdateLanguageDto,
+  ) {
+    return this.usersService.updateLanguage(user.id, dto);
   }
 
   @Get('search')

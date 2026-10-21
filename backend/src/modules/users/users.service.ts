@@ -17,7 +17,12 @@ import { ScanAttempt } from '../../database/entities/scan-attempt.entity';
 import { Reward } from '../../database/entities/reward.entity';
 import { SupportTicket } from '../../database/entities/support-ticket.entity';
 import { QrCode } from '../../database/entities/qr-code.entity';
-import { UpdateProfileDto, UpdateFcmTokenDto, ChangePasswordDto } from './dto/users.dto';
+import {
+  UpdateProfileDto,
+  UpdateFcmTokenDto,
+  UpdateLanguageDto,
+  ChangePasswordDto,
+} from './dto/users.dto';
 
 @Injectable()
 export class UsersService {
@@ -86,6 +91,12 @@ export class UsersService {
     const profile = await this.getProfile(userId);
     profile.fcmToken = dto.fcmToken;
     return this.profileRepository.save(profile);
+  }
+
+  async updateLanguage(userId: string, dto: UpdateLanguageDto) {
+    const result = await this.profileRepository.update({ id: userId }, { language: dto.language });
+    if (!result.affected) throw new NotFoundException('Usuario no encontrado');
+    return { language: dto.language };
   }
 
   async searchUsers(query: string, currentUserId: string) {

@@ -92,3 +92,33 @@ describe('UsersService.changePassword', () => {
     ).rejects.toThrow(BadRequestException);
   });
 });
+
+describe('UsersService.updateLanguage', () => {
+  let service: UsersService;
+  let profileRepo: any;
+
+  beforeEach(async () => {
+    profileRepo = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        UsersService,
+        { provide: getRepositoryToken(Profile), useValue: profileRepo },
+        { provide: DataSource, useValue: {} },
+      ],
+    }).compile();
+    service = module.get(UsersService);
+  });
+
+  it('guarda el idioma del usuario', async () => {
+    const result = await service.updateLanguage('u1', { language: 'en' });
+
+    expect(profileRepo.update).toHaveBeenCalledWith({ id: 'u1' }, { language: 'en' });
+    expect(result).toEqual({ language: 'en' });
+  });
+
+  it('un usuario que no existe se rechaza', async () => {
+    profileRepo.update.mockResolvedValue({ affected: 0 });
+
+    await expect(service.updateLanguage('nadie', { language: 'es' })).rejects.toBeInstanceOf(NotFoundException);
+  });
+});

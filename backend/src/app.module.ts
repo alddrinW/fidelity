@@ -23,10 +23,16 @@ import {
   CampaignClaim,
   CampaignStamp,
   AppSetting,
+  Notification,
+  CampaignRecipient,
+  GameAccess,
+  GameInvite,
 } from './database/entities';
 
 // Feature Modules
 import { AuthModule } from './modules/auth/auth.module';
+import { GamesModule } from './modules/games/games.module';
+import { MaintenanceModule } from './modules/maintenance/maintenance.module';
 import { UsersModule } from './modules/users/users.module';
 import { BusinessesModule } from './modules/businesses/businesses.module';
 import { LoyaltyCardsModule } from './modules/loyalty-cards/loyalty-cards.module';
@@ -47,6 +53,7 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
       isGlobal: true,
       load: [configuration],
     }),
+    MaintenanceModule,
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
@@ -78,6 +85,10 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
           CampaignClaim,
           CampaignStamp,
           AppSetting,
+          Notification,
+          CampaignRecipient,
+          GameAccess,
+          GameInvite,
         ],
       }),
       inject: [ConfigService],
@@ -85,6 +96,7 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
     NotificationsModule,
     RealtimeModule,
     AuthModule,
+    GamesModule,
     UsersModule,
     BusinessesModule,
     LoyaltyCardsModule,

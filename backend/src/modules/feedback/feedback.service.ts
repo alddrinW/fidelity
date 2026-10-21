@@ -105,22 +105,24 @@ export class FeedbackService {
   }
 
   private async notifyNewFeedback(feedback: Feedback, businessName: string) {
+    // Cada tipo con su género: "Nuevo reclamo", "Nueva sugerencia".
     const label = {
       [FeedbackKind.COMPLAINT]: 'reclamo',
       [FeedbackKind.SUGGESTION]: 'sugerencia',
       [FeedbackKind.PRAISE]: 'felicitación',
     }[feedback.kind];
+    const article = feedback.kind === FeedbackKind.COMPLAINT ? 'Nuevo' : 'Nueva';
 
     await this.safely(async () => {
       await this.notificationsService.sendToBusinessStaff(
         feedback.businessId,
-        `Nueva ${label} de un cliente`,
+        `${article} ${label} de un cliente`,
         `${businessName}: ${feedback.message ?? 'Un cliente calificó tu atención.'}`.slice(0, 140),
         { type: 'feedback' },
       );
       if (feedback.kind !== FeedbackKind.PRAISE) {
         await this.notificationsService.broadcastToAdmins(
-          `Nuevo ${label}`,
+          `${article} ${label}`,
           `${businessName}: ${feedback.message ?? ''}`.slice(0, 140),
           '/admin_feedback',
         );

@@ -3,6 +3,7 @@ import {
   ArrayMinSize,
   IsArray,
   IsEnum,
+  IsIn,
   IsInt,
   IsISO8601,
   IsOptional,
@@ -17,7 +18,7 @@ import { CampaignBenefit, CampaignType } from '../../../database/entities/campai
 import { IsImageSource } from '../../../common/validators/is-image-source.validator';
 
 export class CreateCampaignDto {
-  @IsEnum(CampaignType, { message: 'El tipo debe ser event, gift_card o route' })
+  @IsEnum(CampaignType, { message: 'El tipo debe ser event, gift_card, route o scan_challenge' })
   type: CampaignType;
 
   @IsString()
@@ -67,12 +68,31 @@ export class CreateCampaignDto {
   @IsUUID('all', { each: true })
   businessIds: string[];
 
+  /** Gift cards: `all` (por defecto) = todos mis clientes; `selected` = solo los elegidos. */
+  @IsOptional()
+  @IsIn(['all', 'selected'], { message: 'La audiencia debe ser all o selected' })
+  audience?: 'all' | 'selected';
+
+  /** Clientes elegidos (gift cards con audiencia `selected`). */
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(1000)
+  @IsUUID('all', { each: true })
+  recipientIds?: string[];
+
   /** Sellos para completar la ruta (solo rutas). Por defecto, todos los locales. */
   @IsOptional()
   @IsInt()
   @Min(2)
   @Max(20)
   requiredStamps?: number;
+
+  /** Escaneos que debe hacer el cliente para ganar (solo retos de escaneos). */
+  @IsOptional()
+  @IsInt()
+  @Min(2, { message: 'El reto necesita al menos 2 escaneos' })
+  @Max(100, { message: 'El reto no puede pedir más de 100 escaneos' })
+  requiredScans?: number;
 }
 
 export class UpdateCampaignDto {
@@ -89,6 +109,19 @@ export class UpdateCampaignDto {
   @IsOptional()
   @IsImageSource()
   imageUrl?: string;
+
+  /** Gift cards: nuevo porcentaje de descuento. */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100)
+  benefitValue?: number;
+
+  /** Gift cards: nuevo texto del beneficio. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(120)
+  benefitLabel?: string;
 
   /** Solo se puede cambiar mientras la campaña no haya empezado. */
   @IsOptional()

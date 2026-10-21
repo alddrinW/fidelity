@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
 import { IsImageSource } from '../../../common/validators/is-image-source.validator';
 
 export class UpdateProfileDto {
@@ -22,6 +22,11 @@ export class UpdateProfileDto {
 export class UpdateFcmTokenDto {
   @IsString()
   fcmToken: string;
+}
+
+export class UpdateLanguageDto {
+  @IsIn(['es', 'en'], { message: 'Idioma no válido' })
+  language: 'es' | 'en';
 }
 
 export class ChangePasswordDto {
