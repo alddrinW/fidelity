@@ -30,6 +30,7 @@
 - [x] **HU-05:** Integración con Firebase Admin SDK para despacho de notificaciones FCM v1.
 - [x] **HU-05:** Eventos dirigidos a clientes, comercios y administradores.
 - [x] **HU-05:** Realtime WebSocket Gateway (Socket.io) para streaming de escaneos y recompensas.
+- [x] **HU-05:** Centro de notificaciones: bandeja por usuario con cada movimiento, contador de no leídas y apertura de la pantalla relacionada.
 
 ### 📊 Épica 6: Panel de Administración y Soporte
 - [x] **HU-06:** Dashboard de métricas globales del sistema (`/api/v1/admin/stats`).
@@ -46,7 +47,8 @@
 
 ### 🎮 Épica 8: Gamificación y Rutas de Progreso Estilo Duolingo
 - [x] **HU-08:** Dashboard interactivo en formato "Ruta de Misiones" con barras de progreso a la siguiente recompensa. *(Pantalla principal del cliente: cada negocio es un nodo en un camino en zigzag con anillo de progreso y sellos; aviso de cuánto falta para el próximo premio.)*
-- [ ] **HU-08:** Módulo de mini-juegos (Ruleta de beneficios y Raspa y Gana digital).
+- [x] **HU-08:** Módulo de mini-juegos. *(Tres en raya, Ahorcado y Flappy Bird: el dueño los solicita, el administrador asigna los juegos y el premio, el dueño los envía y el cliente los abre desde una notificación; un intento por envío y premio automático en gift card.)*
+- [ ] **HU-08:** Ruleta de beneficios.
 - [ ] **HU-08:** Sistema de rachas y multiplicadores de puntos por constancia de visita.
 
 ### 🐾 Épica 9: Mascota Guía "Fido" y Micro-interacciones
@@ -57,6 +59,7 @@
 ### 🏢 Épica 10: Panel Empresarial Multi-sucursal y Campañas
 - [x] **HU-10:** Matriz de control centralizado de múltiples sucursales para comercios. *(Mis negocios: estado, clientes, escaneos y equipo por negocio y sucursal.)*
 - [x] **HU-10:** Creador de campañas de marketing segmentadas para clientes fidelizados. *(Eventos, tarjetas de regalo y rutas/pasaporte; programables; llegan a los clientes de los locales participantes.)*
+- [x] **HU-10:** Gift cards del dueño (descuento o mini premio) con entrega automática a todos o a clientes elegidos, edición, cancelación y canje por QR.
 - [x] **HU-10:** Selector global de idiomas en tiempo real para el panel de escritorio. *(Español e inglés; cambia al instante y se recuerda.)*
 
 ### 💳 Épica 11: Módulo Transaccional "PAGA YA" y Rol Aprobador

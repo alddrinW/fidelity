@@ -59,19 +59,41 @@ Este documento detalla las reglas que gobiernan el comportamiento de Fidelity. M
 -   Al quitar a un aprobador de su último negocio, su cuenta vuelve a ser de cliente.
 
 ## 9. Campañas (programables, tarjetas de regalo, rutas y eventos)
--   El dueño crea campañas desde la pestaña **Campañas** de su panel, para uno o varios de sus negocios activos (sucursales participantes). Hay tres tipos:
+-   El dueño crea campañas desde la pestaña **Campañas** de su panel, para uno o varios de sus negocios activos (sucursales participantes). Hay cuatro tipos:
     -   **Evento:** un anuncio o novedad para los clientes fidelizados (sin cupón).
-    -   **Tarjeta de regalo:** un **descuento** (1–100 %) o un **mini premio**. El cliente la reclama una sola vez y recibe un código con QR; el local lo canjea.
+    -   **Tarjeta de regalo:** un **descuento** (1–100 %) o un **mini premio**. Se entrega sola a los clientes (ver sección 9a); el local canjea el código con QR.
     -   **Ruta (pasaporte):** el cliente junta **sellos** visitando los locales de la ruta (mínimo 2). Un local da su sello cuando se **aprueba un escaneo real de QR** del cliente mientras la ruta está vigente (los puntos regalados a mano no cuentan, y cada local da un solo sello). Al juntar los sellos requeridos, el cliente recibe un **premio con código** para canjear.
 -   **Programación:** una campaña puede lanzarse ya o programarse con fecha y hora de inicio, y tener fecha de fin opcional. Estados: *Programada → Activa → Finalizada* (o *Cancelada*). Un programador interno revisa cada minuto y avisa a los clientes cuando llega la hora de inicio (si el servidor estuvo apagado, avisa al volver).
 -   **Quién la recibe:** los clientes con tarjeta en alguno de los negocios participantes. Reciben una notificación al empezar la campaña y la ven en **Novedades** (arriba de su pantalla de inicio). Las tarjetas y premios quedan en *Perfil → Mis regalos*.
 -   **Canje:** el dueño y los aprobadores canjean el código en la pestaña *Campañas* (dueño) o *Canjear* (aprobador). Un código no se canjea dos veces ni cuando la campaña ya terminó o fue cancelada.
+    -   **Reto de escaneos:** el dueño pide un número de escaneos (de **2 a 100**) y un premio (descuento o mini premio). El cliente gana el premio **automáticamente**, como una gift card con su código `RTO-…`, cuando llega a ese número de escaneos **reales de un QR, aprobados, en los locales del reto mientras la campaña está vigente** (los puntos regalados a mano no cuentan). El cliente recibe un aviso con su avance en cada escaneo y otro al completarlo; ve cuánto lleva en el detalle de la campaña (Explorar → Novedades). El premio se canjea como cualquier gift card.
 -   Solo se crean campañas para negocios propios y **activos**.
+
+## 9a. Gift cards del dueño
+-   Desde *Gift cards* en su panel, el dueño crea un **descuento** (1–100 %) o un **mini premio**, con título, descripción e imagen opcionales, y la dirige a **todos sus clientes** o a **clientes elegidos** (los que tienen tarjeta en ese negocio). Puede enviarla ya o programarla con fecha de inicio y de vencimiento opcional.
+-   **Entrega automática:** al empezar la gift card, a cada cliente destinatario le llega **su propia gift card** con un código `GFT-…` y su QR, en *Perfil → Mis regalos*, más una notificación. El cliente no tiene que reclamarla. Si el cliente ya recibió esa gift card, no se duplica.
+-   **Canje:** el dueño y los aprobadores escanean el QR (o escriben el código) del cliente. Un código se canjea **una sola vez** y no se canjea si la gift card venció o fue cancelada.
+-   El dueño puede **editar** una gift card (título, descripción, imagen, beneficio y fechas; la fecha de inicio solo mientras no haya empezado) y **cancelarla**: las gift cards ya canjeadas no se alteran, las pendientes dejan de ser canjeables. Ve cuántas **envió**, **canjeó** y cuántas están **sin canjear**.
+
+## 9b. Centro de notificaciones
+-   Cada usuario tiene una **bandeja de notificaciones** (campana en la pantalla de inicio) donde queda **cada movimiento** que le llega: escaneos, premios, gift cards, campañas, minijuegos, pagos y avisos del administrador. Lleva un contador de no leídas; se marcan como leídas al abrirlas o todas a la vez.
+-   **Limpieza automática:** el servidor borra solo lo viejo que únicamente se acumula, cada 6 horas: avisos ya leídos con más de **30 días** y cualquier aviso con más de **90 días**; el registro de intentos de escaneo con más de **90 días**; y los retos de minijuegos terminados o vencidos hace más de **90 días**. Nunca toca retos abiertos, gift cards, tarjetas ni premios.
+-   Las notificaciones push (FCM) siguen funcionando; la bandeja las **conserva** para verlas después y tocar una abre la pantalla correspondiente (*Mis regalos*, un juego pendiente, el panel...). Cada usuario solo ve las suyas.
+
+## 9c. Minijuegos
+-   Hay tres minijuegos: **Tres en raya** (contra la computadora), **Ahorcado** y **Flappy Bird** (pasar 10 tubos sin chocar). El dueño los usa para que sus clientes vuelvan y ganen un regalo.
+-   **Flujo:** (1) el dueño **solicita** los minijuegos desde *Minijuegos* en su panel; (2) el **administrador** revisa la solicitud (*Admin → Minijuegos*), **asigna los juegos** (al menos uno) y **define el premio** que ganarán los clientes (un descuento % o un mini premio); también puede retirar los minijuegos o rechazar la solicitud con un motivo que ve el dueño; (3) el dueño **envía un juego** a todos sus clientes o a clientes elegidos; (4) cada cliente recibe una **notificación**, la toca y abre el juego.
+-   **Horario:** al enviar un juego, el dueño fija **cuándo empieza** (ahora o programado) y **cuándo termina** (por defecto, 7 días después del inicio; máximo 90 días). El cliente recibe la notificación **cuando empieza** el juego (si es programado, la manda el servidor a esa hora) y solo puede jugar dentro del horario; fuera de él el reto aparece como *Todavía no empieza* o *Vencido*. Una partida en curso tampoco continúa después de la hora de fin.
+-   **3 intentos:** cada cliente tiene **hasta 3 intentos** para ganar cada juego enviado. Si pierde un intento y le quedan, puede intentarlo de nuevo (empieza una partida nueva); si gana, el reto termina y recibe el premio; si pierde el tercero, el reto termina sin premio. Quien ya ganó ese premio no recibe el mismo juego de nuevo. Un envío llega como máximo a **1000 clientes**.
+-   **Premio:** al ganar, el cliente recibe **automáticamente una gift card** con el premio fijado por el administrador (con su código para canjear, igual que una gift card del dueño). Si ya tenía ese premio, se le avisa y no se duplica.
+-   **Justicia (servidor):** el resultado lo decide el servidor, no la app. En Ahorcado la palabra nunca viaja al cliente hasta que termina; en Tres en raya el servidor valida cada jugada y responde la computadora; en Flappy el servidor comprueba que el puntaje sea posible según el tiempo transcurrido.
+-   El dueño ve lo que envió: **enviados**, **jugaron** (usaron al menos un intento), **ganaron** y el estado de cada cliente (*Programado, Enviado, Intento 2 de 3, Jugando, Ganó, Perdió, Venció*).
 
 ## 10. Idiomas
 -   La app está disponible en **español** (idioma base) e **inglés**. El idioma se elige en *Perfil → Idioma* (cliente y dueño), en el botón de idioma de la pantalla de inicio de sesión, en la barra lateral del panel del negocio en PC y en el panel de administración. El cambio es inmediato, sin cerrar sesión, y se recuerda en el dispositivo.
 -   Los textos se escriben en español en el código y se traducen con un diccionario (`lib/core/l10n/strings_en.dart`): si un texto no tiene traducción se muestra en español. Para agregar un idioma o completar traducciones basta con ampliar ese diccionario.
--   Los mensajes que envía el servidor (errores y notificaciones push) están en español.
+-   **Avisos del servidor:** las notificaciones (push y bandeja) salen en el idioma de la app de cada usuario. La app le avisa al servidor su idioma al iniciar sesión y cada vez que lo cambia (`PATCH /users/language`). En la bandeja se guarda el texto original en español y se traduce al leerlo, así que si el usuario cambia de idioma sus avisos viejos también cambian. Las traducciones están en `backend/src/modules/notifications/notification-strings.en.ts`; un aviso sin traducción se muestra en español. Lo que escribió una persona (nombres, opiniones, motivos) no se traduce.
+-   Los mensajes de error que devuelve el servidor siguen en español.
 
 ## 11. Versión web / PC
 -   La app funciona en el navegador (Flutter Web). En pantallas anchas (≥ 960 px) el **panel del negocio y del aprobador** reemplaza las pestañas por una **barra lateral** (con avisos de pendientes, *Mis negocios*, idioma y cierre de sesión) y ocupa más ancho; el **panel de administración** muestra sus tarjetas y módulos en cuadrícula, y las listas y detalles se ensanchan hasta 1,5 veces su ancho móvil.
@@ -82,6 +104,13 @@ Este documento detalla las reglas que gobiernan el comportamiento de Fidelity. M
 -   Las tarjetas del cliente se muestran como una **ruta en zigzag**: cada negocio es un **nodo** con su logo dentro de un anillo que se llena con los puntos, el premio, los **sellos** (un círculo por punto requerido; con más de 12 se resume en una barra) y el avance (p. ej. `6/10`).
 -   Arriba, un aviso destaca la próxima meta: un **premio listo** para reclamar o, si no hay, el negocio **más cerca de completarse** ("Te falta 1 punto en...") con su barra de progreso.
 -   Un nodo con premio sin entregar se marca con un regalo; uno con escaneo pendiente de aprobación, con un reloj de arena. Tocar un nodo abre el historial de esa tarjeta.
+
+## 11a-bis. Pantalla de un local (tarjeta del cliente)
+-   Al tocar un local en el inicio se abre su pantalla: arriba una **cabecera** con el logo del negocio, su nombre, su categoría y dirección, los **sellos** (un círculo por punto, el último es el premio) y el premio del local; debajo, tres pestañas fijas:
+    -   **Premios:** los premios ganados (por reclamar, entregados o rechazados), con la transferencia a otro usuario.
+    -   **Tarjetas:** las **gift cards** (y premios de rutas, retos y minijuegos) que **ese local** le dio al cliente, con su código.
+    -   **Minijuegos:** los juegos que **ese local** le mandó: para jugar (con intentos restantes y hasta cuándo), programados, ganados, perdidos o vencidos. Tocar uno lo abre.
+-   El registro de escaneos ya no se muestra en esta pantalla. El filtro de fechas de la cabecera filtra los premios.
 
 ## 11b. Seguridad de cuentas y datos
 -   **Recuperar contraseña:** desde *¿Olvidaste tu contraseña?* se envía un **código de 6 dígitos** al correo (vence en **15 minutos**; se puede pedir otro cada minuto). Con el código el usuario crea su nueva contraseña. El código se guarda cifrado, se usa **una sola vez** y se bloquea tras **5 intentos fallidos**. La respuesta es la misma exista o no el correo (no se revela qué cuentas existen). El envío usa SMTP (`SMTP_HOST`, `SMTP_USER`, `SMTP_PASS`); sin SMTP, fuera de producción, el código se escribe en el log del servidor.
