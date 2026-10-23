@@ -35,6 +35,7 @@
 ### 📊 Épica 6: Panel de Administración y Soporte
 - [x] **HU-06:** Dashboard de métricas globales del sistema (`/api/v1/admin/stats`).
 - [x] **HU-06:** Directorio de usuarios y asignación de roles (`/api/v1/admin/users`).
+- [x] **HU-06:** Ajustes del sistema controlados por el administrador (`/api/v1/settings`): precios, reglas de minijuegos, límites de negocios y días de limpieza de datos, con rango y valor por defecto; cuentas bancarias de los pagos (`PUT /api/v1/payments/bank-accounts`).
 - [x] **HU-06:** Monitoreo de actividad reciente en tiempo real.
 - [x] **HU-06:** Módulo de tickets de soporte (`/api/v1/support-tickets`).
 
@@ -53,6 +54,7 @@
 
 ### 🐾 Épica 9: Mascota Guía "Fido" y Micro-interacciones
 - [x] **HU-09:** Integración de Fido como guía en flujos de bienvenida, escaneo y soporte. *(Bienvenida del dueño con accesos directos; consejo en el escáner; asistentes de pago y buzón.)*
+- [x] **HU-09:** Animación de entrada de la app: Fido aparece, escanea un código con su teléfono, lo esconde, guiña y se queda con los brazos cruzados junto a "FIDELITY" (se ve al abrir la app en el celular y en la web; un toque la salta y respeta "reducir movimiento").
 - [x] **HU-09:** Micro-animaciones de celebración con confeti y reacciones dinámicas de estado. *(Salto de victoria con confeti al escanear.)*
 - [x] **HU-09:** Modos reactivos (calma, alerta de cooldown, euforia de canje). *(`FidoMascot`: calma, celebración, pensativo con reloj de arena y euforia; se detienen solos y respetan "reducir movimiento".)*
 
@@ -60,6 +62,8 @@
 - [x] **HU-10:** Matriz de control centralizado de múltiples sucursales para comercios. *(Mis negocios: estado, clientes, escaneos y equipo por negocio y sucursal.)*
 - [x] **HU-10:** Creador de campañas de marketing segmentadas para clientes fidelizados. *(Eventos, tarjetas de regalo y rutas/pasaporte; programables; llegan a los clientes de los locales participantes.)*
 - [x] **HU-10:** Gift cards del dueño (descuento o mini premio) con entrega automática a todos o a clientes elegidos, edición, cancelación y canje por QR.
+- [x] **HU-10:** Cumpleaños: el cliente puede poner su fecha de nacimiento (opcional) al registrarse o en su perfil; el servidor avisa al dueño el día del cumpleaños y el dueño le regala una gift card con la **plantilla de cumpleaños** (diseño y texto ya puestos; elige premio, a quién y la hora; vale solo el día del cumpleaños) desde *Gift cards → Cumpleaños* o tocando el aviso que le llega al dueño (`/api/v1/birthdays`). Solo se ve día y mes, nunca la edad.
+- [x] **HU-10:** Insignia **FidelyUsuario**: al 3.er escaneo aprobado en un local (cantidad ajustable por el administrador) el cliente gana la insignia de ese local; la ve al entrar a su tarjeta y el dueño la ve en su lista de clientes (con filtro). Ambos reciben un aviso una sola vez.
 - [x] **HU-10:** Selector global de idiomas en tiempo real para el panel de escritorio. *(Español e inglés; cambia al instante y se recuerda.)*
 
 ### 💳 Épica 11: Módulo Transaccional "PAGA YA" y Rol Aprobador
