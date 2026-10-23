@@ -81,12 +81,12 @@ class CardHistoryRepository {
     return CardHistoryData(
       scans: scans,
       rewards: rewards,
-      card: _cardInfo(card),
+      card: _cardInfo(card, response['fidely'] as Map<String, dynamic>? ?? {}),
     );
   }
 
   /// La ficha de la tarjeta: con qué local es, su premio y cuánto lleva.
-  Map<String, dynamic> _cardInfo(Map<String, dynamic> card) {
+  Map<String, dynamic> _cardInfo(Map<String, dynamic> card, Map<String, dynamic> fidely) {
     final business = card['business'] as Map<String, dynamic>? ?? {};
     return {
       'name': business['name'] ?? '',
@@ -101,6 +101,10 @@ class CardHistoryRepository {
       'points_required': business['pointsRequired'] ?? business['points_required'] ?? 10,
       'last_scan_at': card['lastScanAt'] ?? card['last_scan_at'],
       'created_at': card['createdAt'] ?? card['created_at'],
+      // La insignia FidelyUsuario del cliente en este local.
+      'verified_scans': (fidely['verifiedScans'] as num?)?.toInt() ?? 0,
+      'fidely_required': (fidely['fidelyRequired'] as num?)?.toInt() ?? 3,
+      'is_fidely': fidely['isFidely'] == true,
     };
   }
 }

@@ -31,7 +31,7 @@ class AuthErrorTranslator {
     }
 
     if (msg.contains('password') && (msg.contains('short') || msg.contains('corta') || msg.contains('6'))) {
-      return 'La contraseña debe tener al menos 6 caracteres.';
+      return 'La contraseña debe tener al menos 8 caracteres.';
     }
 
     if (msg.contains('socketexception') ||

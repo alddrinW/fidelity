@@ -5,6 +5,7 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../../core/theme/app_typography.dart';
 import '../../../../core/widgets/app_card.dart';
 import '../../../../core/widgets/app_chip.dart';
+import '../../../../core/widgets/fidely_badge.dart';
 import '../../../../core/widgets/app_page_header.dart';
 import '../../../../core/widgets/app_responsive_body.dart';
 import '../../../../core/widgets/person_avatar.dart';
@@ -81,6 +82,7 @@ class ClientDetailScreen extends ConsumerWidget {
                                       label: '$points/$required PUNTOS',
                                       style: AppChipStyle.dark,
                                     ),
+                                    if (card['is_fidely'] == true) const FidelyBadge(),
                                     if (profile?['is_demo'] == true)
                                       const AppChip(label: 'Demo', style: AppChipStyle.outline),
                                   ],

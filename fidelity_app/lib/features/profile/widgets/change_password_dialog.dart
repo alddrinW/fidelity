@@ -71,7 +71,7 @@ class _ChangePasswordDialogState extends State<ChangePasswordDialog> {
                 hint: 'Nueva contraseña',
                 icon: Icons.lock_reset_rounded,
                 isPassword: true,
-                helperText: 'Mínimo 6 caracteres',
+                helperText: 'Mínimo 8 caracteres, con letras y números',
                 textInputAction: TextInputAction.next,
                 validator: AppValidators.validatePassword,
               ),

@@ -7,6 +7,7 @@ import '../../../core/utils/date_utils.dart';
 import '../../../core/utils/image_source.dart';
 import '../../../core/widgets/scratch_card.dart';
 import '../data/campaigns_repository.dart';
+import 'birthday_art.dart';
 
 /// El cheque de la gift card: el diseño que ve el cliente.
 ///
@@ -58,11 +59,14 @@ class GiftCardVoucher extends StatelessWidget {
       child: Stack(
         fit: StackFit.passthrough,
         children: [
-          if (_background != null)
+          // La plantilla de cumpleaños trae su propio diseño.
+          if (campaign.isBirthday)
+            const Positioned.fill(child: BirthdayArt())
+          else if (_background != null)
             Positioned.fill(
               child: Image(image: _background!, fit: BoxFit.cover),
             ),
-          if (_background != null)
+          if (!campaign.isBirthday && _background != null)
             const Positioned.fill(
               child: DecoratedBox(
                 decoration: BoxDecoration(color: Color(0xCCFFFFFF)),
@@ -123,6 +127,10 @@ class GiftCardVoucher extends StatelessWidget {
           ],
         ),
         const SizedBox(height: 14),
+        if (campaign.isBirthday) ...[
+          const Icon(Icons.cake_rounded, size: 26, color: AppColors.black),
+          const SizedBox(height: 4),
+        ],
         Text(
           campaign.title.toUpperCase(),
           maxLines: 3,
@@ -203,7 +211,8 @@ class GiftCardVoucher extends StatelessWidget {
     if (ends == null) return 'SIN FECHA DE FIN';
     final day =
         EcuadorDateUtils.formatEcuadorDate(ends.toUtc().toIso8601String());
-    return 'VÁLIDA HASTA $day';
+    // La de cumpleaños vale un solo día.
+    return campaign.isBirthday ? 'VÁLIDA SOLO EL $day' : 'VÁLIDA HASTA $day';
   }
 
   Widget get _logo {

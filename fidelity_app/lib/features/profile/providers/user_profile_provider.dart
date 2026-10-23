@@ -10,6 +10,9 @@ class UserProfileState {
   final bool isLoading;
   final String fullName;
   final String phone;
+
+  /// Fecha de nacimiento `AAAA-MM-DD`; vacía si no la dio.
+  final String birthDate;
   final String? avatarUrl;
   final String? error;
   final String? email;
@@ -18,6 +21,7 @@ class UserProfileState {
     this.isLoading = true,
     this.fullName = '',
     this.phone = '',
+    this.birthDate = '',
     this.avatarUrl,
     this.error,
     this.email,
@@ -27,6 +31,7 @@ class UserProfileState {
     bool? isLoading,
     String? fullName,
     String? phone,
+    String? birthDate,
     String? avatarUrl,
     String? error,
     String? email,
@@ -35,6 +40,7 @@ class UserProfileState {
       isLoading: isLoading ?? this.isLoading,
       fullName: fullName ?? this.fullName,
       phone: phone ?? this.phone,
+      birthDate: birthDate ?? this.birthDate,
       avatarUrl: avatarUrl ?? this.avatarUrl,
       error: error,
       email: email ?? this.email,
@@ -54,6 +60,7 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
       email: user?.email,
       fullName: user?.fullName ?? '',
       phone: user?.phone ?? '',
+      birthDate: user?.birthDate ?? '',
       avatarUrl: user?.avatarUrl,
     );
   }
@@ -68,6 +75,7 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
         isLoading: false,
         fullName: profile['full_name'] ?? '',
         phone: profile['phone'] ?? '',
+        birthDate: (profile['birth_date'] ?? '').toString(),
         avatarUrl: profile['avatar_url'],
         email: profile['email'] ?? user.email,
       );
@@ -80,6 +88,7 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
     required String fullName,
     required String phone,
     String? avatarDataUri,
+    String? birthDate,
   }) async {
     state = state.copyWith(isLoading: true, error: null);
     try {
@@ -90,6 +99,7 @@ class UserProfileNotifier extends Notifier<UserProfileState> {
         fullName: fullName,
         phone: phone,
         avatarDataUri: avatarDataUri,
+        birthDate: birthDate,
       );
       await _loadProfile();
       return true;

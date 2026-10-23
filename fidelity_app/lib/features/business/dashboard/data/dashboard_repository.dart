@@ -59,6 +59,10 @@ class DashboardRepository {
         'total_points_lifetime': raw['totalPointsLifetime'] ?? raw['total_points_lifetime'] ?? 0,
         'rewards_claimed': raw['rewardsClaimed'] ?? raw['rewards_claimed'] ?? 0,
         'rewards_transferred': raw['rewardsTransferred'] ?? 0,
+        // La insignia FidelyUsuario de este cliente en este local.
+        'verified_scans': (raw['verifiedScans'] as num?)?.toInt() ?? 0,
+        'fidely_required': (raw['fidelyRequired'] as num?)?.toInt() ?? 3,
+        'is_fidely': raw['isFidely'] == true,
         'last_scan_at': raw['lastScanAt'] ?? raw['last_scan_at'],
         'updated_at': raw['updatedAt'] ?? raw['updated_at'],
         'profiles': {

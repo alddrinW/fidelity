@@ -153,8 +153,8 @@ class MyBusinessesScreen extends ConsumerWidget {
                             separatorBuilder: (_, __) => const SizedBox(height: 16),
                             itemBuilder: (context, index) {
                               final business = list[index];
-                              return Padding(
-                                padding: EdgeInsets.only(left: business.isBranch ? 24 : 0),
+                              return _BranchFrame(
+                                isBranch: business.isBranch,
                                 child: _BusinessCard(
                                   business: business,
                                   isCurrent: business.id == currentId,
@@ -192,6 +192,40 @@ class MyBusinessesScreen extends ConsumerWidget {
   }
 }
 
+/// Una sucursal cuelga de su negocio con una línea rosa a la izquierda, sin
+/// encogerse: así la tarjeta conserva el ancho que necesitan sus datos.
+class _BranchFrame extends StatelessWidget {
+  final bool isBranch;
+  final Widget child;
+
+  const _BranchFrame({required this.isBranch, required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isBranch) return child;
+    return Padding(
+      padding: const EdgeInsets.only(left: 6),
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: 4,
+              margin: const EdgeInsets.symmetric(vertical: 12),
+              decoration: BoxDecoration(
+                color: AppColors.pink,
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(child: child),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _BusinessCard extends StatelessWidget {
   final BusinessOverview business;
   final bool isCurrent;
@@ -216,9 +250,10 @@ class _BusinessCard extends StatelessWidget {
     return AppCard(
       padding: const EdgeInsets.all(20),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Container(
                 width: 52,
@@ -243,7 +278,7 @@ class _BusinessCard extends StatelessWidget {
                       overflow: TextOverflow.ellipsis,
                       style: AppTypography.display(size: 24),
                     ),
-                    const SizedBox(height: 6),
+                    const SizedBox(height: 8),
                     Wrap(
                       spacing: 6,
                       runSpacing: 6,
@@ -259,32 +294,106 @@ class _BusinessCard extends StatelessWidget {
               ),
             ],
           ),
+          const SizedBox(height: 18),
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            decoration: BoxDecoration(
+              color: AppColors.surfaceMuted,
+              borderRadius: BorderRadius.circular(22),
+            ),
+            child: IntrinsicHeight(
+              child: Row(
+                children: [
+                  _Metric(label: 'Clientes', value: business.customers),
+                  const _MetricDivider(),
+                  _Metric(label: 'Hoy', value: business.scansToday),
+                  const _MetricDivider(),
+                  _Metric(label: 'Pendientes', value: business.pendingScans),
+                  const _MetricDivider(),
+                  _Metric(label: 'Equipo', value: business.approvers),
+                ],
+              ),
+            ),
+          ),
           const SizedBox(height: 16),
+          if (!business.isActive) ...[
+            AppPrimaryButton(label: 'Paga ya', onPressed: onPay),
+            const SizedBox(height: 12),
+          ] else if (!isCurrent) ...[
+            AppPrimaryButton(label: 'Usar este negocio', onPressed: onSelect),
+            const SizedBox(height: 12),
+          ],
           Row(
             children: [
-              _Metric(label: 'Clientes', value: business.customers),
-              _Metric(label: 'Hoy', value: business.scansToday),
-              _Metric(label: 'Pendientes', value: business.pendingScans),
-              _Metric(label: 'Equipo', value: business.approvers),
+              Expanded(
+                child: _ActionPill(icon: Icons.groups_2_outlined, label: 'Mi equipo', onTap: onTeam),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: _ActionPill(icon: Icons.edit_outlined, label: 'Editar', onTap: onEdit),
+              ),
             ],
-          ),
-          const SizedBox(height: 16),
-          if (!business.isActive)
-            AppPrimaryButton(label: 'Paga ya', onPressed: onPay)
-          else if (!isCurrent)
-            AppPrimaryButton(label: 'Usar este negocio', onPressed: onSelect),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: AppTextAction(label: 'Mi equipo', onPressed: onTeam),
-          ),
-          Align(
-            alignment: Alignment.centerLeft,
-            child: AppTextAction(label: 'Editar este local', onPressed: onEdit),
           ),
         ],
       ),
     );
   }
+}
+
+/// Acción secundaria de la tarjeta: píldora con borde, sin competir con el
+/// botón principal.
+class _ActionPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _ActionPill({required this.icon, required this.label, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: AppColors.white,
+      shape: const StadiumBorder(side: BorderSide(color: AppColors.black, width: 1.2)),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          height: 46,
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 18, color: AppColors.black),
+                    const SizedBox(width: 8),
+                    Text(
+                      label.toUpperCase(),
+                      maxLines: 1,
+                      style: AppTypography.label(size: 12, tracking: 2),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _MetricDivider extends StatelessWidget {
+  const _MetricDivider();
+
+  @override
+  Widget build(BuildContext context) => Container(
+        width: 1,
+        margin: const EdgeInsets.symmetric(vertical: 6),
+        color: AppColors.black.withValues(alpha: 0.12),
+      );
 }
 
 class _Metric extends StatelessWidget {
@@ -297,11 +406,21 @@ class _Metric extends StatelessWidget {
   Widget build(BuildContext context) {
     return Expanded(
       child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
           Text('$value', style: AppTypography.display(size: 28)),
-          Text(
-            label.toUpperCase(),
-            style: AppTypography.label(size: 10, tracking: 2, color: AppColors.textSecondary),
+          const SizedBox(height: 2),
+          // Una sola línea siempre: si no cabe, la letra se achica en vez de partirse.
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                label.toUpperCase(),
+                maxLines: 1,
+                style: AppTypography.label(size: 10, tracking: 1, color: AppColors.textSecondary),
+              ),
+            ),
           ),
         ],
       ),

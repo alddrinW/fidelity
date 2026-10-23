@@ -13,6 +13,7 @@ import '../../core/widgets/app_page_header.dart';
 import '../../core/widgets/app_photo_picker.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../../core/widgets/app_text_field.dart';
+import '../../core/widgets/birth_date_field.dart';
 import 'data/auth_repository.dart';
 import '../../core/l10n/tr_text.dart';
 
@@ -34,6 +35,9 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   final _confirmPasswordController = TextEditingController();
   final _fullNameController = TextEditingController();
   final _phoneController = TextEditingController();
+
+  /// Opcional: con ella, el local del cliente lo saluda y puede regalarle algo.
+  DateTime? _birthDate;
 
   bool _isLoading = false;
   Uint8List? _avatarBytes;
@@ -75,6 +79,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         fullName: _fullNameController.text.trim(),
         role: widget.role,
         phone: _phoneController.text.trim(),
+        birthDate: _birthDate == null ? null : BirthDate.toApi(_birthDate!),
       );
 
       if (!mounted) return;
@@ -205,13 +210,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             ],
                             validator: AppValidators.validateEcuadorPhone,
                           ),
+                          // Solo los clientes tienen cumpleaños que celebrar con sus locales.
+                          if (widget.role == 'client') ...[
+                            const SizedBox(height: 16),
+                            BirthDateField(
+                              value: _birthDate,
+                              onChanged: (date) => setState(() => _birthDate = date),
+                            ),
+                          ],
                           const SizedBox(height: 16),
                           AppTextField(
                             controller: _passwordController,
                             hint: 'Contraseña',
                             icon: Icons.lock_outline_rounded,
                             isPassword: true,
-                            helperText: 'Mínimo 6 caracteres',
+                            helperText: 'Mínimo 8 caracteres, con letras y números',
                             textInputAction: TextInputAction.next,
                             autofillHints: const [AutofillHints.newPassword],
                             validator: AppValidators.validatePassword,

@@ -54,8 +54,13 @@ class AppValidators {
       return 'Ingresa tu contraseña';
     }
 
-    if (value.length < 6) {
-      return 'Mínimo 6 caracteres';
+    if (value.length < 8) {
+      return 'Mínimo 8 caracteres';
+    }
+
+    // Letras y números (las reglas del servidor; él además rechaza las más comunes).
+    if (!RegExp(r'[A-Za-zÁÉÍÓÚáéíóúÑñÜü]').hasMatch(value) || !RegExp(r'\d').hasMatch(value)) {
+      return 'Usa letras y números';
     }
 
     return null;

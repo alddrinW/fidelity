@@ -54,6 +54,10 @@ class MyCardsRepository {
           'logo_url': business['logoUrl'] ?? business['logo_url'],
         },
         'pending_scans': (raw['pendingScans'] as num?)?.toInt() ?? 0,
+        // La insignia FidelyUsuario de este local.
+        'verified_scans': (raw['verifiedScans'] as num?)?.toInt() ?? 0,
+        'fidely_required': (raw['fidelyRequired'] as num?)?.toInt() ?? 3,
+        'is_fidely': raw['isFidely'] == true,
         'rewards': raw['rewards'] ?? [],
       };
     }).toList();

@@ -151,9 +151,8 @@ void main() {
       expect(find.text('Servicios · Av. Amazonas N31, Quito'), findsOneWidget);
       expect(find.text('TUS SELLOS'), findsOneWidget);
       expect(find.text('3 / 10'), findsOneWidget);
-      expect(find.text('TU PREMIO'), findsOneWidget);
-      // El premio aparece en la franja y en el mensaje de los sellos.
-      expect(find.text('hiernalife 20% de descuento'), findsOneWidget);
+      // El premio ya no lleva una franja aparte: va en el mensaje de los sellos.
+      expect(find.text('TU PREMIO'), findsNothing);
       expect(find.text('Te faltan 7 puntos para: hiernalife 20% de descuento'), findsOneWidget);
       // Sin logo cargado se ve el ícono de tienda.
       expect(find.byIcon(Icons.storefront_outlined), findsOneWidget);
@@ -166,8 +165,8 @@ void main() {
       expect(stamp('falta'), findsOneWidget);
       expect(find.text('7 / 8'), findsOneWidget);
       expect(find.text('Un punto más y consigues: hiernalife 20% de descuento'), findsOneWidget);
-      // El último sello es el regalo (y otro regalo va en la franja del premio).
-      expect(find.byIcon(Icons.card_giftcard_rounded), findsNWidgets(2));
+      // El último sello es el regalo.
+      expect(find.byIcon(Icons.card_giftcard_rounded), findsOneWidget);
     });
 
     testWidgets('con todos los puntos el premio está listo', (tester) async {
@@ -175,6 +174,12 @@ void main() {
 
       expect(stamp('ganado'), findsNWidgets(10));
       expect(stamp('falta'), findsNothing);
+      expect(find.text('¡Tu premio está listo: hiernalife 20% de descuento!'), findsOneWidget);
+    });
+
+    testWidgets('con el premio listo y un local sin premio descrito, el mensaje no lo nombra', (tester) async {
+      await _open(tester, _FakeHistory(points: 10, required: 10, reward: ''));
+
       expect(find.text('¡Tu premio está listo!'), findsOneWidget);
     });
 
@@ -185,7 +190,7 @@ void main() {
       expect(find.text('5 / 30'), findsOneWidget);
     });
 
-    testWidgets('un local sin premio descrito no muestra la franja negra', (tester) async {
+    testWidgets('un local sin premio descrito solo dice que falta para "tu premio"', (tester) async {
       await _open(tester, _FakeHistory(reward: ''));
 
       expect(find.text('TU PREMIO'), findsNothing);

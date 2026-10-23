@@ -15,6 +15,9 @@ class AuthUser {
   final String role;
   final String? avatarUrl;
   final String? phone;
+
+  /// Fecha de nacimiento (`AAAA-MM-DD`), si la dio.
+  final String? birthDate;
   final String? businessId;
   final bool isDemo;
   final Map<String, dynamic> raw;
@@ -26,6 +29,7 @@ class AuthUser {
     required this.role,
     this.avatarUrl,
     this.phone,
+    this.birthDate,
     this.businessId,
     this.isDemo = false,
     required this.raw,
@@ -39,6 +43,7 @@ class AuthUser {
       role: json['role']?.toString() ?? 'client',
       avatarUrl: json['avatarUrl']?.toString() ?? json['avatar_url']?.toString(),
       phone: json['phone']?.toString(),
+      birthDate: json['birthDate']?.toString() ?? json['birth_date']?.toString(),
       businessId: json['businessId']?.toString() ?? json['business_id']?.toString(),
       isDemo: json['isDemo'] == true || json['is_demo'] == true,
       raw: json,
@@ -110,6 +115,7 @@ class AuthRepository {
     required String fullName,
     String role = 'client',
     String? phone,
+    String? birthDate,
     String? avatarUrl,
     String? fcmToken,
   }) async {
@@ -119,6 +125,7 @@ class AuthRepository {
       'fullName': fullName.trim(),
       'role': role,
       if (phone != null && phone.isNotEmpty) 'phone': phone.trim(),
+      if (birthDate != null && birthDate.isNotEmpty) 'birthDate': birthDate,
       if (avatarUrl != null) 'avatarUrl': avatarUrl,
       if (fcmToken != null) 'fcmToken': fcmToken,
     });

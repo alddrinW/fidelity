@@ -10,7 +10,9 @@ import '../../../../../core/widgets/app_card.dart';
 import '../../../../../core/widgets/app_chip.dart';
 import '../../../../../core/widgets/app_empty_state.dart';
 import '../../../../../core/widgets/app_text_field.dart';
+import '../../../../../core/widgets/fidely_badge.dart';
 import '../../../../../core/widgets/person_avatar.dart';
+import '../../../../admin/widgets/admin_widgets.dart';
 import '../../providers/dashboard_provider.dart';
 import '../client_detail_screen.dart';
 import '../pending_reward_notice.dart';
@@ -26,6 +28,9 @@ class TabCustomers extends ConsumerStatefulWidget {
 
 class _TabCustomersState extends ConsumerState<TabCustomers> {
   String _searchQuery = '';
+
+  /// Solo los clientes con la insignia FidelyUsuario.
+  bool _onlyFidely = false;
 
   Future<void> _addPoints(Map<String, dynamic> card) async {
     final points = await showDialog<int>(
@@ -62,12 +67,13 @@ class _TabCustomersState extends ConsumerState<TabCustomers> {
     if (business == null) return const SizedBox();
 
     final query = _searchQuery.trim().toLowerCase();
-    final filtered = query.isEmpty
-        ? customers
-        : customers.where((card) {
-            final name = card['profiles']?['full_name']?.toString().toLowerCase() ?? '';
-            return name.contains(query);
-          }).toList();
+    final fidelyCount = customers.where((c) => c['is_fidely'] == true).length;
+    final filtered = customers.where((card) {
+      if (_onlyFidely && card['is_fidely'] != true) return false;
+      if (query.isEmpty) return true;
+      final name = card['profiles']?['full_name']?.toString().toLowerCase() ?? '';
+      return name.contains(query);
+    }).toList();
 
     return Column(
       children: [
@@ -82,6 +88,30 @@ class _TabCustomersState extends ConsumerState<TabCustomers> {
             onChanged: (value) => setState(() => _searchQuery = value),
           ),
         ),
+        // Todos, o solo los FidelyUsuarios (los que ya son fieles a este local).
+        if (fidelyCount > 0)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(24, 0, 24, 12),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  AdminFilterPill(
+                    label: 'Todos (${customers.length})',
+                    selected: !_onlyFidely,
+                    onTap: () => setState(() => _onlyFidely = false),
+                  ),
+                  AdminFilterPill(
+                    label: 'FidelyUsuarios ($fidelyCount)',
+                    selected: _onlyFidely,
+                    onTap: () => setState(() => _onlyFidely = true),
+                  ),
+                ],
+              ),
+            ),
+          ),
         Expanded(
           child: filtered.isEmpty
               ? AppEmptyState(
@@ -137,6 +167,11 @@ class _TabCustomersState extends ConsumerState<TabCustomers> {
                                     ],
                                   ],
                                 ),
+                                // Su insignia: es fiel a este local.
+                                if (card['is_fidely'] == true) ...[
+                                  const SizedBox(height: 4),
+                                  const FidelyBadge(compact: true),
+                                ],
                                 const SizedBox(height: 2),
                                 Text(
                                   '${card['current_points'] ?? 0}/${business['points_required'] ?? '?'} PUNTOS',

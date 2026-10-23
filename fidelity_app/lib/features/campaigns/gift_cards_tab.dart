@@ -9,6 +9,7 @@ import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/app_chip.dart';
 import '../../core/widgets/app_empty_state.dart';
+import '../birthdays/birthday_gift_screen.dart';
 import 'data/campaigns_repository.dart';
 import 'gift_card_form_screen.dart';
 import 'gift_card_manage_screen.dart';
@@ -24,6 +25,13 @@ class GiftCardsTab extends ConsumerWidget {
   Future<void> _create(BuildContext context, WidgetRef ref) async {
     await Navigator.of(context).push<bool>(
       MaterialPageRoute(builder: (_) => const GiftCardFormScreen()),
+    );
+    ref.invalidate(myCampaignsProvider);
+  }
+
+  Future<void> _birthday(BuildContext context, WidgetRef ref) async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute(builder: (_) => const BirthdayGiftScreen()),
     );
     ref.invalidate(myCampaignsProvider);
   }
@@ -45,6 +53,8 @@ class GiftCardsTab extends ConsumerWidget {
             label: 'Nueva gift card',
             onPressed: () => _create(context, ref),
           ),
+          const SizedBox(height: 12),
+          _BirthdayTemplateCard(onTap: () => _birthday(context, ref)),
           const SizedBox(height: 24),
           campaigns.when(
             loading: () => const Padding(
@@ -199,6 +209,44 @@ class _TileStat extends StatelessWidget {
             label.toUpperCase(),
             style: AppTypography.label(size: 10, tracking: 2, color: AppColors.textSecondary),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// La plantilla de cumpleaños: diseño y texto ya puestos; el dueño solo elige
+/// el premio, a quién y la hora.
+class _BirthdayTemplateCard extends StatelessWidget {
+  final VoidCallback onTap;
+
+  const _BirthdayTemplateCard({required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      radius: 28,
+      padding: const EdgeInsets.all(18),
+      color: AppColors.pink,
+      onTap: onTap,
+      child: Row(
+        children: [
+          const Icon(Icons.cake_rounded, size: 34),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('CUMPLEAÑOS', style: AppTypography.display(size: 22)),
+                const SizedBox(height: 2),
+                Text(
+                  'Plantilla lista: tú eliges el premio, a quién y la hora. Vale solo el día del cumpleaños.',
+                  style: AppTypography.body(size: 13, weight: FontWeight.w300),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right_rounded),
         ],
       ),
     );

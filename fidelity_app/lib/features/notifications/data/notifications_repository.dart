@@ -58,6 +58,8 @@ class AppNotification {
         'claim_redeemed' => Icons.check_circle_outline_rounded,
         'route_completed' || 'route_stamp' => Icons.route_rounded,
         'campaign' => Icons.campaign_outlined,
+        'birthday' => Icons.cake_outlined,
+        'fidely' => Icons.favorite_rounded,
         'business_activated' => Icons.storefront_outlined,
         'payment_rejected' => Icons.payments_outlined,
         'admin' => Icons.admin_panel_settings_outlined,

@@ -13,6 +13,7 @@ import '../../../core/widgets/app_message_dialog.dart';
 import '../../../core/widgets/app_nav_row.dart';
 import '../../../core/widgets/app_page_header.dart';
 import '../../../core/widgets/app_pill_tab_bar.dart';
+import '../../../core/widgets/app_quad_tab_bar.dart';
 import '../../../core/widgets/app_responsive_body.dart';
 import '../../auth/data/auth_repository.dart';
 import '../../auth/providers/auth_provider.dart';
@@ -293,8 +294,10 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
       shape: const RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(32)),
       ),
+      // Con pantallas bajas la lista no cabe: se desplaza en vez de desbordarse.
       builder: (sheetCtx) => SafeArea(
-        child: Column(
+        child: SingleChildScrollView(
+          child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
@@ -360,6 +363,7 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
             ),
             const SizedBox(height: 16),
           ],
+          ),
         ),
       ),
     );
@@ -608,7 +612,17 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
                 ),
               ),
               _fidoGuide(state, ownerName),
-              AppPillTabBar(controller: _tabController, labels: labels, badges: badges),
+              // El aprobador maneja sus cuatro secciones desde un cuadrado dividido
+              // en cuatro partes; el dueño, desde pastillas.
+              if (widget.approverMode)
+                AppQuadTabBar(
+                  controller: _tabController,
+                  labels: labels,
+                  icons: icons,
+                  badges: badges,
+                )
+              else
+                AppPillTabBar(controller: _tabController, labels: labels, badges: badges),
               const SizedBox(height: 16),
               Expanded(child: TabBarView(controller: _tabController, children: views)),
                 ],

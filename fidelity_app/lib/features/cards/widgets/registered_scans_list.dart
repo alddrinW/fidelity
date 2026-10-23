@@ -5,6 +5,7 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/image_source.dart';
 import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/fidely_badge.dart';
 
 /// "MIS ESCANEOS REGISTRADOS": los locales donde el cliente ya escaneó, con
 /// su avance hacia el premio. Tocar uno abre su historial (escaneos y premios).
@@ -101,6 +102,11 @@ class _ScanCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.display(size: 24),
                 ),
+                // Su insignia: ya es fiel a este local.
+                if (card['is_fidely'] == true) ...[
+                  const SizedBox(height: 6),
+                  const FidelyBadge(compact: true),
+                ],
                 if (reward != null && reward.isNotEmpty) ...[
                   const SizedBox(height: 4),
                   Text('PREMIO', style: AppTypography.label(size: 11, tracking: 2)),

@@ -17,6 +17,7 @@ import '../../features/campaigns/my_gifts_screen.dart';
 import 'inbox_events.dart';
 import '../../features/games/game_invite_screen.dart';
 import '../../features/admin/admin_games_screen.dart';
+import '../../features/birthdays/birthday_gift_screen.dart';
 
 class PushNotificationService {
   static final _localNotifications = FlutterLocalNotificationsPlugin();
@@ -162,10 +163,38 @@ class PushNotificationService {
           MaterialPageRoute(builder: (_) => GameInviteScreen(inviteId: inviteId)),
         );
       }
+    } else if (route == '/birthdays') {
+      // El aviso de cumpleaños lleva a la plantilla de gift card de cumpleaños,
+      // con ese cliente ya marcado.
+      final userId = data['user_id'] as String?;
+      final businessId = data['business_id'] as String?;
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => BirthdayGiftScreen(initialUserId: userId, initialBusinessId: businessId),
+        ),
+      );
     } else if (route == '/admin_games') {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminGamesScreen()));
     } else if (route == '/business_dashboard/games') {
       // Los juegos del dueño viven en "Crear y gestionar": se vuelve al panel.
+    } else if (route == '/fidely_user') {
+      // "¡Ya eres FidelyUsuario!": se abre la tarjeta del local, donde se ve su insignia.
+      final loyaltyCardId = data['loyalty_card_id'] as String?;
+      final businessId = data['business_id'] as String?;
+      if (loyaltyCardId != null && loyaltyCardId.isNotEmpty && businessId != null && businessId.isNotEmpty) {
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => CardHistoryScreen(
+              loyaltyCardId: loyaltyCardId,
+              businessId: businessId,
+              businessName: data['business_name'] as String? ?? '',
+            ),
+          ),
+        );
+      }
+    } else if (route == '/business_dashboard/customers') {
+      // "Nuevo FidelyUsuario": la lista de clientes del dueño.
+      BusinessDashboardScreen.goToTab(0);
     } else if (route == '/my_gifts') {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MyGiftsScreen()));
     } else if (route == '/business_dashboard/pending') {

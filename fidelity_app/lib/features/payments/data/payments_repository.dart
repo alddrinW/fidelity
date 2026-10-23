@@ -323,6 +323,23 @@ class PaymentsRepository {
     return PaymentPlan.fromJson(Map<String, dynamic>.from(response as Map));
   }
 
+  /// El administrador fija las cuentas bancarias; devuelve el plan ya actualizado.
+  Future<PaymentPlan> updateBankAccounts(List<BankAccount> accounts) async {
+    final response = await _api.put('payments/bank-accounts', body: {
+      'accounts': [
+        for (final a in accounts)
+          {
+            'name': a.bank ?? '',
+            'accountNumber': a.accountNumber,
+            'accountType': a.accountType ?? '',
+            'holder': a.holder ?? '',
+            if ((a.taxId ?? '').isNotEmpty) 'taxId': a.taxId,
+          },
+      ],
+    });
+    return PaymentPlan.fromJson(Map<String, dynamic>.from(response as Map));
+  }
+
   Future<List<PaymentOrder>> listMine() async {
     final response = await _api.get('payments/mine');
     return _parseList(response);

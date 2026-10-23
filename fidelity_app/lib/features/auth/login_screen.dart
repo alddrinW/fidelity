@@ -324,8 +324,7 @@ class _RecoveryDialogState extends ConsumerState<_RecoveryDialog> {
                   isPassword: true,
                   textInputAction: TextInputAction.done,
                   onSubmitted: (_) => _changePassword(),
-                  validator: (v) =>
-                      (v?.length ?? 0) >= 6 ? null : 'Mínimo 6 caracteres',
+                  validator: AppValidators.validatePassword,
                 ),
               ],
               if (_error != null) ...[

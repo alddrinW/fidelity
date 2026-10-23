@@ -14,6 +14,7 @@ class UserProfileRepository {
         'full_name': response['fullName'] ?? response['full_name'] ?? '',
         'email': response['email'] ?? '',
         'phone': response['phone'] ?? '',
+        'birth_date': response['birthDate'] ?? response['birth_date'],
         'avatar_url': response['avatarUrl'] ?? response['avatar_url'],
         'role': response['role'] ?? 'client',
       };
@@ -23,15 +24,19 @@ class UserProfileRepository {
 
   /// Actualiza nombre, teléfono y, si se indica, la foto de perfil.
   /// [avatarDataUri] es la imagen como data URI base64 (ver `image_source.dart`).
+  /// [birthDate] es `AAAA-MM-DD`; el texto vacío borra la fecha guardada y
+  /// null la deja como está.
   Future<void> updateProfile({
     required String userId,
     required String fullName,
     required String phone,
     String? avatarDataUri,
+    String? birthDate,
   }) async {
     await _api.put('users/profile', body: {
       'fullName': fullName.trim(),
       'phone': phone.trim(),
+      if (birthDate != null) 'birthDate': birthDate,
       if (avatarDataUri != null) 'avatarUrl': avatarDataUri,
     });
   }

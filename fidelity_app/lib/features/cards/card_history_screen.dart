@@ -15,6 +15,7 @@ import '../../core/widgets/app_empty_state.dart';
 import '../../core/widgets/app_pill_tab_bar.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../../core/widgets/app_text_field.dart';
+import '../../core/widgets/fidely_badge.dart';
 import '../feedback/widgets/feedback_sheet.dart';
 import '../campaigns/campaign_detail_screen.dart';
 import '../campaigns/data/campaigns_repository.dart';
@@ -155,6 +156,7 @@ class _CardHistoryScreenState extends ConsumerState<CardHistoryScreen> {
                             points: (card['current_points'] as num?)?.toInt() ?? 0,
                             required: (card['points_required'] as num?)?.toInt() ?? 10,
                             reward: card['reward_description']?.toString().trim() ?? '',
+                            fidely: FidelyInfo.fromMap(card),
                             hasData: card.isNotEmpty,
                             range: range,
                             rangeLabel: range == null
@@ -410,7 +412,8 @@ class _PinnedTabs extends SliverPersistentHeaderDelegate {
 }
 
 /// La cabecera de la tarjeta de un local: una franja rosa con el logo del
-/// negocio, su nombre y dónde queda, y debajo sus sellos y su premio.
+/// negocio, su nombre y dónde queda, y debajo sus sellos (el premio va en el
+/// mensaje de la tarjeta de sellos).
 class _CardHeader extends StatelessWidget {
   final String name;
   final String? logoUrl;
@@ -418,6 +421,9 @@ class _CardHeader extends StatelessWidget {
   final int points;
   final int required;
   final String reward;
+
+  /// Su insignia FidelyUsuario en este local (o cuánto le falta).
+  final FidelyInfo fidely;
 
   /// Si ya llegaron los datos de la tarjeta (antes solo se sabe el nombre).
   final bool hasData;
@@ -433,6 +439,7 @@ class _CardHeader extends StatelessWidget {
     required this.points,
     required this.required,
     required this.reward,
+    required this.fidely,
     required this.hasData,
     required this.range,
     required this.rangeLabel,
@@ -545,11 +552,10 @@ class _CardHeader extends StatelessWidget {
               ],
               if (hasData) ...[
                 const SizedBox(height: 16),
+                // Al entrar al local: su insignia FidelyUsuario o cuánto le falta.
+                FidelyStatusCard(info: fidely, businessName: name),
+                const SizedBox(height: 12),
                 _StampsCard(points: points, required: required, reward: reward),
-                if (reward.isNotEmpty) ...[
-                  const SizedBox(height: 10),
-                  _PrizeStrip(reward: reward),
-                ],
               ],
               const SizedBox(height: 8),
             ],
@@ -579,7 +585,7 @@ class _StampsCard extends StatelessWidget {
 
     final String message;
     if (left == 0) {
-      message = '¡Tu premio está listo!';
+      message = reward.isEmpty ? '¡Tu premio está listo!' : '¡Tu premio está listo: $reward!';
     } else if (left == 1) {
       message = reward.isEmpty ? 'Te falta 1 punto para tu premio' : 'Un punto más y consigues: $reward';
     } else {
@@ -683,46 +689,6 @@ class _DashedCirclePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
-}
-
-/// La franja negra con el premio del local.
-class _PrizeStrip extends StatelessWidget {
-  final String reward;
-
-  const _PrizeStrip({required this.reward});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.fromLTRB(12, 10, 16, 10),
-      decoration: BoxDecoration(color: AppColors.black, borderRadius: BorderRadius.circular(22)),
-      child: Row(
-        children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: const BoxDecoration(color: AppColors.pink, shape: BoxShape.circle),
-            child: const Icon(Icons.card_giftcard_rounded, size: 20, color: AppColors.black),
-          ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('TU PREMIO', style: AppTypography.display(size: 15, color: AppColors.white)),
-                Text(
-                  reward,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: AppTypography.body(size: 13, weight: FontWeight.w300, color: AppColors.white),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
 }
 
 /// Botón flotante de "Sugerencia o reclamo": un círculo rosa con el ícono de

@@ -48,7 +48,7 @@ class FaqsScreen extends StatelessWidget {
       icon: Icons.lock_reset_rounded,
       question: '¿Cómo cambio mi contraseña?',
       answer:
-          'En Mi perfil toca "Cambiar contraseña", ingresa la actual y la nueva (mínimo 6 caracteres). Tu correo no se puede modificar.',
+          'En Mi perfil toca "Cambiar contraseña", ingresa la actual y la nueva (mínimo 8 caracteres, con letras y números). Tu correo no se puede modificar.',
     ),
     FaqItem(
       icon: Icons.logout_rounded,

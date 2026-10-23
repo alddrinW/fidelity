@@ -10,6 +10,7 @@ import 'core/l10n/app_language.dart';
 import 'core/theme/app_theme.dart';
 import 'core/services/api_client.dart';
 import 'features/auth/auth_wrapper.dart';
+import 'features/splash/fidelity_intro.dart';
 
 final GlobalKey<NavigatorState> globalNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -40,7 +41,10 @@ void main() async {
 }
 
 class FidelityApp extends ConsumerWidget {
-  const FidelityApp({super.key});
+  /// Si se muestra la animación de entrada (Fido escaneando) al abrir la app.
+  final bool playIntro;
+
+  const FidelityApp({super.key, this.playIntro = true});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -59,6 +63,8 @@ class FidelityApp extends ConsumerWidget {
         GlobalCupertinoLocalizations.delegate,
       ],
       navigatorKey: globalNavigatorKey,
+      // La animación de entrada va encima de toda la app, la primera vez que se abre.
+      builder: (context, child) => FidelityIntroOverlay(enabled: playIntro, child: child ?? const SizedBox.shrink()),
       // En PC los carruseles y las filas de filtros también se arrastran con el ratón.
       scrollBehavior: const MaterialScrollBehavior().copyWith(
         dragDevices: {

@@ -16,6 +16,7 @@ import 'admin_activity_screen.dart';
 import 'admin_businesses_screen.dart';
 import 'admin_payments_screen.dart';
 import 'admin_games_screen.dart';
+import 'admin_settings_screen.dart';
 import '../notifications/widgets/notification_bell.dart';
 import '../feedback/data/feedback_repository.dart';
 import '../feedback/feedback_inbox_screen.dart';
@@ -143,6 +144,7 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       (Icons.history_rounded, 'Actividad global', const AdminActivityScreen()),
       (Icons.forum_outlined, 'Sugerencias y reclamos', _feedbackInbox()),
       (Icons.card_giftcard_rounded, 'Gestión de premios', const AdminRewardsScreen()),
+      (Icons.tune_rounded, 'Ajustes del sistema', const AdminSettingsScreen()),
     ];
 
     return AdminPageFrame(

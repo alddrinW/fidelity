@@ -165,6 +165,9 @@ class Campaign {
   final String title;
   final String? description;
   final String? imageUrl;
+
+  /// Plantilla con la que se creó (`birthday`): lleva su propio diseño y texto.
+  final String? template;
   final CampaignBenefit? benefitType;
   final int? benefitValue;
   final String? benefitLabel;
@@ -199,6 +202,7 @@ class Campaign {
     required this.businesses,
     this.description,
     this.imageUrl,
+    this.template,
     this.benefitType,
     this.benefitValue,
     this.benefitLabel,
@@ -213,6 +217,9 @@ class Campaign {
     this.completed = false,
     this.stats,
   });
+
+  /// Es una gift card de cumpleaños (plantilla): vale solo el día del cumpleaños.
+  bool get isBirthday => template == 'birthday';
 
   /// Sellos necesarios para completar la ruta.
   int get stampsNeeded => requiredStamps ?? businesses.length;
@@ -233,6 +240,7 @@ class Campaign {
       title: json['title']?.toString() ?? '',
       description: json['description']?.toString(),
       imageUrl: json['imageUrl']?.toString(),
+      template: json['template']?.toString(),
       benefitType: CampaignBenefit.parse(json['benefitType']),
       benefitValue: (json['benefitValue'] as num?)?.toInt(),
       benefitLabel: json['benefitLabel']?.toString(),

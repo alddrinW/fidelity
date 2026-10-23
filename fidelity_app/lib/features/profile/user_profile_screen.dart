@@ -13,6 +13,7 @@ import '../../core/widgets/app_nav_row.dart';
 import '../../core/widgets/app_page_header.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../../core/widgets/app_text_field.dart';
+import '../../core/widgets/birth_date_field.dart';
 import '../../core/widgets/user_avatar_circle.dart';
 import '../auth/data/auth_repository.dart';
 import '../campaigns/my_gifts_screen.dart';
@@ -55,8 +56,14 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
   /// Foto elegida y aún no guardada.
   PickedImage? _newAvatar;
 
+  /// Fecha de nacimiento (opcional, solo clientes).
+  DateTime? _birthDate;
+
   bool get _isBusinessOwner =>
       ref.read(authRepositoryProvider).currentUser?.role == 'business';
+
+  /// Solo los clientes tienen cumpleaños que celebrar con sus locales.
+  bool get _isClient => ref.read(authRepositoryProvider).currentUser?.role == 'client';
 
   @override
   void initState() {
@@ -65,6 +72,7 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
     _fullNameController = TextEditingController(text: state.fullName);
     _phoneController = TextEditingController(text: state.phone);
     _emailController = TextEditingController(text: state.email ?? '');
+    _birthDate = BirthDate.parse(state.birthDate);
   }
 
   @override
@@ -99,6 +107,8 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
           fullName: _fullNameController.text,
           phone: _phoneController.text,
           avatarDataUri: _newAvatar?.dataUri,
+          // El texto vacío borra la fecha; los demás roles no la mandan.
+          birthDate: _isClient ? (_birthDate == null ? '' : BirthDate.toApi(_birthDate!)) : null,
         );
 
     if (!mounted) return;
@@ -238,6 +248,9 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
       if (previous?.phone != next.phone && next.phone.isNotEmpty) {
         _phoneController.text = next.phone;
       }
+      if (previous?.birthDate != next.birthDate) {
+        setState(() => _birthDate = BirthDate.parse(next.birthDate));
+      }
       if (previous?.email != next.email && (next.email ?? '').isNotEmpty) {
         _emailController.text = next.email!;
       }
@@ -310,6 +323,13 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
                               ],
                               validator: AppValidators.validateEcuadorPhone,
                             ),
+                            if (_isClient) ...[
+                              const SizedBox(height: 16),
+                              BirthDateField(
+                                value: _birthDate,
+                                onChanged: (date) => setState(() => _birthDate = date),
+                              ),
+                            ],
                             const SizedBox(height: 16),
                             AppNavRow(
                               icon: Icons.lock_outline_rounded,

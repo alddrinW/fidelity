@@ -13,6 +13,7 @@ import '../payments/data/payments_repository.dart';
 import 'admin_payment_detail_screen.dart';
 import 'widgets/admin_widgets.dart';
 import 'widgets/payment_review.dart';
+import 'widgets/bank_accounts_dialog.dart';
 import 'widgets/prices_dialog.dart';
 import '../../core/l10n/tr_text.dart';
 import '../../core/l10n/translator.dart';
@@ -100,10 +101,21 @@ class _AdminPaymentsScreenState extends State<AdminPaymentsScreen> {
 
     return AdminPageFrame(
       title: 'Pagos',
-      headerTrailing: IconButton(
-        tooltip: context.tr('Precios del registro'),
-        icon: const Icon(Icons.sell_outlined),
-        onPressed: () => showPricesDialog(context, _repository),
+      headerTrailingWidth: 96,
+      headerTrailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: context.tr('Cuentas bancarias'),
+            icon: const Icon(Icons.account_balance_outlined),
+            onPressed: () => showBankAccountsDialog(context, _repository),
+          ),
+          IconButton(
+            tooltip: context.tr('Precios del registro'),
+            icon: const Icon(Icons.sell_outlined),
+            onPressed: () => showPricesDialog(context, _repository),
+          ),
+        ],
       ),
       body: RefreshIndicator(
         onRefresh: _load,
