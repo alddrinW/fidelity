@@ -1089,6 +1089,23 @@ describe('CampaignsService', () => {
         expect(campaignRepo.save).not.toHaveBeenCalled();
       });
 
+      it('sin plantilla no guarda ninguna (la API no la puede pedir)', async () => {
+        await service.create(owner, giftDto({ template: 'birthday' }) as any);
+
+        expect(campaignRepo.create.mock.calls[0][0].template).toBeNull();
+      });
+
+      it('con la plantilla de cumpleaños (solo el servidor) la guarda', async () => {
+        await service.create(owner, giftDto() as any, { template: 'birthday' });
+
+        expect(campaignRepo.create.mock.calls[0][0].template).toBe('birthday');
+      });
+
+      it('la vista de la campaña incluye la plantilla', () => {
+        expect(service.toView(gift({ template: 'birthday' }) as any).template).toBe('birthday');
+        expect(service.toView(gift() as any).template).toBeNull();
+      });
+
       it('un evento ignora la audiencia elegida', async () => {
         await service.create(
           owner,
@@ -1118,6 +1135,20 @@ describe('CampaignsService', () => {
           ['u1', 'u2'],
           expect.stringContaining('te regaló una gift card'),
           expect.stringContaining('Mis regalos'),
+          { type: 'gift_card', campaign_id: 'c1', route: '/my_gifts' },
+        );
+      });
+
+      it('la gift card de cumpleaños avisa que vale solo ese día', async () => {
+        campaignRepo.findOne.mockResolvedValue(gift({ template: 'birthday' }));
+        cardRepo.find.mockResolvedValue([{ userId: 'u1' }]);
+
+        await service.dispatch('c1');
+
+        expect(notifications.sendToUsers).toHaveBeenCalledWith(
+          ['u1'],
+          expect.stringContaining('te regaló una gift card de cumpleaños'),
+          expect.stringContaining('Vale solo hoy'),
           { type: 'gift_card', campaign_id: 'c1', route: '/my_gifts' },
         );
       });

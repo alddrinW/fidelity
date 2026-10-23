@@ -53,6 +53,11 @@ describe('notificationTranslator', () => {
       ['Tarjeta canjeada', 'Card redeemed'],
       ['Canjeaste: 20% de descuento. ¡Disfrútalo!', 'You redeemed: 20% off. Enjoy!'],
       ['Café Aurora te regaló una gift card', 'Café Aurora gave you a gift card'],
+      ['Café Aurora te regaló una gift card de cumpleaños', 'Café Aurora gave you a birthday gift card'],
+      [
+        '15% de descuento. Vale solo hoy: ábrela en Mis regalos y muestra su código.',
+        '15% off. Valid today only: open it in My gifts and show its code.',
+      ],
       [
         '20% de descuento. Ábrela en Mis regalos y muestra su código.',
         '20% off. Open it in My gifts and show its code.',
@@ -90,6 +95,19 @@ describe('notificationTranslator', () => {
       [
         'La foto no se ve. Puedes reportarlo de nuevo desde la app.',
         'La foto no se ve. You can report it again from the app.',
+      ],
+      // FidelyUsuario
+      ['¡Ya eres FidelyUsuario de Café Aurora!', 'You are now a FidelyUsuario at Café Aurora!'],
+      ['Nuevo FidelyUsuario', 'New FidelyUsuario'],
+      [
+        'Ana Pérez ya es FidelyUsuario de Café Aurora: 3 escaneos aprobados.',
+        'Ana Pérez is now a FidelyUsuario at Café Aurora: 3 approved scans.',
+      ],
+      // cumpleaños
+      ['Hoy cumple años Ana Pérez', 'Ana Pérez has a birthday today'],
+      [
+        'Ana Pérez es cliente de Café Aurora. Regálale una gift card para celebrarlo.',
+        'Ana Pérez is a customer of Café Aurora. Send them a gift card to celebrate.',
       ],
       // minijuegos
       ['Solicitud de minijuegos', 'Mini-games request'],

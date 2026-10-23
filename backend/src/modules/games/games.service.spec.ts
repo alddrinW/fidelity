@@ -19,6 +19,9 @@ import { UserRole } from '../../database/entities/profile.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BusinessAccessService } from '../businesses/business-access.service';
 import { FLAPPY_MIN_MS_PER_PIPE, FLAPPY_TARGET } from './games.logic';
+import { SettingsService } from '../settings/settings.service';
+import { SETTING_KEYS } from '../settings/settings.definitions';
+import { fakeSettings } from '../settings/settings.testing';
 
 const owner = { id: 'owner-1', role: UserRole.BUSINESS };
 const admin = { id: 'admin-1', role: UserRole.ADMIN };
@@ -34,6 +37,7 @@ describe('GamesService', () => {
   let cardRepo: any;
   let notifications: any;
   let access: any;
+  let settings: ReturnType<typeof fakeSettings>;
 
   const business = (extra: any = {}) => ({
     id: 'b1',
@@ -112,6 +116,7 @@ describe('GamesService', () => {
       broadcastToAdmins: jest.fn().mockResolvedValue(undefined),
     };
     access = { canManage: jest.fn().mockResolvedValue(true) };
+    settings = fakeSettings();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -125,6 +130,7 @@ describe('GamesService', () => {
         { provide: getRepositoryToken(LoyaltyCard), useValue: cardRepo },
         { provide: NotificationsService, useValue: notifications },
         { provide: BusinessAccessService, useValue: access },
+        { provide: SettingsService, useValue: settings },
       ],
     }).compile();
     service = module.get(GamesService);
@@ -329,6 +335,13 @@ describe('GamesService', () => {
       expect(w.endsAt.getTime()).toBe(now.getTime() + INVITE_TTL_MS);
     });
 
+    it('con los límites del administrador: duración por defecto y máxima', () => {
+      const limits = { defaultDurationMs: 2 * 24 * 3600_000, maxDurationMs: 5 * 24 * 3600_000 };
+
+      expect(resolveGameWindow(undefined, undefined, now, limits).endsAt.getTime()).toBe(now.getTime() + 2 * 24 * 3600_000);
+      expect(() => resolveGameWindow(at(0), at(6 * 24 * 60), now, limits)).toThrow('más de 5 días');
+    });
+
     it('respeta el inicio y el fin que pone el dueño', () => {
       const w = resolveGameWindow(at(60), at(180), now);
 
@@ -404,6 +417,32 @@ describe('GamesService', () => {
         'Café Aurora te reta a jugar',
         expect.stringMatching(/^Juega Ahorcado y gana: 20% de descuento\. Tienes 3 intentos hasta el /),
         { type: 'game_invite', route: '/play_game', invite_id: 'i-u1', game: 'hangman' },
+      );
+    });
+
+    it('usa lo que fijó el administrador: intentos, duración y clientes por envío', async () => {
+      settings.get.mockImplementation(
+        fakeSettings({
+          [SETTING_KEYS.gameMaxAttempts]: 5,
+          [SETTING_KEYS.gameDefaultDays]: 2,
+          [SETTING_KEYS.gameMaxAudience]: 10,
+        }).get,
+      );
+      cardRepo.find.mockResolvedValue(Array.from({ length: 30 }, (_, i) => ({ userId: `c${i}` })));
+
+      const result = await send();
+
+      // Con tope de 10 clientes por envío solo se les manda a 10.
+      expect(result.sent).toBe(10);
+      expect(cardRepo.find).toHaveBeenCalledWith(expect.objectContaining({ take: 20 }));
+      const first = inviteRepo.save.mock.calls[0][0][0];
+      expect(first.expiresAt.getTime()).toBeLessThan(Date.now() + 2 * 24 * 3600_000 + 5000);
+      expect(first.expiresAt.getTime()).toBeGreaterThan(Date.now() + 2 * 24 * 3600_000 - 5000);
+      expect(notifications.sendToUser).toHaveBeenCalledWith(
+        'c0',
+        expect.any(String),
+        expect.stringContaining('Tienes 5 intentos hasta el '),
+        expect.any(Object),
       );
     });
 
@@ -540,6 +579,11 @@ describe('GamesService', () => {
       expect(stats).toEqual({ sent: 4, played: 2, won: 1 });
       expect(items.map((i) => i.status)).toEqual(['finished', 'sent', 'expired', 'upcoming']);
       expect(items[1]).toMatchObject({ attempts: 1, maxAttempts: MAX_GAME_ATTEMPTS });
+
+      // Si el administrador cambia los intentos, se refleja en cuanto se consulta.
+      settings.get.mockImplementation(fakeSettings({ [SETTING_KEYS.gameMaxAttempts]: 6 }).get);
+      const again = await service.listSent(owner, 'b1');
+      expect(again.items[1]).toMatchObject({ attempts: 1, maxAttempts: 6 });
       expect(items[0]).toMatchObject({ gameName: 'Ahorcado', userName: 'Ana' });
       expect(items[1].userName).toBe('luis@mail.com');
     });

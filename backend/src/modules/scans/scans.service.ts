@@ -21,6 +21,7 @@ import { ValidateScanDto, AddManualPointsDto, UpdateScanStatusDto } from './dto/
 import { NotificationsService } from '../notifications/notifications.service';
 import { BusinessAccessService } from '../businesses/business-access.service';
 import { CampaignsService } from '../campaigns/campaigns.service';
+import { FidelyService } from '../loyalty-cards/fidely.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 /** Regla que impide registrar un escaneo, con el error a devolver al cliente. */
@@ -53,6 +54,7 @@ export class ScansService {
     private readonly dataSource: DataSource,
     private readonly businessAccess: BusinessAccessService,
     private readonly campaignsService: CampaignsService,
+    private readonly fidelyService: FidelyService,
   ) {}
 
   /**
@@ -619,6 +621,15 @@ export class ScansService {
 
       this.realtimeGateway.emitToUser(scan.userId, 'card:updated', updatedCard);
       this.emitScanStatus(scan, ScanStatus.APPROVED, rewardCompleted);
+
+      // FidelyUsuario (después del aviso del punto): al llegar a la cantidad de escaneos aprobados que fija el
+      // administrador, el cliente gana la insignia de este local. Un fallo aquí
+      // nunca debe afectar la aprobación.
+      try {
+        await this.fidelyService.onScanApproved(scan.userId, business.id, updatedCard.id);
+      } catch (error) {
+        this.logger.warn(`No se pudo revisar la insignia FidelyUsuario: ${error.message}`);
+      }
 
       return {
         ...approved,

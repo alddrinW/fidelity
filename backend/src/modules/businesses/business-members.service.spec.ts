@@ -15,6 +15,9 @@ import { Business } from '../../database/entities/business.entity';
 import { BusinessMember } from '../../database/entities/business-member.entity';
 import { Profile, UserRole } from '../../database/entities/profile.entity';
 import { NotificationsService } from '../notifications/notifications.service';
+import { SettingsService } from '../settings/settings.service';
+import { SETTING_KEYS } from '../settings/settings.definitions';
+import { fakeSettings } from '../settings/settings.testing';
 
 describe('BusinessMembersService', () => {
   let service: BusinessMembersService;
@@ -22,6 +25,7 @@ describe('BusinessMembersService', () => {
   let profileRepo: any;
   let businessRepo: any;
   let access: any;
+  let settings: ReturnType<typeof fakeSettings>;
   let notifications: any;
   let queryBuilder: any;
 
@@ -51,6 +55,7 @@ describe('BusinessMembersService', () => {
       findOne: jest.fn().mockResolvedValue({ id: 'b1', name: 'Cafe Aurora', ownerId: 'owner-1' }),
     };
     access = { canManage: jest.fn().mockResolvedValue(true) };
+    settings = fakeSettings();
     notifications = { sendToUser: jest.fn().mockResolvedValue(true) };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -61,6 +66,7 @@ describe('BusinessMembersService', () => {
         { provide: getRepositoryToken(Business), useValue: businessRepo },
         { provide: BusinessAccessService, useValue: access },
         { provide: NotificationsService, useValue: notifications },
+        { provide: SettingsService, useValue: settings },
       ],
     }).compile();
 
@@ -146,6 +152,13 @@ describe('BusinessMembersService', () => {
         BadRequestException,
       );
       expect(profileRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('el límite de aprobadores lo fija el administrador', async () => {
+      settings.get.mockImplementation(fakeSettings({ [SETTING_KEYS.maxApprovers]: 2 }).get);
+      memberRepo.count.mockResolvedValue(2);
+
+      await expect(service.add('b1', owner, 'luis@mail.com')).rejects.toThrow('hasta 2 aprobadores');
     });
 
     it('si falla la notificacion igual queda asignado', async () => {

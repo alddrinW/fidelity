@@ -10,6 +10,7 @@ import { ScanAttempt } from '../../database/entities/scan-attempt.entity';
 import { Reward } from '../../database/entities/reward.entity';
 import { SupportTicket } from '../../database/entities/support-ticket.entity';
 import { QrCode } from '../../database/entities/qr-code.entity';
+import { MailModule } from '../mail/mail.module';
 
 @Module({
   imports: [
@@ -23,6 +24,7 @@ import { QrCode } from '../../database/entities/qr-code.entity';
       SupportTicket,
       QrCode,
     ]),
+    MailModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],

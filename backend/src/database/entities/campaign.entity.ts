@@ -104,6 +104,13 @@ export class Campaign {
   @Column({ type: 'boolean', default: false })
   hidden: boolean;
 
+  /**
+   * Plantilla con la que se creó (`birthday`): lleva su propio diseño y texto,
+   * y el dueño solo elige el premio, a quién y la hora.
+   */
+  @Column({ type: 'varchar', length: 20, nullable: true })
+  template: string | null;
+
   @OneToMany(() => CampaignBusiness, (p) => p.campaign)
   participants: CampaignBusiness[];
 

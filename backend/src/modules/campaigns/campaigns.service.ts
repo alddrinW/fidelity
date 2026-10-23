@@ -77,7 +77,11 @@ export class CampaignsService {
   // Dueño
   // ------------------------------------------------------------------
 
-  async create(requester: Requester, dto: CreateCampaignDto) {
+  /**
+   * Crea una campaña. `options.template` solo lo usa el servidor (p. ej. las
+   * gift cards de cumpleaños): no se puede pedir desde la API.
+   */
+  async create(requester: Requester, dto: CreateCampaignDto, options: { template?: 'birthday' } = {}) {
     const businessIds = [...new Set(dto.businessIds)];
     const businesses = await this.businessRepository.find({ where: { id: In(businessIds) } });
     if (businesses.length !== businessIds.length) {
@@ -127,6 +131,7 @@ export class CampaignsService {
         description: dto.description?.trim() || null,
         imageUrl: dto.imageUrl || null,
         ...benefit,
+        template: options.template ?? null,
         audience,
         startsAt,
         endsAt,
@@ -891,6 +896,12 @@ export class CampaignsService {
     const text = (campaign.description ?? '').slice(0, 100);
     switch (campaign.type) {
       case CampaignType.GIFT_CARD:
+        if (campaign.template === 'birthday') {
+          return {
+            title: `${business} te regaló una gift card de cumpleaños`,
+            body: `${campaign.benefitLabel ?? campaign.title}. Vale solo hoy: ábrela en Mis regalos y muestra su código.`,
+          };
+        }
         return {
           title: `${business} te regaló una gift card`,
           body: `${campaign.benefitLabel ?? campaign.title}. Ábrela en Mis regalos y muestra su código.`,
@@ -956,6 +967,7 @@ export class CampaignsService {
       title: campaign.title,
       description: campaign.description,
       imageUrl: campaign.imageUrl,
+      template: campaign.template ?? null,
       benefitType: campaign.benefitType,
       benefitValue: campaign.benefitValue,
       benefitLabel: campaign.benefitLabel,

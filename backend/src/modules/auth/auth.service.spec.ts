@@ -31,7 +31,10 @@ describe('AuthService', () => {
       broadcastToAdmins: jest.fn().mockResolvedValue(undefined),
     };
 
-    mailService = { send: jest.fn().mockResolvedValue(true) };
+    mailService = {
+      send: jest.fn().mockResolvedValue(true),
+      sendContent: jest.fn().mockResolvedValue(true),
+    };
     profileRepo.update = jest.fn().mockResolvedValue(undefined);
 
     const module: TestingModule = await Test.createTestingModule({
@@ -101,6 +104,45 @@ describe('AuthService', () => {
       }),
     ).rejects.toThrow(ConflictException);
   });
+  describe('fecha de nacimiento', () => {
+    it('un cliente puede dar su fecha al registrarse y vuelve en su perfil', async () => {
+      profileRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.register({
+        email: 'ana@mail.com',
+        password: 'secret123',
+        fullName: 'Ana',
+        birthDate: '1998-03-14',
+      });
+
+      expect(profileRepo.create).toHaveBeenCalledWith(expect.objectContaining({ birthDate: '1998-03-14' }));
+      expect(result.user.birthDate).toBe('1998-03-14');
+    });
+
+    it('es opcional', async () => {
+      profileRepo.findOne.mockResolvedValue(null);
+
+      const result = await service.register({ email: 'ana@mail.com', password: 'secret123', fullName: 'Ana' });
+
+      expect(profileRepo.create).toHaveBeenCalledWith(expect.objectContaining({ birthDate: null }));
+      expect(result.user.birthDate).toBeNull();
+    });
+
+    it('un dueño de negocio no guarda fecha: no tiene cumpleaños que celebrar con locales', async () => {
+      profileRepo.findOne.mockResolvedValue(null);
+
+      await service.register({
+        email: 'dueno@mail.com',
+        password: 'secret123',
+        fullName: 'Dueño',
+        role: UserRole.BUSINESS,
+        birthDate: '1980-01-01',
+      });
+
+      expect(profileRepo.create).toHaveBeenCalledWith(expect.objectContaining({ birthDate: null }));
+    });
+  });
+
   it('no permite registrarse directamente como aprobador', async () => {
     profileRepo.findOne.mockResolvedValue(null);
 
@@ -115,7 +157,8 @@ describe('AuthService', () => {
   });
 
   describe('recuperación de contraseña', () => {
-    const codeFromMail = () => /Tu código es: (\d{6})/.exec(mailService.send.mock.calls[0][2])![1];
+    const sentMail = () => mailService.sendContent.mock.calls[0];
+    const codeFromMail = () => /es: (\d{6})/.exec(sentMail()[1].text)![1];
 
     it('envía un código de 6 dígitos y guarda solo su hash', async () => {
       profileRepo.findOne.mockResolvedValue({ id: 'u1', email: 'ana@mail.com', fullName: 'Ana', resetCodeExpiresAt: null });
@@ -132,13 +175,33 @@ describe('AuthService', () => {
       expect(update.resetAttempts).toBe(0);
     });
 
+    it('el correo sale con la plantilla de marca, a su dueño y en su idioma', async () => {
+      profileRepo.findOne.mockResolvedValue({ id: 'u1', email: 'ana@mail.com', fullName: 'Ana', language: 'en', resetCodeExpiresAt: null });
+
+      await service.forgotPassword({ email: 'ana@mail.com' });
+
+      const [to, content] = sentMail();
+      expect(to).toBe('ana@mail.com');
+      expect(content.subject).toBe('Your Fidelity password reset code');
+      expect(content.html).toContain('FIDELITY');
+      expect(content.text).toContain('15 minutes');
+    });
+
+    it('en español por defecto', async () => {
+      profileRepo.findOne.mockResolvedValue({ id: 'u1', email: 'ana@mail.com', fullName: 'Ana', resetCodeExpiresAt: null });
+
+      await service.forgotPassword({ email: 'ana@mail.com' });
+
+      expect(sentMail()[1].subject).toBe('Tu código para restablecer la contraseña de Fidelity');
+    });
+
     it('responde igual si el correo no existe (no revela cuentas) y no envía nada', async () => {
       profileRepo.findOne.mockResolvedValue(null);
 
       const result = await service.forgotPassword({ email: 'nadie@mail.com' });
 
       expect(result.message).toContain('Si el correo está registrado');
-      expect(mailService.send).not.toHaveBeenCalled();
+      expect(mailService.sendContent).not.toHaveBeenCalled();
       expect(profileRepo.update).not.toHaveBeenCalled();
     });
 
@@ -152,7 +215,7 @@ describe('AuthService', () => {
 
       await service.forgotPassword({ email: 'ana@mail.com' });
 
-      expect(mailService.send).not.toHaveBeenCalled();
+      expect(mailService.sendContent).not.toHaveBeenCalled();
     });
 
     const withCode = async (overrides: any = {}) => ({
@@ -173,6 +236,19 @@ describe('AuthService', () => {
       expect(await bcrypt.compare('nueva-clave', update.passwordHash)).toBe(true);
       expect(update.resetCodeHash).toBeNull();
       expect(update.resetCodeExpiresAt).toBeNull();
+    });
+
+    it('al cambiarla avisa por correo (aviso de seguridad) y un fallo del correo no la deshace', async () => {
+      profileRepo.findOne.mockResolvedValue(await withCode({ email: 'ana@mail.com', fullName: 'Ana', language: 'es' }));
+      mailService.sendContent.mockRejectedValueOnce(new Error('smtp caído'));
+
+      const result = await service.resetPassword({ email: 'ana@mail.com', code: '123456', newPassword: 'nueva-clave' });
+      await new Promise((r) => setImmediate(r));
+
+      expect(result.message).toContain('actualizada');
+      const [to, content] = mailService.sendContent.mock.calls[0];
+      expect(to).toBe('ana@mail.com');
+      expect(content.subject).toBe('Cambiaste la contraseña de tu cuenta de Fidelity');
     });
 
     it('un código incorrecto se rechaza y suma un intento', async () => {

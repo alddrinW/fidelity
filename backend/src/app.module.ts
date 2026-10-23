@@ -27,12 +27,16 @@ import {
   CampaignRecipient,
   GameAccess,
   GameInvite,
+  BirthdayNotice,
 } from './database/entities';
 
 // Feature Modules
 import { AuthModule } from './modules/auth/auth.module';
 import { GamesModule } from './modules/games/games.module';
 import { MaintenanceModule } from './modules/maintenance/maintenance.module';
+import { APP_GUARD } from '@nestjs/core';
+import { ThrottlerModule } from '@nestjs/throttler';
+import { AppThrottlerGuard } from './common/guards/app-throttler.guard';
 import { UsersModule } from './modules/users/users.module';
 import { BusinessesModule } from './modules/businesses/businesses.module';
 import { LoyaltyCardsModule } from './modules/loyalty-cards/loyalty-cards.module';
@@ -46,6 +50,8 @@ import { AdminModule } from './modules/admin/admin.module';
 import { PaymentsModule } from './modules/payments/payments.module';
 import { FeedbackModule } from './modules/feedback/feedback.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
+import { SettingsModule } from './modules/settings/settings.module';
+import { BirthdaysModule } from './modules/birthdays/birthdays.module';
 
 @Module({
   imports: [
@@ -53,7 +59,18 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
       isGlobal: true,
       load: [configuration],
     }),
+    SettingsModule,
     MaintenanceModule,
+    // Límite general: 120 peticiones por minuto por IP. Las rutas de contraseñas
+    // tienen límites más estrictos (ver AuthController).
+    ThrottlerModule.forRootAsync({
+      inject: [ConfigService],
+      useFactory: (configService: ConfigService) => ({
+        throttlers: [{ name: 'default', ttl: 60_000, limit: 120 }],
+        skipIf: () => !!configService.get<boolean>('rateLimit.disabled'),
+        errorMessage: 'Demasiados intentos. Espera un momento e inténtalo de nuevo.',
+      }),
+    }),
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       useFactory: (configService: ConfigService) => ({
@@ -89,6 +106,7 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
           CampaignRecipient,
           GameAccess,
           GameInvite,
+          BirthdayNotice,
         ],
       }),
       inject: [ConfigService],
@@ -97,6 +115,7 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
     RealtimeModule,
     AuthModule,
     GamesModule,
+    BirthdaysModule,
     UsersModule,
     BusinessesModule,
     LoyaltyCardsModule,
@@ -109,5 +128,6 @@ import { CampaignsModule } from './modules/campaigns/campaigns.module';
     CampaignsModule,
     AdminModule,
   ],
+  providers: [{ provide: APP_GUARD, useClass: AppThrottlerGuard }],
 })
 export class AppModule {}

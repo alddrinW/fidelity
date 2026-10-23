@@ -4,20 +4,20 @@ import {
   IsOptional,
   IsString,
   Matches,
-  MaxLength,
-  MinLength,
   IsEnum,
   IsBoolean,
 } from 'class-validator';
 import { UserRole } from '../../../database/entities/profile.entity';
 import { IsImageSource } from '../../../common/validators/is-image-source.validator';
+import { IsStrongPassword } from '../../../common/validators/strong-password';
+import { IsBirthDate } from '../../../common/validators/birth-date';
 
 export class RegisterDto {
   @IsEmail({}, { message: 'El correo electronico debe ser valido' })
   email: string;
 
   @IsString()
-  @MinLength(6, { message: 'La contrasena debe tener al menos 6 caracteres' })
+  @IsStrongPassword()
   password: string;
 
   @IsString()
@@ -31,6 +31,11 @@ export class RegisterDto {
   @IsString()
   @IsOptional()
   phone?: string;
+
+  /** Fecha de nacimiento `AAAA-MM-DD` (opcional): sirve para que su local lo salude y le regale. */
+  @IsOptional()
+  @IsBirthDate()
+  birthDate?: string;
 
   @IsImageSource()
   @IsOptional()
@@ -74,7 +79,6 @@ export class ResetPasswordDto {
   code: string;
 
   @IsString()
-  @MinLength(6, { message: 'La contrasena debe tener al menos 6 caracteres' })
-  @MaxLength(72, { message: 'La contrasena es demasiado larga' })
+  @IsStrongPassword()
   newPassword: string;
 }

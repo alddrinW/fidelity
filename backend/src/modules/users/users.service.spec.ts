@@ -9,6 +9,7 @@ import {
 import * as bcrypt from 'bcrypt';
 import { UsersService } from './users.service';
 import { Profile } from '../../database/entities/profile.entity';
+import { MailService } from '../mail/mail.service';
 
 describe('UsersService.changePassword', () => {
   let service: UsersService;
@@ -33,6 +34,7 @@ describe('UsersService.changePassword', () => {
         UsersService,
         { provide: getRepositoryToken(Profile), useValue: profileRepo },
         { provide: DataSource, useValue: {} },
+        { provide: MailService, useValue: { sendContent: jest.fn().mockResolvedValue(true) } },
       ],
     }).compile();
 
@@ -104,6 +106,7 @@ describe('UsersService.updateLanguage', () => {
         UsersService,
         { provide: getRepositoryToken(Profile), useValue: profileRepo },
         { provide: DataSource, useValue: {} },
+        { provide: MailService, useValue: { sendContent: jest.fn().mockResolvedValue(true) } },
       ],
     }).compile();
     service = module.get(UsersService);
@@ -120,5 +123,45 @@ describe('UsersService.updateLanguage', () => {
     profileRepo.update.mockResolvedValue({ affected: 0 });
 
     await expect(service.updateLanguage('nadie', { language: 'es' })).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('UsersService.updateProfile (fecha de nacimiento)', () => {
+  let service: UsersService;
+  let profileRepo: any;
+
+  beforeEach(async () => {
+    profileRepo = {
+      findOne: jest.fn().mockResolvedValue({ id: 'u1', fullName: 'Ana', birthDate: '1998-03-14' }),
+      save: jest.fn((entity) => Promise.resolve(entity)),
+    };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        UsersService,
+        { provide: getRepositoryToken(Profile), useValue: profileRepo },
+        { provide: DataSource, useValue: {} },
+        { provide: MailService, useValue: { sendContent: jest.fn().mockResolvedValue(true) } },
+      ],
+    }).compile();
+    service = module.get(UsersService);
+  });
+
+  it('guarda la fecha nueva', async () => {
+    const saved = await service.updateProfile('u1', { birthDate: '1999-12-31' });
+
+    expect(saved.birthDate).toBe('1999-12-31');
+  });
+
+  it('el texto vacío borra la fecha (deja de compartirla con los locales)', async () => {
+    const saved = await service.updateProfile('u1', { birthDate: '' });
+
+    expect(saved.birthDate).toBeNull();
+  });
+
+  it('si no se manda, la fecha no cambia', async () => {
+    const saved = await service.updateProfile('u1', { fullName: 'Ana María' });
+
+    expect(saved.birthDate).toBe('1998-03-14');
+    expect(saved.fullName).toBe('Ana María');
   });
 });

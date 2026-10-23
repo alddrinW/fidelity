@@ -24,6 +24,7 @@
     "migration:run": "typeorm-ts-node-commonjs migration:run -d src/config/data-source.ts",
     "migration:revert": "typeorm-ts-node-commonjs migration:revert -d src/config/data-source.ts",
     "seed:admin": "ts-node src/database/seeds/create-admin.ts",
+    "mail:test": "ts-node --transpile-only src/scripts/mail-test.ts",
     "seed:demo": "ts-node --transpile-only src/database/seeds/demo-data.ts"
   },
   "dependencies": {
@@ -35,6 +36,7 @@
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/platform-socket.io": "^10.4.15",
     "@nestjs/swagger": "^8.1.0",
+    "@nestjs/throttler": "^6.7.1",
     "@nestjs/typeorm": "^10.0.2",
     "@nestjs/websockets": "^10.4.15",
     "bcrypt": "^5.1.1",

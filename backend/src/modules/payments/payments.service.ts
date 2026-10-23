@@ -16,16 +16,15 @@ import {
   PaymentMethod,
   PaymentStatus,
 } from '../../database/entities/payment.entity';
-import { AppSetting } from '../../database/entities/app-setting.entity';
 import { BankAccountConfig } from '../../config/configuration';
 import { NotificationsService } from '../notifications/notifications.service';
-import { ReportPaymentDto, UpdatePricesDto } from './dto/payments.dto';
+import { BANK_ACCOUNTS_KEY, SETTING_KEYS } from '../settings/settings.definitions';
+import { SettingsService } from '../settings/settings.service';
+import { ReportPaymentDto, UpdateBankAccountsDto, UpdatePricesDto } from './dto/payments.dto';
 import { PAYPHONE_APPROVED, PayphoneService } from './payphone.service';
 
 /** Estados en los que un pago todavía espera resolverse. */
 export const OPEN_PAYMENT_STATUSES = [PaymentStatus.PENDING, PaymentStatus.REPORTED];
-
-const FEE_KEYS = { registration: 'registration_fee', branch: 'branch_fee' } as const;
 
 // Sin 0/O/1/I para que la referencia sea fácil de dictar.
 const REFERENCE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ';
@@ -46,8 +45,7 @@ export class PaymentsService {
   constructor(
     @InjectRepository(Payment)
     private readonly paymentRepository: Repository<Payment>,
-    @InjectRepository(AppSetting)
-    private readonly settingRepository: Repository<AppSetting>,
+    private readonly settings: SettingsService,
     private readonly configService: ConfigService,
     private readonly notificationsService: NotificationsService,
     private readonly payphone: PayphoneService,
@@ -58,28 +56,51 @@ export class PaymentsService {
    * ninguno, el de la configuración del servidor.
    */
   private async fees(): Promise<{ registrationFee: number; branchFee: number }> {
-    const saved = await this.settingRepository.find({
-      where: { key: In([FEE_KEYS.registration, FEE_KEYS.branch]) },
-    });
-    const value = (key: string, fallback: number) => {
-      const n = Number(saved.find((s) => s.key === key)?.value);
-      return Number.isFinite(n) && n > 0 ? n : fallback;
-    };
-    return {
-      registrationFee: value(
-        FEE_KEYS.registration,
-        this.configService.get<number>('payments.registrationFee') ?? 20,
-      ),
-      branchFee: value(
-        FEE_KEYS.branch,
-        this.configService.get<number>('payments.branchFee') ?? 10,
-      ),
-    };
+    const [registrationFee, branchFee] = await Promise.all([
+      this.settings.get(SETTING_KEYS.registrationFee),
+      this.settings.get(SETTING_KEYS.branchFee),
+    ]);
+    return { registrationFee, branchFee };
+  }
+
+  /**
+   * Cuentas donde se puede transferir o depositar: las que fijó el administrador
+   * y, si no ha fijado ninguna, las de la configuración del servidor.
+   */
+  private async bankAccounts(): Promise<BankAccountConfig[]> {
+    const saved = await this.settings.getJson<BankAccountConfig[]>(BANK_ACCOUNTS_KEY);
+    if (Array.isArray(saved)) return saved;
+    return this.configService.get<BankAccountConfig[]>('payments.bankAccounts') ?? [];
+  }
+
+  /** El administrador fija las cuentas bancarias (una lista vacía deja solo el pago con tarjeta). */
+  async updateBankAccounts(dto: UpdateBankAccountsDto) {
+    const accounts: BankAccountConfig[] = [];
+    for (const a of dto.accounts) {
+      const accountNumber = a.accountNumber.trim();
+      if (accounts.some((x) => x.accountNumber === accountNumber)) {
+        throw new BadRequestException(`La cuenta ${accountNumber} está repetida`);
+      }
+      const name = a.name.trim();
+      const holder = a.holder.trim();
+      if (!name || !holder) {
+        throw new BadRequestException('Cada cuenta necesita el banco y el titular');
+      }
+      accounts.push({
+        name,
+        accountNumber,
+        accountType: a.accountType.trim(),
+        holder,
+        taxId: (a.taxId ?? '').trim(),
+      });
+    }
+    await this.settings.setJson(BANK_ACCOUNTS_KEY, accounts);
+    return this.getPlan();
   }
 
   /** Precios y métodos de pago vigentes para el asistente "PAGA YA". */
   async getPlan() {
-    const banks = this.configService.get<BankAccountConfig[]>('payments.bankAccounts') ?? [];
+    const banks = await this.bankAccounts();
 
     return {
       currency: this.configService.get<string>('payments.currency') ?? 'USD',
@@ -102,22 +123,11 @@ export class PaymentsService {
    * desde ahora: las ya creadas conservan el monto con el que se emitieron.
    */
   async updatePrices(dto: UpdatePricesDto) {
-    const entries: AppSetting[] = [];
-    if (dto.registrationFee != null) {
-      entries.push(
-        this.settingRepository.create({
-          key: FEE_KEYS.registration,
-          value: String(dto.registrationFee),
-        }),
-      );
-    }
-    if (dto.branchFee != null) {
-      entries.push(
-        this.settingRepository.create({ key: FEE_KEYS.branch, value: String(dto.branchFee) }),
-      );
-    }
-    if (entries.length === 0) throw new BadRequestException('Indica al menos un precio');
-    await this.settingRepository.save(entries);
+    const patch: Record<string, number> = {};
+    if (dto.registrationFee != null) patch[SETTING_KEYS.registrationFee] = dto.registrationFee;
+    if (dto.branchFee != null) patch[SETTING_KEYS.branchFee] = dto.branchFee;
+    if (Object.keys(patch).length === 0) throw new BadRequestException('Indica al menos un precio');
+    await this.settings.update(patch);
     return this.getPlan();
   }
 

@@ -13,6 +13,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { PayphoneService } from './payphone.service';
 import { Business } from '../../database/entities/business.entity';
 import { AppSetting } from '../../database/entities/app-setting.entity';
+import { SettingsService } from '../settings/settings.service';
 
 describe('PaymentsService', () => {
   let service: PaymentsService;
@@ -50,6 +51,7 @@ describe('PaymentsService', () => {
       find: jest.fn().mockResolvedValue([]),
       create: jest.fn((data) => data),
       save: jest.fn((entries) => Promise.resolve(entries)),
+      delete: jest.fn().mockResolvedValue(undefined),
     };
     payphone = {
       isConfigured: jest.fn().mockReturnValue(true),
@@ -70,6 +72,7 @@ describe('PaymentsService', () => {
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PaymentsService,
+        SettingsService,
         { provide: getRepositoryToken(Payment), useValue: paymentRepo },
         { provide: getRepositoryToken(AppSetting), useValue: settingRepo },
         {
@@ -148,6 +151,66 @@ describe('PaymentsService', () => {
       expect(plan.registrationFee).toBe(35.5);
       // Un valor guardado que no sirve se ignora.
       expect(plan.branchFee).toBe(12);
+    });
+  });
+
+  describe('cuentas bancarias', () => {
+    const account = (extra: any = {}) => ({
+      name: ' Banco Pichincha ',
+      accountNumber: ' 2200123456 ',
+      accountType: 'Cuenta de ahorros',
+      holder: ' Fidelity S.A. ',
+      taxId: '1790000000001',
+      ...extra,
+    });
+
+    it('sin cuentas guardadas usa las de la configuración del servidor', async () => {
+      const plan = await service.getPlan();
+
+      expect(plan.bankAccounts.map((b) => b.accountNumber)).toContain('2900000001');
+    });
+
+    it('las que fijó el administrador reemplazan a las del servidor', async () => {
+      settingRepo.find.mockResolvedValue([
+        {
+          key: 'bank_accounts',
+          value: JSON.stringify([{ name: 'Banco Nuevo', accountNumber: '777', accountType: '', holder: 'Titular', taxId: '' }]),
+        },
+      ]);
+
+      const plan = await service.getPlan();
+
+      expect(plan.bankAccounts).toEqual([
+        { bank: 'Banco Nuevo', accountNumber: '777', accountType: null, holder: 'Titular', taxId: null },
+      ]);
+    });
+
+    it('una lista vacía guardada deja solo el pago con tarjeta', async () => {
+      settingRepo.find.mockResolvedValue([{ key: 'bank_accounts', value: '[]' }]);
+
+      expect((await service.getPlan()).bankAccounts).toEqual([]);
+    });
+
+    it('guarda las cuentas sin espacios sobrantes y devuelve el plan', async () => {
+      await service.updateBankAccounts({ accounts: [account()] } as any);
+
+      expect(settingRepo.save).toHaveBeenCalledWith([
+        {
+          key: 'bank_accounts',
+          value: JSON.stringify([
+            { name: 'Banco Pichincha', accountNumber: '2200123456', accountType: 'Cuenta de ahorros', holder: 'Fidelity S.A.', taxId: '1790000000001' },
+          ]),
+        },
+      ]);
+    });
+
+    it('rechaza una cuenta repetida o sin banco o titular', async () => {
+      await expect(
+        service.updateBankAccounts({ accounts: [account(), account({ name: 'Otro' })] } as any),
+      ).rejects.toThrow('repetida');
+      await expect(service.updateBankAccounts({ accounts: [account({ name: '  ' })] } as any)).rejects.toBeInstanceOf(BadRequestException);
+      await expect(service.updateBankAccounts({ accounts: [account({ holder: '' })] } as any)).rejects.toBeInstanceOf(BadRequestException);
+      expect(settingRepo.save).not.toHaveBeenCalled();
     });
   });
 

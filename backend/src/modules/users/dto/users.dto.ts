@@ -1,5 +1,7 @@
-import { IsIn, IsNotEmpty, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsStrongPassword } from '../../../common/validators/strong-password';
 import { IsImageSource } from '../../../common/validators/is-image-source.validator';
+import { IsBirthDate } from '../../../common/validators/birth-date';
 
 export class UpdateProfileDto {
   @IsString()
@@ -9,6 +11,11 @@ export class UpdateProfileDto {
   @IsString()
   @IsOptional()
   phone?: string;
+
+  /** `AAAA-MM-DD`; el texto vacío borra la fecha guardada. */
+  @IsOptional()
+  @IsBirthDate({ allowEmpty: true })
+  birthDate?: string;
 
   @IsImageSource()
   @IsOptional()
@@ -35,6 +42,6 @@ export class ChangePasswordDto {
   currentPassword: string;
 
   @IsString()
-  @MinLength(6, { message: 'La nueva contrasena debe tener al menos 6 caracteres' })
+  @IsStrongPassword()
   newPassword: string;
 }

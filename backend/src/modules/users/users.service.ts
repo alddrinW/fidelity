@@ -17,6 +17,8 @@ import { ScanAttempt } from '../../database/entities/scan-attempt.entity';
 import { Reward } from '../../database/entities/reward.entity';
 import { SupportTicket } from '../../database/entities/support-ticket.entity';
 import { QrCode } from '../../database/entities/qr-code.entity';
+import { MailService } from '../mail/mail.service';
+import { passwordChangedEmail } from '../mail/mail-templates';
 import {
   UpdateProfileDto,
   UpdateFcmTokenDto,
@@ -32,6 +34,7 @@ export class UsersService {
     @InjectRepository(Profile)
     private readonly profileRepository: Repository<Profile>,
     private readonly dataSource: DataSource,
+    private readonly mailService: MailService,
   ) {}
 
   async getProfile(userId: string) {
@@ -49,6 +52,7 @@ export class UsersService {
 
     if (dto.fullName !== undefined) profile.fullName = dto.fullName.trim();
     if (dto.phone !== undefined) profile.phone = dto.phone.trim();
+    if (dto.birthDate !== undefined) profile.birthDate = dto.birthDate || null;
     if (dto.avatarUrl !== undefined) profile.avatarUrl = dto.avatarUrl;
     if (dto.fcmToken !== undefined) profile.fcmToken = dto.fcmToken;
 
@@ -83,6 +87,11 @@ export class UsersService {
     const salt = await bcrypt.genSalt(10);
     profile.passwordHash = await bcrypt.hash(dto.newPassword, salt);
     await this.profileRepository.save(profile);
+
+    // Aviso de seguridad por correo (un fallo del correo no cambia el resultado).
+    void this.mailService
+      .sendContent(profile.email, passwordChangedEmail({ name: profile.fullName, language: profile.language }))
+      .catch((e) => this.logger.warn(`No se pudo avisar del cambio de contraseña: ${e.message}`));
 
     return { message: 'Contrasena actualizada correctamente' };
   }

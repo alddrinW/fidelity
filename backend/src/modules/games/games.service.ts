@@ -26,6 +26,8 @@ import { UserRole } from '../../database/entities/profile.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BusinessAccessService } from '../businesses/business-access.service';
 import { randomCode } from '../campaigns/campaigns.service';
+import { SETTING_KEYS } from '../settings/settings.definitions';
+import { SettingsService } from '../settings/settings.service';
 import {
   ApproveGamesDto,
   FinishFlappyDto,
@@ -64,14 +66,28 @@ export const MAX_GAME_ATTEMPTS = 3;
 /** Los avisos pendientes que se mandan en cada pasada. */
 const NOTIFY_BATCH_LIMIT = 500;
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/** Los límites que fija el administrador (ver `SettingsService`). */
+export interface GameLimits {
+  maxAttempts: number;
+  defaultDurationMs: number;
+  maxDurationMs: number;
+  maxAudience: number;
+}
+
 /**
  * El horario de un reto: desde cuándo y hasta cuándo se puede jugar. Sin
- * inicio empieza ya; sin fin dura 7 días.
+ * inicio empieza ya; sin fin dura lo que fije el administrador (7 días por defecto).
  */
 export function resolveGameWindow(
   startsAt: string | undefined,
   endsAt: string | undefined,
   now: Date = new Date(),
+  limits: Pick<GameLimits, 'defaultDurationMs' | 'maxDurationMs'> = {
+    defaultDurationMs: INVITE_TTL_MS,
+    maxDurationMs: MAX_INVITE_WINDOW_MS,
+  },
 ): { startsAt: Date; endsAt: Date } {
   let start = startsAt ? new Date(startsAt) : now;
   if (Number.isNaN(start.getTime())) throw new BadRequestException('La hora de inicio no es válida');
@@ -80,13 +96,15 @@ export function resolveGameWindow(
   }
   if (start.getTime() < now.getTime()) start = now;
 
-  const end = endsAt ? new Date(endsAt) : new Date(start.getTime() + INVITE_TTL_MS);
+  const end = endsAt ? new Date(endsAt) : new Date(start.getTime() + limits.defaultDurationMs);
   if (Number.isNaN(end.getTime())) throw new BadRequestException('La hora de fin no es válida');
   if (end.getTime() <= start.getTime()) {
     throw new BadRequestException('El juego debe terminar después de la hora de inicio');
   }
-  if (end.getTime() - start.getTime() > MAX_INVITE_WINDOW_MS) {
-    throw new BadRequestException('El juego no puede durar más de 90 días');
+  if (end.getTime() - start.getTime() > limits.maxDurationMs) {
+    throw new BadRequestException(
+      `El juego no puede durar más de ${Math.round(limits.maxDurationMs / DAY_MS)} días`,
+    );
   }
   return { startsAt: start, endsAt: end };
 }
@@ -127,7 +145,28 @@ export class GamesService {
     private readonly cardRepository: Repository<LoyaltyCard>,
     private readonly notificationsService: NotificationsService,
     private readonly businessAccess: BusinessAccessService,
+    private readonly settings: SettingsService,
   ) {}
+
+  /** Los límites vigentes de los minijuegos (los fija el administrador). */
+  private async limits(): Promise<GameLimits> {
+    const [maxAttempts, defaultDays, maxDays, maxAudience] = await Promise.all([
+      this.settings.get(SETTING_KEYS.gameMaxAttempts),
+      this.settings.get(SETTING_KEYS.gameDefaultDays),
+      this.settings.get(SETTING_KEYS.gameMaxDays),
+      this.settings.get(SETTING_KEYS.gameMaxAudience),
+    ]);
+    return {
+      maxAttempts,
+      defaultDurationMs: defaultDays * DAY_MS,
+      maxDurationMs: maxDays * DAY_MS,
+      maxAudience,
+    };
+  }
+
+  private maxAttempts(): Promise<number> {
+    return this.settings.get(SETTING_KEYS.gameMaxAttempts);
+  }
 
   // ------------------------------------------------------------------
   // Solicitud del dueño y decisión del administrador
@@ -347,12 +386,13 @@ export class GamesService {
       throw new BadRequestException('Tu negocio debe estar activo para mandar juegos');
     }
     const now = new Date();
-    const window = resolveGameWindow(dto.startsAt, dto.endsAt, now);
+    const limits = await this.limits();
+    const window = resolveGameWindow(dto.startsAt, dto.endsAt, now, limits);
 
     const cards = await this.cardRepository.find({
       where: { businessId: business.id },
       select: ['userId'],
-      take: MAX_GAME_AUDIENCE * 2,
+      take: limits.maxAudience * 2,
     });
     const customers = new Set(cards.map((c) => c.userId));
 
@@ -364,7 +404,7 @@ export class GamesService {
         throw new BadRequestException('Algunos clientes elegidos no son clientes de este negocio');
       }
     } else {
-      userIds = [...customers].slice(0, MAX_GAME_AUDIENCE);
+      userIds = [...customers].slice(0, limits.maxAudience);
       if (userIds.length === 0) {
         throw new BadRequestException('Todavía no tienes clientes a quienes mandarles el juego');
       }
@@ -431,6 +471,7 @@ export class GamesService {
       take: NOTIFY_BATCH_LIMIT,
     });
     if (due.length === 0) return 0;
+    const maxAttempts = await this.maxAttempts();
 
     const access = await this.accessRepository.find({
       where: { businessId: In([...new Set(due.map((i) => i.businessId))]) },
@@ -453,7 +494,7 @@ export class GamesService {
             invite.userId,
             `${invite.business?.name ?? 'Un local'} te reta a jugar`,
             `Juega ${gameName}${prize ? ` y gana: ${prize}` : ''}. ` +
-              `Tienes ${MAX_GAME_ATTEMPTS} intentos hasta el ${formatWhen(invite.expiresAt)}.`,
+              `Tienes ${maxAttempts} intentos hasta el ${formatWhen(invite.expiresAt)}.`,
             { type: 'game_invite', route: '/play_game', invite_id: invite.id, game: invite.game },
           );
           return true;
@@ -469,6 +510,7 @@ export class GamesService {
     if (!(await this.businessAccess.canManage(requester.id, requester.role, businessId))) {
       throw new ForbiddenException('No tienes permiso sobre este negocio');
     }
+    const maxAttempts = await this.maxAttempts();
     const invites = await this.inviteRepository.find({
       where: { businessId },
       relations: ['user'],
@@ -489,7 +531,7 @@ export class GamesService {
         status: this.statusOf(i),
         result: i.result,
         attempts: i.attempts,
-        maxAttempts: MAX_GAME_ATTEMPTS,
+        maxAttempts,
         startsAt: i.startsAt,
         expiresAt: i.expiresAt,
         createdAt: i.createdAt,
@@ -502,6 +544,7 @@ export class GamesService {
   // ------------------------------------------------------------------
 
   async myInvites(userId: string) {
+    const maxAttempts = await this.maxAttempts();
     const invites = await this.inviteRepository.find({
       where: { userId },
       relations: ['business'],
@@ -523,8 +566,8 @@ export class GamesService {
       status: this.statusOf(i),
       result: i.result,
       attempts: i.attempts,
-      maxAttempts: MAX_GAME_ATTEMPTS,
-      attemptsLeft: this.attemptsLeft(i),
+      maxAttempts,
+      attemptsLeft: this.attemptsLeft(i, maxAttempts),
       startsAt: i.startsAt,
       expiresAt: i.expiresAt,
       createdAt: i.createdAt,
@@ -537,7 +580,7 @@ export class GamesService {
 
   /**
    * Empieza un intento (o retoma el que ya estaba en curso). Cada cliente tiene
-   * hasta MAX_GAME_ATTEMPTS intentos para ganar y solo dentro del horario.
+   * hasta el máximo de intentos para ganar y solo dentro del horario.
    */
   async start(userId: string, id: string) {
     const invite = await this.ownInvite(userId, id);
@@ -549,7 +592,7 @@ export class GamesService {
     this.assertOpen(invite);
 
     if (invite.status === 'sent') {
-      if (invite.attempts >= MAX_GAME_ATTEMPTS) {
+      if (invite.attempts >= (await this.maxAttempts())) {
         throw new BadRequestException('Ya usaste tus intentos de este reto');
       }
       invite.status = 'playing';
@@ -652,8 +695,8 @@ export class GamesService {
     }
   }
 
-  private attemptsLeft(invite: GameInvite): number {
-    return invite.status === 'finished' ? 0 : Math.max(0, MAX_GAME_ATTEMPTS - invite.attempts);
+  private attemptsLeft(invite: GameInvite, maxAttempts: number): number {
+    return invite.status === 'finished' ? 0 : Math.max(0, maxAttempts - invite.attempts);
   }
 
   /**
@@ -663,7 +706,7 @@ export class GamesService {
    */
   private async finish(invite: GameInvite, result: GameResult, score: number | null = null) {
     invite.score = score;
-    if (result === 'lost' && invite.attempts < MAX_GAME_ATTEMPTS) {
+    if (result === 'lost' && invite.attempts < (await this.maxAttempts())) {
       invite.status = 'sent';
       invite.state = null;
       invite.startedAt = null;
@@ -736,6 +779,7 @@ export class GamesService {
   /** La partida como la ve el cliente (sin la palabra del ahorcado). */
   private async playView(invite: GameInvite) {
     const game = invite.game as GameKey;
+    const maxAttempts = await this.maxAttempts();
     const access = await this.accessRepository.findOne({
       where: { businessId: invite.businessId },
     });
@@ -763,8 +807,8 @@ export class GamesService {
       startsAt: invite.startsAt,
       expiresAt: invite.expiresAt,
       attempts: invite.attempts,
-      maxAttempts: MAX_GAME_ATTEMPTS,
-      attemptsLeft: this.attemptsLeft(invite),
+      maxAttempts,
+      attemptsLeft: this.attemptsLeft(invite, maxAttempts),
       // Perdió el último intento pero todavía le quedan otros.
       lastAttempt: invite.status === 'sent' && invite.attempts > 0 ? 'lost' : null,
       claimCode,

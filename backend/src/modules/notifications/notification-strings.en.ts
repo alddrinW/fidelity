@@ -72,6 +72,18 @@ export const NOTIFICATION_STRINGS_EN: Record<string, string> = {
 };
 
 export const NOTIFICATION_PATTERNS_EN: Record<string, string> = {
+  // FidelyUsuario
+  '¡Ya eres FidelyUsuario de {}!': 'You are now a FidelyUsuario at {}!',
+  'Por tu fidelidad a {} tienes la insignia FidelyUsuario. ¡Gracias por volver!':
+    'For your loyalty to {} you have the FidelyUsuario badge. Thanks for coming back!',
+  'Nuevo FidelyUsuario': 'New FidelyUsuario',
+  '{} ya es FidelyUsuario de {}: {} escaneos aprobados.': '{1} is now a FidelyUsuario at {2}: {3} approved scans.',
+
+  // Cumpleaños
+  'Hoy cumple años {}': '{} has a birthday today',
+  '{} es cliente de {}. Regálale una gift card para celebrarlo.':
+    '{1} is a customer of {2}. Send them a gift card to celebrate.',
+
   // Cuentas y negocios
   '{} creo cuenta como {}.': '{} created an account as {}.',
   '{} te asignó como aprobador. Vuelve a iniciar sesión para ver su panel.':
@@ -103,6 +115,9 @@ export const NOTIFICATION_PATTERNS_EN: Record<string, string> = {
   'Nuevo sello en {}': 'New stamp on {}',
   'Llevas {} de {} sellos. ¡Sigue la ruta!': 'You have {} of {} stamps. Keep following the route!',
   '{} te regaló una gift card': '{} gave you a gift card',
+  '{} te regaló una gift card de cumpleaños': '{} gave you a birthday gift card',
+  '{}. Vale solo hoy: ábrela en Mis regalos y muestra su código.':
+    '{}. Valid today only: open it in My gifts and show its code.',
   '{}. Ábrela en Mis regalos y muestra su código.': '{}. Open it in My gifts and show its code.',
   'Nueva ruta: {}': 'New route: {}',
   'Nuevo reto: {}': 'New challenge: {}',

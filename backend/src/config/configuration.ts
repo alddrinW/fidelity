@@ -78,8 +78,19 @@ export const configuration = () => ({
     host: process.env.SMTP_HOST || '',
     port: parseInt(process.env.SMTP_PORT, 10) || 587,
     user: process.env.SMTP_USER || '',
-    pass: process.env.SMTP_PASS || '',
-    from: process.env.MAIL_FROM || process.env.SMTP_USER || 'Fidelity <no-reply@fidelity.app>',
+    // Las contraseñas de aplicación de Google se copian con espacios: se quitan.
+    pass: (process.env.SMTP_PASS || '').replace(/\s+/g, ''),
+    // Puerto 465 = TLS directo; los demás usan STARTTLS. SMTP_SECURE lo fuerza.
+    secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : undefined,
+    // Solo para probar con un servidor local sin cifrado: SMTP_REQUIRE_TLS=false.
+    requireTls: process.env.SMTP_REQUIRE_TLS !== 'false',
+    from: process.env.MAIL_FROM || (process.env.SMTP_USER ? `Fidelity <${process.env.SMTP_USER}>` : 'Fidelity <no-reply@fidelity.app>'),
+  },
+  // Límite de intentos (inicio de sesión, recuperar contraseña...). Detrás de un
+  // proxy o balanceador define TRUST_PROXY=1 para ver la IP real del cliente.
+  rateLimit: {
+    disabled: process.env.NODE_ENV === 'test' || process.env.RATE_LIMIT_DISABLED === 'true',
+    trustProxy: process.env.TRUST_PROXY || '',
   },
   webhookSecret: process.env.WEBHOOK_SECRET || 'fidelity_webhook_secure_secret_2026',
 });

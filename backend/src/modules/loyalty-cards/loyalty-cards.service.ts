@@ -12,6 +12,7 @@ import { Scan, ScanStatus } from '../../database/entities/scan.entity';
 import { Reward, RewardStatus } from '../../database/entities/reward.entity';
 import { RewardTransferHistory } from '../../database/entities/reward-transfer-history.entity';
 import { UserRole } from '../../database/entities/profile.entity';
+import { FidelyService } from './fidely.service';
 
 @Injectable()
 export class LoyaltyCardsService {
@@ -28,6 +29,7 @@ export class LoyaltyCardsService {
     private readonly rewardRepository: Repository<Reward>,
     @InjectRepository(RewardTransferHistory)
     private readonly transferRepository: Repository<RewardTransferHistory>,
+    private readonly fidely: FidelyService,
   ) {}
 
   async getOrCreateLoyaltyCard(userId: string, businessId: string): Promise<LoyaltyCard> {
@@ -71,7 +73,7 @@ export class LoyaltyCardsService {
     });
     if (cards.length === 0) return [];
 
-    const [pendingByBusiness, pendingRewards] = await Promise.all([
+    const [pendingByBusiness, pendingRewards, scanCounts, fidelyRequired] = await Promise.all([
       this.scanRepository
         .createQueryBuilder('scan')
         .select('scan.businessId', 'businessId')
@@ -84,12 +86,16 @@ export class LoyaltyCardsService {
         where: { userId, status: RewardStatus.PENDING },
         select: ['id', 'loyaltyCardId', 'status'],
       }),
+      this.fidely.countsForUser(userId),
+      this.fidely.required(),
     ]);
 
     const pendingScans = new Map(pendingByBusiness.map((p) => [p.businessId, Number(p.count)]));
 
     return cards.map((card) => ({
       ...card,
+      // La insignia FidelyUsuario de este local.
+      ...this.fidely.status(scanCounts.get(card.businessId), fidelyRequired),
       pendingScans: pendingScans.get(card.businessId) ?? 0,
       rewards: pendingRewards
         .filter((r) => r.loyaltyCardId === card.id)
@@ -107,11 +113,20 @@ export class LoyaltyCardsService {
       throw new ForbiddenException('No tienes permiso para ver los clientes de este negocio');
     }
 
-    return this.cardRepository.find({
-      where: { businessId },
-      relations: ['user'],
-      order: { updatedAt: 'DESC' },
-    });
+    const [cards, scanCounts, fidelyRequired] = await Promise.all([
+      this.cardRepository.find({
+        where: { businessId },
+        relations: ['user'],
+        order: { updatedAt: 'DESC' },
+      }),
+      this.fidely.countsForBusiness(businessId),
+      this.fidely.required(),
+    ]);
+    // Cada cliente con su insignia FidelyUsuario (si ya la ganó en este local).
+    return cards.map((card) => ({
+      ...card,
+      ...this.fidely.status(scanCounts.get(card.userId), fidelyRequired),
+    }));
   }
 
   async getCardHistory(cardId: string, userId: string, role: UserRole) {
@@ -149,6 +164,7 @@ export class LoyaltyCardsService {
 
     return {
       card,
+      fidely: await this.fidely.statusFor(card.userId, card.businessId),
       scans,
       rewards,
       transfers,

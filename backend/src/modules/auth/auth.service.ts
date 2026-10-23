@@ -16,6 +16,7 @@ import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto } from './dt
 import { JwtPayload } from '../../common/interfaces/jwt-payload.interface';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MailService } from '../mail/mail.service';
+import { passwordChangedEmail, passwordResetEmail } from '../mail/mail-templates';
 
 /** Cuánto dura un código de recuperación, cada cuánto se puede pedir otro y cuántos fallos admite. */
 const RESET_CODE_TTL_MS = 15 * 60 * 1000;
@@ -59,6 +60,8 @@ export class AuthService {
       role: roleToAssign,
       passwordHash,
       phone: dto.phone || null,
+      // Solo los clientes tienen cumpleaños que celebrar con sus locales.
+      birthDate: roleToAssign === UserRole.CLIENT ? dto.birthDate || null : null,
       avatarUrl: dto.avatarUrl || null,
       fcmToken: dto.fcmToken || null,
       isDemo: dto.isDemo ?? false,
@@ -86,6 +89,7 @@ export class AuthService {
         role: savedProfile.role,
         avatarUrl: savedProfile.avatarUrl,
         phone: savedProfile.phone,
+        birthDate: savedProfile.birthDate,
         isDemo: savedProfile.isDemo,
       },
       accessToken: token,
@@ -128,6 +132,7 @@ export class AuthService {
         role: user.role,
         avatarUrl: user.avatarUrl,
         phone: user.phone,
+        birthDate: user.birthDate,
         fcmToken: user.fcmToken,
         isDemo: user.isDemo,
       },
@@ -147,7 +152,7 @@ export class AuthService {
     const email = dto.email.toLowerCase().trim();
     const user = await this.profileRepository.findOne({
       where: { email },
-      select: ['id', 'email', 'fullName', 'resetCodeExpiresAt'],
+      select: ['id', 'email', 'fullName', 'language', 'resetCodeExpiresAt'],
     });
     if (!user) return generic;
 
@@ -167,15 +172,10 @@ export class AuthService {
     );
 
     const minutes = RESET_CODE_TTL_MS / 60000;
-    const sent = await this.mailService.send(
+    // El correo sale en el idioma de la app de la persona.
+    const sent = await this.mailService.sendContent(
       user.email,
-      'Tu código para restablecer la contraseña de Fidelity',
-      `Hola${user.fullName ? ' ' + user.fullName : ''},\n\nTu código es: ${code}\n\n` +
-        `Vence en ${minutes} minutos. Si no lo pediste, ignora este mensaje.`,
-      `<p>Hola${user.fullName ? ' ' + user.fullName : ''},</p>` +
-        `<p>Tu código para restablecer la contraseña de <b>Fidelity</b> es:</p>` +
-        `<p style="font-size:32px;letter-spacing:8px;font-weight:700">${code}</p>` +
-        `<p>Vence en ${minutes} minutos. Si no lo pediste, ignora este mensaje.</p>`,
+      passwordResetEmail({ name: user.fullName, code, minutes, language: user.language }),
     );
     if (!sent) this.logger.error(`No se pudo enviar el código de recuperación a ${user.email}`);
     return generic;
@@ -186,7 +186,7 @@ export class AuthService {
     const invalid = new BadRequestException('Código inválido o vencido');
     const user = await this.profileRepository.findOne({
       where: { email: dto.email.toLowerCase().trim() },
-      select: ['id', 'resetCodeHash', 'resetCodeExpiresAt', 'resetAttempts'],
+      select: ['id', 'email', 'fullName', 'language', 'resetCodeHash', 'resetCodeExpiresAt', 'resetAttempts'],
     });
 
     if (
@@ -213,6 +213,12 @@ export class AuthService {
         resetAttempts: 0,
       },
     );
+
+    // Aviso de seguridad: si no fue la persona, sabe que debe actuar. Un fallo
+    // del correo no cambia el resultado.
+    void this.mailService
+      .sendContent(user.email, passwordChangedEmail({ name: user.fullName, language: user.language }))
+      .catch((e) => this.logger.warn(`No se pudo avisar del cambio de contraseña: ${e.message}`));
     return { message: 'Contraseña actualizada. Ya puedes iniciar sesión' };
   }
 

@@ -20,3 +20,4 @@ export * from './notification.entity';
 export * from './campaign-recipient.entity';
 export * from './game-access.entity';
 export * from './game-invite.entity';
+export * from './birthday-notice.entity';

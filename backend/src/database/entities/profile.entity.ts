@@ -48,6 +48,13 @@ export class Profile {
   @Column({ name: 'is_demo', type: 'boolean', default: false })
   isDemo: boolean;
 
+  /**
+   * Fecha de nacimiento (`AAAA-MM-DD`), opcional. Solo el día y el mes se
+   * comparten con los locales donde el cliente tiene tarjeta, para su regalo.
+   */
+  @Column({ name: 'birth_date', type: 'date', nullable: true })
+  birthDate: string | null;
+
   /** Idioma de la app del usuario (`es` o `en`): los avisos del servidor salen en él. */
   @Column({ type: 'varchar', length: 5, default: 'es' })
   language: string;

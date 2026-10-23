@@ -20,8 +20,10 @@ import { UserRole } from '../../database/entities/profile.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BusinessAccessService } from '../businesses/business-access.service';
 import { CreateFeedbackDto, FeedbackFilterDto } from './dto/feedback.dto';
+import { SETTING_KEYS } from '../settings/settings.definitions';
+import { SettingsService } from '../settings/settings.service';
 
-/** Máximo de opiniones por cliente y local cada 24 horas (evita el spam). */
+/** Máximo de opiniones por cliente y local cada 24 horas (por defecto; el administrador lo cambia). */
 export const MAX_FEEDBACK_PER_DAY = 3;
 
 /** Largo mínimo del texto de una sugerencia o un reclamo. */
@@ -40,6 +42,7 @@ export class FeedbackService {
     private readonly businessRepository: Repository<Business>,
     private readonly notificationsService: NotificationsService,
     private readonly businessAccess: BusinessAccessService,
+    private readonly settings: SettingsService,
   ) {}
 
   /** Calificación baja = reclamo; con texto = sugerencia; solo estrellas = elogio. */
@@ -80,7 +83,7 @@ export class FeedbackService {
     const recent = await this.feedbackRepository.count({
       where: { userId, businessId: dto.businessId, createdAt: MoreThan(since) },
     });
-    if (recent >= MAX_FEEDBACK_PER_DAY) {
+    if (recent >= (await this.settings.get(SETTING_KEYS.maxFeedbackPerDay))) {
       throw new HttpException(
         'Ya enviaste varias opiniones de este local hoy. Inténtalo mañana.',
         HttpStatus.TOO_MANY_REQUESTS,

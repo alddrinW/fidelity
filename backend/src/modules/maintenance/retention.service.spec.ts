@@ -6,6 +6,8 @@ import {
   RetentionService,
   SCAN_ATTEMPT_RETENTION_DAYS,
 } from './retention.service';
+import { SETTING_KEYS } from '../settings/settings.definitions';
+import { fakeSettings } from '../settings/settings.testing';
 
 const DAY = 24 * 60 * 60 * 1000;
 const now = new Date('2026-10-21T15:00:00Z');
@@ -28,7 +30,8 @@ describe('RetentionService', () => {
   let notifications: ReturnType<typeof fakeRepo>;
   let attempts: ReturnType<typeof fakeRepo>;
   let invites: ReturnType<typeof fakeRepo>;
-  const make = () => new RetentionService(notifications as any, attempts as any, invites as any);
+  const make = (overrides: Record<string, number> = {}) =>
+    new RetentionService(notifications as any, attempts as any, invites as any, fakeSettings(overrides) as any);
 
   beforeEach(() => {
     notifications = fakeRepo();
@@ -48,6 +51,21 @@ describe('RetentionService', () => {
       expect(cutoff(notifications, 0, 'createdAt')).toBe(daysAgo(READ_NOTIFICATION_RETENTION_DAYS));
       expect(anyPass.readAt).toBeUndefined();
       expect(cutoff(notifications, 1, 'createdAt')).toBe(daysAgo(NOTIFICATION_MAX_RETENTION_DAYS));
+    });
+
+    it('usa los días que fijó el administrador', async () => {
+      await make({
+        [SETTING_KEYS.keepReadNotificationsDays]: 10,
+        [SETTING_KEYS.keepNotificationsDays]: 45,
+        [SETTING_KEYS.keepScanAttemptsDays]: 60,
+        [SETTING_KEYS.keepGameInvitesDays]: 120,
+      }).purge(now);
+
+      expect(cutoff(notifications, 0, 'createdAt')).toBe(daysAgo(10));
+      expect(cutoff(notifications, 1, 'createdAt')).toBe(daysAgo(45));
+      expect(cutoff(attempts, 0, 'createdAt')).toBe(daysAgo(60));
+      expect(cutoff(invites, 0, 'finishedAt')).toBe(daysAgo(120));
+      expect(cutoff(invites, 1, 'expiresAt')).toBe(daysAgo(120));
     });
 
     it('intentos de escaneo: los de más de 90 días', async () => {
@@ -123,6 +141,8 @@ describe('RetentionService', () => {
 
       const first = service.run(now);
       const second = await service.run(now);
+      // La primera pasada lee los ajustes antes de borrar: se deja que llegue al borrado.
+      await new Promise((resolve) => setImmediate(resolve));
       release();
       await first;
 

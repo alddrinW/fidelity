@@ -4,10 +4,12 @@ import { FindOptionsWhere, IsNull, LessThan, Not, Repository } from 'typeorm';
 import { GameInvite } from '../../database/entities/game-invite.entity';
 import { Notification } from '../../database/entities/notification.entity';
 import { ScanAttempt } from '../../database/entities/scan-attempt.entity';
+import { SETTING_KEYS } from '../settings/settings.definitions';
+import { SettingsService } from '../settings/settings.service';
 
 const DAY = 24 * 60 * 60 * 1000;
 
-/** Un aviso ya leído se borra pasados estos días. */
+/** Un aviso ya leído se borra pasados estos días (por defecto; el administrador lo cambia). */
 export const READ_NOTIFICATION_RETENTION_DAYS = 30;
 
 /** Cualquier aviso (leído o no) se borra pasados estos días. */
@@ -53,6 +55,7 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
     private readonly attemptRepository: Repository<ScanAttempt>,
     @InjectRepository(GameInvite)
     private readonly inviteRepository: Repository<GameInvite>,
+    private readonly settings: SettingsService,
   ) {}
 
   onModuleInit() {
@@ -91,28 +94,34 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
 
   async purge(now: Date = new Date()): Promise<PurgeResult> {
     const before = (days: number) => new Date(now.getTime() - days * DAY);
+    const [readDays, anyDays, scanDays, inviteDays] = await Promise.all([
+      this.settings.get(SETTING_KEYS.keepReadNotificationsDays),
+      this.settings.get(SETTING_KEYS.keepNotificationsDays),
+      this.settings.get(SETTING_KEYS.keepScanAttemptsDays),
+      this.settings.get(SETTING_KEYS.keepGameInvitesDays),
+    ]);
 
     const notifications =
       (await this.deleteInBatches(this.notificationRepository, {
         readAt: Not(IsNull()),
-        createdAt: LessThan(before(READ_NOTIFICATION_RETENTION_DAYS)),
+        createdAt: LessThan(before(readDays)),
       })) +
       (await this.deleteInBatches(this.notificationRepository, {
-        createdAt: LessThan(before(NOTIFICATION_MAX_RETENTION_DAYS)),
+        createdAt: LessThan(before(anyDays)),
       }));
 
     const scanAttempts = await this.deleteInBatches(this.attemptRepository, {
-      createdAt: LessThan(before(SCAN_ATTEMPT_RETENTION_DAYS)),
+      createdAt: LessThan(before(scanDays)),
     });
 
     const gameInvites =
       (await this.deleteInBatches(this.inviteRepository, {
         status: 'finished',
-        finishedAt: LessThan(before(GAME_INVITE_RETENTION_DAYS)),
+        finishedAt: LessThan(before(inviteDays)),
       })) +
       // Retos que nunca se jugaron y vencieron hace tiempo.
       (await this.deleteInBatches(this.inviteRepository, {
-        expiresAt: LessThan(before(GAME_INVITE_RETENTION_DAYS)),
+        expiresAt: LessThan(before(inviteDays)),
       }));
 
     return { notifications, scanAttempts, gameInvites };

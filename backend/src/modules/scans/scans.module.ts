@@ -11,11 +11,13 @@ import { Reward } from '../../database/entities/reward.entity';
 import { Profile } from '../../database/entities/profile.entity';
 import { BusinessesModule } from '../businesses/businesses.module';
 import { CampaignsModule } from '../campaigns/campaigns.module';
+import { LoyaltyCardsModule } from '../loyalty-cards/loyalty-cards.module';
 
 @Module({
   imports: [
     BusinessesModule,
     CampaignsModule,
+    LoyaltyCardsModule,
     TypeOrmModule.forFeature([
       Scan,
       ScanAttempt,

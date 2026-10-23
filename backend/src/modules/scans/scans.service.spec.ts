@@ -20,6 +20,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { BusinessAccessService } from '../businesses/business-access.service';
 import { CampaignsService } from '../campaigns/campaigns.service';
+import { FidelyService } from '../loyalty-cards/fidely.service';
 
 describe('ScansService', () => {
   let service: ScansService;
@@ -32,6 +33,7 @@ describe('ScansService', () => {
   let realtime: any;
   let access: any;
   let campaigns: any;
+  let fidely: any;
 
   /** Lo que devuelve manager.findOne para cada entidad. Cada test lo ajusta. */
   let db: { card: any; pendingReward: any; profile: any; lockedScan: any };
@@ -98,6 +100,7 @@ describe('ScansService', () => {
     };
     scanRepo = { findOne: jest.fn(), update: jest.fn().mockResolvedValue({ affected: 1 }) };
     campaigns = { registerApprovedScan: jest.fn().mockResolvedValue(0) };
+    fidely = { onScanApproved: jest.fn().mockResolvedValue(false) };
     // El dueño y el aprobador asignado pueden operar; cualquier otro no.
     access = {
       canOperate: jest.fn(
@@ -127,6 +130,7 @@ describe('ScansService', () => {
         { provide: RealtimeGateway, useValue: realtime },
         { provide: BusinessAccessService, useValue: access },
         { provide: CampaignsService, useValue: campaigns },
+        { provide: FidelyService, useValue: fidely },
         { provide: DataSource, useValue: { createQueryRunner: () => queryRunner } },
       ],
     }).compile();
@@ -357,6 +361,27 @@ describe('ScansService', () => {
 
       expect(result.status).toBe(ScanStatus.APPROVED);
       expect(db.card.currentPoints).toBe(2);
+    });
+
+    it('al aprobar revisa si el cliente ya es FidelyUsuario de ese local', async () => {
+      await approve();
+
+      expect(fidely.onScanApproved).toHaveBeenCalledWith('u1', 'b1', expect.anything());
+    });
+
+    it('si falla la revision de la insignia la aprobacion igual se completa', async () => {
+      fidely.onScanApproved.mockRejectedValue(new Error('fcm caido'));
+
+      const result = await approve();
+
+      expect(result.status).toBe(ScanStatus.APPROVED);
+      expect(db.card.currentPoints).toBe(2);
+    });
+
+    it('rechazar un escaneo no revisa la insignia', async () => {
+      await reject();
+
+      expect(fidely.onScanApproved).not.toHaveBeenCalled();
     });
 
     it('rechazar un escaneo no suma sellos', async () => {

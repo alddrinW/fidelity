@@ -7,6 +7,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -15,6 +16,7 @@ import {
   CreateOrderDto,
   RejectPaymentDto,
   ReportPaymentDto,
+  UpdateBankAccountsDto,
   UpdatePricesDto,
 } from './dto/payments.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -42,6 +44,13 @@ export class PaymentsController {
   @Roles(UserRole.ADMIN)
   updatePrices(@Body() dto: UpdatePricesDto) {
     return this.paymentsService.updatePrices(dto);
+  }
+
+  /** El administrador fija las cuentas bancarias para transferencias y depósitos. */
+  @Put('bank-accounts')
+  @Roles(UserRole.ADMIN)
+  updateBankAccounts(@Body() dto: UpdateBankAccountsDto) {
+    return this.paymentsService.updateBankAccounts(dto);
   }
 
   @Get('mine')

@@ -13,6 +13,9 @@ import { Scan } from '../../database/entities/scan.entity';
 import { UserRole } from '../../database/entities/profile.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BusinessAccessService } from '../businesses/business-access.service';
+import { SettingsService } from '../settings/settings.service';
+import { SETTING_KEYS } from '../settings/settings.definitions';
+import { fakeSettings } from '../settings/settings.testing';
 
 describe('FeedbackService', () => {
   let service: FeedbackService;
@@ -21,6 +24,7 @@ describe('FeedbackService', () => {
   let businessRepo: any;
   let notifications: any;
   let access: any;
+  let settings: ReturnType<typeof fakeSettings>;
 
   const BUSINESS_ID = '11111111-1111-4111-8111-111111111111';
 
@@ -40,6 +44,7 @@ describe('FeedbackService', () => {
       sendToUser: jest.fn().mockResolvedValue(true),
     };
     access = { canOperate: jest.fn().mockResolvedValue(true) };
+    settings = fakeSettings();
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -49,6 +54,7 @@ describe('FeedbackService', () => {
         { provide: getRepositoryToken(Business), useValue: businessRepo },
         { provide: NotificationsService, useValue: notifications },
         { provide: BusinessAccessService, useValue: access },
+        { provide: SettingsService, useValue: settings },
       ],
     }).compile();
 
@@ -137,6 +143,16 @@ describe('FeedbackService', () => {
 
       await expect(attempt).rejects.toBeInstanceOf(HttpException);
       await expect(attempt).rejects.toMatchObject({ status: 429 });
+    });
+
+    it('el tope diario lo fija el administrador', async () => {
+      settings.get.mockImplementation(fakeSettings({ [SETTING_KEYS.maxFeedbackPerDay]: 5 }).get);
+      feedbackRepo.count.mockResolvedValue(4);
+
+      await expect(service.create('u1', { businessId: BUSINESS_ID, rating: 3 })).resolves.toBeDefined();
+
+      feedbackRepo.count.mockResolvedValue(5);
+      await expect(service.create('u1', { businessId: BUSINESS_ID, rating: 3 })).rejects.toMatchObject({ status: 429 });
     });
 
     it('si falla la notificacion igual se guarda la opinion', async () => {

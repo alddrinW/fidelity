@@ -4,11 +4,14 @@ import { ConfigService } from '@nestjs/config';
 import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import { AppModule } from './app.module';
+import { assertProductionSecrets } from './config/secrets';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { TransformInterceptor } from './common/interceptors/transform.interceptor';
 
 async function bootstrap() {
   const logger = new Logger('FidelityBackend');
+  // En producción no se arranca con las claves de ejemplo.
+  assertProductionSecrets();
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
   // Las imagenes de perfil y logo viajan como data URI base64 (hasta ~1 MB).
@@ -17,6 +20,13 @@ async function bootstrap() {
   app.useBodyParser('urlencoded', { limit: '2mb', extended: true });
 
   const configService = app.get(ConfigService);
+
+  // Detrás de un proxy (Nginx, un balanceador) la IP del cliente viene en un
+  // encabezado: sin esto, todos parecerían la misma persona para el límite de intentos.
+  const trustProxy = configService.get<string>('rateLimit.trustProxy');
+  if (trustProxy) {
+    app.set('trust proxy', /^\d+$/.test(trustProxy) ? Number(trustProxy) : trustProxy === 'true' ? true : trustProxy);
+  }
   const port = configService.get<number>('port') || 3000;
   const apiPrefix = configService.get<string>('apiPrefix') || 'api/v1';
   const corsOrigin = configService.get<string>('corsOrigin') || '*';

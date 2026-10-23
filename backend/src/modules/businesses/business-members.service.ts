@@ -16,6 +16,8 @@ import {
 import { Profile, UserRole } from '../../database/entities/profile.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BusinessAccessService } from './business-access.service';
+import { SETTING_KEYS } from '../settings/settings.definitions';
+import { SettingsService } from '../settings/settings.service';
 
 /** Máximo de aprobadores por negocio. */
 export const MAX_APPROVERS_PER_BUSINESS = 10;
@@ -48,6 +50,7 @@ export class BusinessMembersService {
     private readonly businessRepository: Repository<Business>,
     private readonly businessAccess: BusinessAccessService,
     private readonly notificationsService: NotificationsService,
+    private readonly settings: SettingsService,
   ) {}
 
   async list(businessId: string, requester: { id: string; role: UserRole }) {
@@ -93,9 +96,10 @@ export class BusinessMembersService {
     if (existing) throw new ConflictException('Esa persona ya es aprobador de este negocio');
 
     const count = await this.memberRepository.count({ where: { businessId } });
-    if (count >= MAX_APPROVERS_PER_BUSINESS) {
+    const maxApprovers = await this.settings.get(SETTING_KEYS.maxApprovers);
+    if (count >= maxApprovers) {
       throw new BadRequestException(
-        `Un negocio puede tener hasta ${MAX_APPROVERS_PER_BUSINESS} aprobadores`,
+        `Un negocio puede tener hasta ${maxApprovers} aprobadores`,
       );
     }
 
