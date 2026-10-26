@@ -108,6 +108,16 @@ export class UsersService {
     return { language: dto.language };
   }
 
+  /**
+   * La persona ya vio el mensaje de bienvenida de su primera entrada: no se le
+   * vuelve a mostrar (ni al iniciar sesión otra vez ni desde otro dispositivo).
+   */
+  async markWelcomeSeen(userId: string) {
+    const result = await this.profileRepository.update({ id: userId }, { hasSeenWelcome: true });
+    if (!result.affected) throw new NotFoundException('Usuario no encontrado');
+    return { hasSeenWelcome: true };
+  }
+
   async searchUsers(query: string, currentUserId: string) {
     if (!query || query.trim().length === 0) return [];
 

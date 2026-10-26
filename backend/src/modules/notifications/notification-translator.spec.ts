@@ -50,6 +50,48 @@ describe('notificationTranslator', () => {
       ['Ana transfirio su premio a Luis.', 'Ana transferred their prize to Luis.'],
       ['Ana transfirio un premio a Luis en Café Aurora.', 'Ana transferred a prize to Luis at Café Aurora.'],
       // campañas, gift cards y rutas
+      // tarjetas en venta
+      ['Café Aurora tiene una tarjeta en venta', 'Café Aurora has a card for sale'],
+      ['Café pequeño por $0.25. Cómprala en Explorar.', 'Café pequeño for $0.25. Buy it in Explore.'],
+      ['Compra aprobada', 'Purchase approved'],
+      [
+        'Tu tarjeta de Café Aurora: Café pequeño ya está en Mis regalos. Vale hasta el 23/11/2026.',
+        'Your card from Café Aurora: Café pequeño is now in My gifts. Valid until 23/11/2026.',
+      ],
+      ['Vendiste una tarjeta', 'You sold a card'],
+      [
+        'Luis Mora compró «Café pequeño» por $0.25. Te tocan $0.22 cuando la canjee.',
+        'Luis Mora bought "Café pequeño" for $0.25. You get $0.22 when they redeem it.',
+      ],
+      ['Te pagamos tus tarjetas canjeadas', 'We paid you for your redeemed cards'],
+      [
+        'Registramos un pago de $0.44 por 2 tarjetas canjeadas.',
+        'We recorded a payment of $0.44 for 2 redeemed cards.',
+      ],
+      [
+        'Registramos un pago de $0.22 por 1 tarjeta canjeada.',
+        'We recorded a payment of $0.22 for 1 redeemed card.',
+      ],
+      // juego semanal
+      ['¡Ganaste tu juego de la semana!', 'You won your game of the week!'],
+      [
+        'Sumaste 1 punto en Café Aurora. La próxima semana juega en otro negocio.',
+        'You earned 1 point at Café Aurora. Next week play at another business.',
+      ],
+      ['¡Completaste tu tarjeta!', 'You completed your card!'],
+      ['¡Un cliente ganó un punto jugando!', 'A customer won a point by playing!'],
+      [
+        'Sumaste 2 puntos en Café Aurora. La próxima semana juega en otro negocio.',
+        'You earned 2 points at Café Aurora. Next week play at another business.',
+      ],
+      [
+        'Ana Paz ganó 2 puntos con el juego semanal de Fidelity.',
+        'Ana Paz won 2 points with the Fidelity weekly game.',
+      ],
+      [
+        'Ana Paz ganó 1 punto con el juego semanal de Fidelity.',
+        'Ana Paz won 1 point with the Fidelity weekly game.',
+      ],
       ['Tarjeta canjeada', 'Card redeemed'],
       ['Canjeaste: 20% de descuento. ¡Disfrútalo!', 'You redeemed: 20% off. Enjoy!'],
       ['Café Aurora te regaló una gift card', 'Café Aurora gave you a gift card'],
@@ -96,6 +138,29 @@ describe('notificationTranslator', () => {
         'La foto no se ve. Puedes reportarlo de nuevo desde la app.',
         'La foto no se ve. You can report it again from the app.',
       ],
+      // invitar amigos
+      ['Luis Mora se unió con tu código', 'Luis Mora joined with your code'],
+      [
+        'Van 2 de 3 amigos. Cuando se unan 3, ganas 1 punto.',
+        'You have 2 of 3 friends. When 3 join, you earn 1 point.',
+      ],
+      [
+        'Van 1 de 3 amigos. Cuando se unan 3, ganas 2 puntos.',
+        'You have 1 of 3 friends. When 3 join, you earn 2 points.',
+      ],
+      ['Van 3 de 3 amigos.', 'You have 3 of 3 friends.'],
+      ['Cuando haga su primer escaneo, contará para tu punto.', 'When they make their first scan, it will count toward your point.'],
+      ['¡Se unieron 3 amigos!', '3 friends joined!'],
+      ['Cuando haga su primer escaneo, los dos ganan puntos de invitación.', 'When they make their first scan, you both earn invitation points.'],
+      ['¡Ganaste 1 punto de invitación!', 'You earned 1 invitation point!'],
+      ['¡Ganaste 2 puntos de invitación!', 'You earned 2 invitation points!'],
+      ['Por tu primer escaneo, invitado por Ana Pérez. Elige en qué local usarlos.', 'For your first scan, invited by Ana Pérez. Choose which business to use them at.'],
+      ['¡Luis Mora ya hizo su primer escaneo!', 'Luis Mora already made their first scan!'],
+      ['Ganaste 1 punto de invitación. Elige en qué local usarlos.', 'You earned 1 invitation point. Choose which business to use it at.'],
+      ['Ganaste 3 puntos de invitación. Elige en qué local usarlos.', 'You earned 3 invitation points. Choose which business to use them at.'],
+      ['Puntos de invitación usados', 'Invitation points used'],
+      ['Sumaste 1 punto en Café Aurora.', 'You added 1 point at Café Aurora.'],
+      ['Sumaste 2 puntos en Café Aurora.', 'You added 2 points at Café Aurora.'],
       // FidelyUsuario
       ['¡Ya eres FidelyUsuario de Café Aurora!', 'You are now a FidelyUsuario at Café Aurora!'],
       ['Nuevo FidelyUsuario', 'New FidelyUsuario'],

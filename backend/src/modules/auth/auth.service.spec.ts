@@ -7,6 +7,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { BadRequestException, ConflictException, UnauthorizedException } from '@nestjs/common';
 import { MailService } from '../mail/mail.service';
 import * as bcrypt from 'bcrypt';
+import { ReferralsService } from '../referrals/referrals.service';
 
 describe('AuthService', () => {
   let service: AuthService;
@@ -14,6 +15,7 @@ describe('AuthService', () => {
   let jwtService: any;
   let notificationsService: any;
   let mailService: any;
+  let referrals: any;
 
   beforeEach(async () => {
     profileRepo = {
@@ -31,6 +33,10 @@ describe('AuthService', () => {
       broadcastToAdmins: jest.fn().mockResolvedValue(undefined),
     };
 
+    referrals = {
+      validateCode: jest.fn().mockResolvedValue({}),
+      redeem: jest.fn().mockResolvedValue({}),
+    };
     mailService = {
       send: jest.fn().mockResolvedValue(true),
       sendContent: jest.fn().mockResolvedValue(true),
@@ -53,6 +59,7 @@ describe('AuthService', () => {
           useValue: notificationsService,
         },
         { provide: MailService, useValue: mailService },
+        { provide: ReferralsService, useValue: referrals },
       ],
     }).compile();
 
@@ -78,6 +85,67 @@ describe('AuthService', () => {
     expect(result.user.email).toBe('client@fidelity.test');
     expect(result.user.role).toBe(UserRole.CLIENT);
     expect(notificationsService.broadcastToAdmins).toHaveBeenCalled();
+  });
+
+  describe('código de un amigo al registrarse', () => {
+    const register = (extra: any = {}) =>
+      service.register({ email: 'amigo@mail.com', password: 'secret123', fullName: 'Amigo', ...extra });
+
+    it('un cliente con código: se revisa antes de crear la cuenta y se aplica después', async () => {
+      profileRepo.findOne.mockResolvedValue(null);
+
+      await register({ referralCode: 'amg-abc234' });
+
+      expect(referrals.validateCode).toHaveBeenCalledWith('amg-abc234');
+      expect(referrals.redeem).toHaveBeenCalledWith('uuid-1', 'amg-abc234');
+      expect(referrals.validateCode.mock.invocationCallOrder[0]).toBeLessThan(profileRepo.save.mock.invocationCallOrder[0]);
+    });
+
+    it('un código que no sirve se rechaza y no se crea la cuenta', async () => {
+      profileRepo.findOne.mockResolvedValue(null);
+      referrals.validateCode.mockRejectedValue(new Error('Ese código de amigo no existe'));
+
+      await expect(register({ referralCode: 'xxx' })).rejects.toThrow('no existe');
+      expect(profileRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('sin código no se toca nada', async () => {
+      profileRepo.findOne.mockResolvedValue(null);
+
+      await register();
+
+      expect(referrals.validateCode).not.toHaveBeenCalled();
+      expect(referrals.redeem).not.toHaveBeenCalled();
+    });
+
+    it('un dueño de negocio no usa códigos de amigo', async () => {
+      profileRepo.findOne.mockResolvedValue(null);
+
+      await register({ role: UserRole.BUSINESS, referralCode: 'AMG-ABC234' });
+
+      expect(referrals.validateCode).not.toHaveBeenCalled();
+    });
+
+    it('si falla al aplicarlo, la cuenta igual se crea', async () => {
+      profileRepo.findOne.mockResolvedValue(null);
+      referrals.redeem.mockRejectedValue(new Error('límite'));
+
+      const result = await register({ referralCode: 'AMG-ABC234' });
+
+      expect(result.accessToken).toBe('test.jwt.token');
+    });
+  });
+
+  it('una cuenta nueva todavía no vio la bienvenida (sale solo en su primera entrada)', async () => {
+    profileRepo.findOne.mockResolvedValue(null);
+
+    const result = await service.register({
+      email: 'nueva@fidelity.test',
+      password: 'password123',
+      fullName: 'Nueva Cuenta',
+    });
+
+    expect(result.user.hasSeenWelcome).toBe(false);
   });
 
   it('should prevent direct escalation to admin upon registration', async () => {

@@ -21,6 +21,7 @@ import { RealtimeGateway } from '../realtime/realtime.gateway';
 import { BusinessAccessService } from '../businesses/business-access.service';
 import { CampaignsService } from '../campaigns/campaigns.service';
 import { FidelyService } from '../loyalty-cards/fidely.service';
+import { ReferralsService } from '../referrals/referrals.service';
 
 describe('ScansService', () => {
   let service: ScansService;
@@ -34,6 +35,7 @@ describe('ScansService', () => {
   let access: any;
   let campaigns: any;
   let fidely: any;
+  let referrals: any;
 
   /** Lo que devuelve manager.findOne para cada entidad. Cada test lo ajusta. */
   let db: { card: any; pendingReward: any; profile: any; lockedScan: any };
@@ -101,6 +103,7 @@ describe('ScansService', () => {
     scanRepo = { findOne: jest.fn(), update: jest.fn().mockResolvedValue({ affected: 1 }) };
     campaigns = { registerApprovedScan: jest.fn().mockResolvedValue(0) };
     fidely = { onScanApproved: jest.fn().mockResolvedValue(false) };
+    referrals = { onScanApproved: jest.fn().mockResolvedValue(false) };
     // El dueño y el aprobador asignado pueden operar; cualquier otro no.
     access = {
       canOperate: jest.fn(
@@ -131,6 +134,7 @@ describe('ScansService', () => {
         { provide: BusinessAccessService, useValue: access },
         { provide: CampaignsService, useValue: campaigns },
         { provide: FidelyService, useValue: fidely },
+        { provide: ReferralsService, useValue: referrals },
         { provide: DataSource, useValue: { createQueryRunner: () => queryRunner } },
       ],
     }).compile();
@@ -376,6 +380,27 @@ describe('ScansService', () => {
 
       expect(result.status).toBe(ScanStatus.APPROVED);
       expect(db.card.currentPoints).toBe(2);
+    });
+
+    it('al aprobar revisa si era el primer escaneo de un amigo invitado (en cualquier local)', async () => {
+      await approve();
+
+      expect(referrals.onScanApproved).toHaveBeenCalledWith('u1');
+    });
+
+    it('si falla el pago de la invitación la aprobacion igual se completa', async () => {
+      referrals.onScanApproved.mockRejectedValue(new Error('db caida'));
+
+      const result = await approve();
+
+      expect(result.status).toBe(ScanStatus.APPROVED);
+      expect(db.card.currentPoints).toBe(2);
+    });
+
+    it('rechazar un escaneo no paga invitaciones', async () => {
+      await reject();
+
+      expect(referrals.onScanApproved).not.toHaveBeenCalled();
     });
 
     it('rechazar un escaneo no revisa la insignia', async () => {

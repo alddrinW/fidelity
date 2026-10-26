@@ -21,3 +21,5 @@ export * from './campaign-recipient.entity';
 export * from './game-access.entity';
 export * from './game-invite.entity';
 export * from './birthday-notice.entity';
+export * from './referral.entity';
+export * from './card-purchase.entity';

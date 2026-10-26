@@ -66,6 +66,13 @@ export class Business {
   @Column({ name: 'is_active', type: 'boolean', default: false })
   isActive: boolean;
 
+  /**
+   * El administrador lo marca para que los clientes puedan usar aquí sus puntos
+   * de invitación (invitar amigos a la app).
+   */
+  @Column({ name: 'referral_enabled', type: 'boolean', default: false })
+  referralEnabled: boolean;
+
   @Column({ type: 'decimal', precision: 10, scale: 7, nullable: true })
   latitude: number;
 

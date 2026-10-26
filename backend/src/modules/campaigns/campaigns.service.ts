@@ -32,6 +32,8 @@ import { UserRole } from '../../database/entities/profile.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BusinessAccessService } from '../businesses/business-access.service';
 import { CreateCampaignDto, UpdateCampaignDto } from './dto/campaigns.dto';
+import { SETTING_KEYS } from '../settings/settings.definitions';
+import { SettingsService } from '../settings/settings.service';
 
 type Requester = { id: string; role: UserRole };
 
@@ -71,6 +73,7 @@ export class CampaignsService {
     private readonly scanRepository: Repository<Scan>,
     private readonly notificationsService: NotificationsService,
     private readonly businessAccess: BusinessAccessService,
+    private readonly settings: SettingsService,
   ) {}
 
   // ------------------------------------------------------------------
@@ -105,6 +108,7 @@ export class CampaignsService {
     }
 
     const benefit = this.resolveBenefit(dto, businessIds.length);
+    const sale = await this.resolveSale(dto, businessIds.length);
 
     // Gift cards: a todos los clientes o solo a los elegidos (que deben serlo).
     const audience: CampaignAudience =
@@ -131,6 +135,7 @@ export class CampaignsService {
         description: dto.description?.trim() || null,
         imageUrl: dto.imageUrl || null,
         ...benefit,
+        ...sale,
         template: options.template ?? null,
         audience,
         startsAt,
@@ -159,6 +164,45 @@ export class CampaignsService {
     }
 
     return this.findOneView(campaign.id);
+  }
+
+  /**
+   * Una gift card puede ponerse en venta: precio, cupos y cuántos días vale
+   * la tarjeta tras comprarla. Las reglas (encendido, precios mínimo y máximo)
+   * las fija el administrador.
+   */
+  private async resolveSale(dto: CreateCampaignDto, participants: number) {
+    const none = { priceCents: null, stock: null, cardValidDays: null };
+    if (dto.priceCents == null) return none;
+
+    if (dto.type !== CampaignType.GIFT_CARD) {
+      throw new BadRequestException('Solo una gift card puede ponerse en venta');
+    }
+    if (dto.audience === 'selected') {
+      throw new BadRequestException('Una tarjeta en venta es para todos los clientes, no para clientes elegidos');
+    }
+    if (participants !== 1) {
+      throw new BadRequestException('Una tarjeta en venta pertenece a un solo local');
+    }
+    const [enabled, minPrice, maxPrice] = await Promise.all([
+      this.settings.get(SETTING_KEYS.paidCardsEnabled),
+      this.settings.get(SETTING_KEYS.paidCardsMinPrice),
+      this.settings.get(SETTING_KEYS.paidCardsMaxPrice),
+    ]);
+    if (!enabled) {
+      throw new BadRequestException('La venta de tarjetas no está disponible por ahora');
+    }
+    const minCents = Math.round(minPrice * 100);
+    const maxCents = Math.round(maxPrice * 100);
+    if (dto.priceCents < minCents || dto.priceCents > maxCents) {
+      throw new BadRequestException(
+        `El precio debe estar entre $${minPrice.toFixed(2)} y $${maxPrice.toFixed(2)}`,
+      );
+    }
+    if (!dto.stock) {
+      throw new BadRequestException('Indica cuántas tarjetas pones a la venta');
+    }
+    return { priceCents: dto.priceCents, stock: dto.stock, cardValidDays: dto.cardValidDays ?? 30 };
   }
 
   /** Beneficio de la campaña según su tipo (valida y normaliza). */
@@ -252,6 +296,11 @@ export class CampaignsService {
     }
     let benefitChanged = false;
     if (dto.benefitLabel !== undefined || dto.benefitValue !== undefined) {
+      if (campaign.priceCents != null) {
+        throw new BadRequestException(
+          'Una tarjeta en venta no cambia de beneficio, porque los clientes la pagan por lo que ofrece. Crea otra.',
+        );
+      }
       if (campaign.type !== CampaignType.GIFT_CARD) {
         throw new BadRequestException('Solo las gift cards tienen un beneficio editable');
       }
@@ -276,8 +325,9 @@ export class CampaignsService {
 
     await this.campaignRepository.save(campaign);
 
-    // Quienes ya tienen la gift card se enteran de que cambió.
-    if (campaign.type === CampaignType.GIFT_CARD && (benefitChanged || endChanged)) {
+    // Quienes ya tienen la gift card se enteran de que cambió (en una tarjeta en
+    // venta, `endsAt` es el fin de la venta: a quien ya la compró no le cambia nada).
+    if (campaign.type === CampaignType.GIFT_CARD && campaign.priceCents == null && (benefitChanged || endChanged)) {
       await this.safely(() =>
         this.notifyHolders(
           campaign,
@@ -299,7 +349,9 @@ export class CampaignsService {
     campaign.cancelledAt = new Date();
     await this.campaignRepository.save(campaign);
 
-    if (campaign.type === CampaignType.GIFT_CARD) {
+    // Cancelar una tarjeta en venta solo detiene la venta: quienes ya la pagaron
+    // siguen pudiendo canjearla, así que no se les dice que dejó de valer.
+    if (campaign.type === CampaignType.GIFT_CARD && campaign.priceCents == null) {
       await this.safely(() =>
         this.notifyHolders(
           campaign,
@@ -396,9 +448,16 @@ export class CampaignsService {
     if (claim.status === ClaimStatus.REDEEMED) {
       throw new ConflictException('Este código ya fue canjeado');
     }
-    const phase = campaignPhase(claim.campaign);
-    if (phase === 'cancelled') throw new BadRequestException('La campaña fue cancelada');
-    if (phase === 'ended') throw new BadRequestException('La campaña ya terminó');
+    if (claim.source === ClaimSource.PURCHASE) {
+      // Ya está pagada: sigue valiendo aunque la oferta se cierre o se cancele.
+      if (claim.expiresAt && new Date(claim.expiresAt) <= new Date()) {
+        throw new BadRequestException('Esta tarjeta ya venció');
+      }
+    } else {
+      const phase = campaignPhase(claim.campaign);
+      if (phase === 'cancelled') throw new BadRequestException('La campaña fue cancelada');
+      if (phase === 'ended') throw new BadRequestException('La campaña ya terminó');
+    }
 
     claim.status = ClaimStatus.REDEEMED;
     claim.redeemedAt = new Date();
@@ -463,10 +522,12 @@ export class CampaignsService {
     // Una gift card para clientes elegidos solo la ve quien fue elegido o ya la tiene.
     const visible = campaigns.filter(
       (c) =>
-        c.type !== CampaignType.GIFT_CARD ||
+        // Las tarjetas con precio se ven en "Tarjetas en venta" (card-sales), no aquí.
+        c.priceCents == null &&
+        (c.type !== CampaignType.GIFT_CARD ||
         c.audience !== 'selected' ||
         chosenIds.has(c.id) ||
-        claimedIds.has(c.id),
+        claimedIds.has(c.id)),
     );
 
     // El avance del cliente en cada reto de escaneos.
@@ -501,6 +562,9 @@ export class CampaignsService {
     if (!campaign) throw new NotFoundException('Campaña no encontrada');
     if (campaign.type !== CampaignType.GIFT_CARD) {
       throw new BadRequestException('Esta campaña no tiene tarjeta de regalo');
+    }
+    if (campaign.priceCents != null) {
+      throw new BadRequestException('Esta tarjeta está en venta: cómprala desde Explorar');
     }
     if (campaignPhase(campaign) !== 'active') {
       throw new BadRequestException('Esta campaña no está vigente');
@@ -757,6 +821,18 @@ export class CampaignsService {
     const audienceIds = await this.audienceUserIds(campaign);
     if (audienceIds.length === 0) return 0;
 
+    // Una tarjeta en venta no se regala: se anuncia a los clientes del local.
+    if (campaign.priceCents != null) {
+      const business = campaign.participants[0]?.business?.name ?? 'Tu local';
+      const price = `$${(campaign.priceCents / 100).toFixed(2)}`;
+      return this.notificationsService.sendToUsers(
+        audienceIds,
+        `${business} tiene una tarjeta en venta`,
+        `${campaign.benefitLabel ?? campaign.title} por ${price}. Cómprala en Explorar.`,
+        { type: 'card_offer', campaign_id: campaign.id, route: '/explore' },
+      );
+    }
+
     // Una gift card no espera a que el cliente la reclame: se le entrega ya,
     // con su propio código, y el aviso le dice que la abra en "Mis regalos".
     if (campaign.type === CampaignType.GIFT_CARD) {
@@ -973,6 +1049,9 @@ export class CampaignsService {
       benefitLabel: campaign.benefitLabel,
       requiredStamps: campaign.requiredStamps,
       requiredScans: campaign.requiredScans,
+      priceCents: campaign.priceCents ?? null,
+      stock: campaign.stock ?? null,
+      cardValidDays: campaign.cardValidDays ?? null,
       audience: campaign.audience ?? 'all',
       startsAt: campaign.startsAt,
       endsAt: campaign.endsAt,
@@ -995,6 +1074,7 @@ export class CampaignsService {
       source: claim.source,
       createdAt: claim.createdAt,
       redeemedAt: claim.redeemedAt,
+      expiresAt: claim.expiresAt ?? null,
     };
   }
 

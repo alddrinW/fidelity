@@ -24,6 +24,8 @@ export enum ClaimSource {
   ROUTE_COMPLETE = 'route_complete',
   /** Premio de un reto de escaneos completado. */
   CHALLENGE_COMPLETE = 'challenge_complete',
+  /** El cliente compró la tarjeta (con PayPhone). */
+  PURCHASE = 'purchase',
 }
 
 /**
@@ -58,6 +60,10 @@ export class CampaignClaim {
 
   @Column({ type: 'varchar', length: 20, default: ClaimSource.CLAIM })
   source: ClaimSource;
+
+  /** Tarjetas compradas: hasta cuándo vale. Las demás vencen con su campaña. */
+  @Column({ name: 'expires_at', type: 'timestamptz', nullable: true })
+  expiresAt: Date | null;
 
   @Column({ name: 'redeemed_by_id', type: 'uuid', nullable: true })
   redeemedById: string | null;

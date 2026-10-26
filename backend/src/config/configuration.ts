@@ -72,6 +72,16 @@ export const configuration = () => ({
       publicApiUrl: (process.env.PUBLIC_API_URL || '').replace(/\/+$/, ''),
     },
   },
+  // Invitar amigos: el enlace que se comparte abre una página del backend (con
+  // el código y los botones para abrir o descargar la app). Todo es opcional:
+  // sin PUBLIC_API_URL solo se comparte el código; sin las demás, esa página
+  // muestra solo el código.
+  referrals: {
+    publicApiUrl: (process.env.PUBLIC_API_URL || '').replace(/\/+$/, ''),
+    webUrl: process.env.APP_WEB_URL || '',
+    playStoreUrl: process.env.PLAY_STORE_URL || '',
+    appStoreUrl: process.env.APP_STORE_URL || '',
+  },
   // Correo saliente (recuperación de contraseña). Sin SMTP_HOST el código se
   // escribe en el log del servidor, solo fuera de producción.
   mail: {

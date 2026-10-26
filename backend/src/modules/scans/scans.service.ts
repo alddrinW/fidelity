@@ -22,6 +22,7 @@ import { NotificationsService } from '../notifications/notifications.service';
 import { BusinessAccessService } from '../businesses/business-access.service';
 import { CampaignsService } from '../campaigns/campaigns.service';
 import { FidelyService } from '../loyalty-cards/fidely.service';
+import { ReferralsService } from '../referrals/referrals.service';
 import { RealtimeGateway } from '../realtime/realtime.gateway';
 
 /** Regla que impide registrar un escaneo, con el error a devolver al cliente. */
@@ -55,6 +56,7 @@ export class ScansService {
     private readonly businessAccess: BusinessAccessService,
     private readonly campaignsService: CampaignsService,
     private readonly fidelyService: FidelyService,
+    private readonly referralsService: ReferralsService,
   ) {}
 
   /**
@@ -629,6 +631,14 @@ export class ScansService {
         await this.fidelyService.onScanApproved(scan.userId, business.id, updatedCard.id);
       } catch (error) {
         this.logger.warn(`No se pudo revisar la insignia FidelyUsuario: ${error.message}`);
+      }
+
+      // Invitar amigos: si llegó invitado, su primer escaneo aprobado les da
+      // puntos a los dos. Un fallo aquí nunca debe afectar la aprobación.
+      try {
+        await this.referralsService.onScanApproved(scan.userId);
+      } catch (error) {
+        this.logger.warn(`No se pudo pagar la invitación de amigo: ${error.message}`);
       }
 
       return {

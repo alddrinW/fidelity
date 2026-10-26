@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { LoyaltyCard } from '../../database/entities/loyalty-card.entity';
 import { Business } from '../../database/entities/business.entity';
 import { Scan, ScanStatus } from '../../database/entities/scan.entity';
@@ -58,6 +58,66 @@ export class LoyaltyCardsService {
     });
 
     return this.cardRepository.save(newCard);
+  }
+
+  /** Las tarjetas de un cliente en esos locales (para saber cuántos puntos lleva en cada uno). */
+  cardsOf(userId: string, businessIds: string[]): Promise<LoyaltyCard[]> {
+    return this.cardRepository.find({ where: { userId, businessId: In(businessIds) } });
+  }
+
+  /**
+   * Suma puntos de regalo a la tarjeta de un cliente en un local (por ejemplo,
+   * por invitar a un amigo). Funciona como cualquier punto: al completar los
+   * puntos del local se genera el premio. A diferencia de un escaneo, no se
+   * frena si ya tiene un premio pendiente: invitar amigos nunca debe quitarle
+   * puntos. Devuelve cuántos premios nuevos salieron.
+   */
+  async grantBonusPoints(
+    userId: string,
+    businessId: string,
+    points: number,
+  ): Promise<{ cardId: string; currentPoints: number; newRewards: number }> {
+    return this.cardRepository.manager.transaction(async (manager) => {
+      const business = await manager.findOne(Business, { where: { id: businessId } });
+      if (!business) throw new NotFoundException('Negocio no encontrado');
+      const required = business.pointsRequired || 10;
+
+      let card = await manager.findOne(LoyaltyCard, { where: { userId, businessId } });
+      if (!card) {
+        card = manager.create(LoyaltyCard, {
+          userId,
+          businessId,
+          currentPoints: 0,
+          totalPointsLifetime: 0,
+          rewardsClaimed: 0,
+        });
+      }
+
+      const total = card.currentPoints + points;
+      const newRewards = Math.floor(total / required);
+      card.currentPoints = total % required;
+      card.totalPointsLifetime += points;
+      card.rewardsClaimed += newRewards;
+      const saved = await manager.save(LoyaltyCard, card);
+
+      for (let i = 0; i < newRewards; i++) {
+        await manager.save(
+          Reward,
+          manager.create(Reward, {
+            userId,
+            businessId,
+            loyaltyCardId: saved.id,
+            pointsUsed: required,
+            rewardDescription: business.rewardDescription,
+            description: business.rewardDescription,
+            status: RewardStatus.PENDING,
+            isDemo: false,
+            earnedAt: new Date(),
+          }),
+        );
+      }
+      return { cardId: saved.id, currentPoints: saved.currentPoints, newRewards };
+    });
   }
 
   /**

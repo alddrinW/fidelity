@@ -72,6 +72,24 @@ export const NOTIFICATION_STRINGS_EN: Record<string, string> = {
 };
 
 export const NOTIFICATION_PATTERNS_EN: Record<string, string> = {
+  // Invitar amigos
+  '{} se unió con tu código': '{} joined with your code',
+  'Van {} de {} amigos. Cuando se unan {}, ganas {} punto.': 'You have {1} of {2} friends. When {3} join, you earn {4} point.',
+  'Van {} de {} amigos. Cuando se unan {}, ganas {} puntos.': 'You have {1} of {2} friends. When {3} join, you earn {4} points.',
+  'Van {} de {} amigos.': 'You have {1} of {2} friends.',
+  'Cuando haga su primer escaneo, contará para tu punto.': 'When they make their first scan, it will count toward your point.',
+  '¡Se unieron {} amigos!': '{} friends joined!',
+  'Cuando haga su primer escaneo, los dos ganan puntos de invitación.': 'When they make their first scan, you both earn invitation points.',
+  '¡Ganaste 1 punto de invitación!': 'You earned 1 invitation point!',
+  '¡Ganaste {} puntos de invitación!': 'You earned {} invitation points!',
+  'Por tu primer escaneo, invitado por {}. Elige en qué local usarlos.': 'For your first scan, invited by {}. Choose which business to use them at.',
+  '¡{} ya hizo su primer escaneo!': '{} already made their first scan!',
+  'Ganaste 1 punto de invitación. Elige en qué local usarlos.': 'You earned 1 invitation point. Choose which business to use it at.',
+  'Ganaste {} puntos de invitación. Elige en qué local usarlos.': 'You earned {} invitation points. Choose which business to use them at.',
+  'Puntos de invitación usados': 'Invitation points used',
+  'Sumaste 1 punto en {}.': 'You added 1 point at {}.',
+  'Sumaste {} puntos en {}.': 'You added {1} points at {2}.',
+
   // FidelyUsuario
   '¡Ya eres FidelyUsuario de {}!': 'You are now a FidelyUsuario at {}!',
   'Por tu fidelidad a {} tienes la insignia FidelyUsuario. ¡Gracias por volver!':
@@ -119,6 +137,27 @@ export const NOTIFICATION_PATTERNS_EN: Record<string, string> = {
   '{}. Vale solo hoy: ábrela en Mis regalos y muestra su código.':
     '{}. Valid today only: open it in My gifts and show its code.',
   '{}. Ábrela en Mis regalos y muestra su código.': '{}. Open it in My gifts and show its code.',
+  '{} tiene una tarjeta en venta': '{} has a card for sale',
+  '{} por {}. Cómprala en Explorar.': '{1} for {2}. Buy it in Explore.',
+  'Compra aprobada': 'Purchase approved',
+  'Tu tarjeta de {}: {} ya está en Mis regalos. Vale hasta el {}.':
+    'Your card from {1}: {2} is now in My gifts. Valid until {3}.',
+  'Vendiste una tarjeta': 'You sold a card',
+  '{} compró «{}» por {}. Te tocan {} cuando la canjee.':
+    '{1} bought "{2}" for {3}. You get {4} when they redeem it.',
+  'Te pagamos tus tarjetas canjeadas': 'We paid you for your redeemed cards',
+  'Registramos un pago de {} por {} tarjeta canjeada.': 'We recorded a payment of {1} for {2} redeemed card.',
+  'Registramos un pago de {} por {} tarjetas canjeadas.': 'We recorded a payment of {1} for {2} redeemed cards.',
+  'Devolver una compra de tarjeta': 'Refund a card purchase',
+  'La compra {} ({}) se cobró dos veces. Hay que devolverla.': 'Purchase {1} ({2}) was charged twice. It needs to be refunded.',
+  '¡Ganaste tu juego de la semana!': "You won your game of the week!",
+  '¡Completaste tu tarjeta!': "You completed your card!",
+  '¡Un cliente ganó un punto jugando!': "A customer won a point by playing!",
+  'Sumaste {} punto en {}. La próxima semana juega en otro negocio.': "You earned {1} point at {2}. Next week play at another business.",
+  'Sumaste {} puntos en {}. La próxima semana juega en otro negocio.': "You earned {1} points at {2}. Next week play at another business.",
+  'Con tu juego de la semana completaste tu tarjeta en {}: ¡tienes un premio por reclamar!': "With your game of the week you completed your card at {}: you have a prize to claim!",
+  '{} ganó {} punto con el juego semanal de Fidelity.': "{1} won {2} point with the Fidelity weekly game.",
+  '{} ganó {} puntos con el juego semanal de Fidelity.': "{1} won {2} points with the Fidelity weekly game.",
   'Nueva ruta: {}': 'New route: {}',
   'Nuevo reto: {}': 'New challenge: {}',
   'Haz {} escaneos en {} y gana: {}.': 'Make {} scans at {} and win: {}.',

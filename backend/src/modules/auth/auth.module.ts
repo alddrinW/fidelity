@@ -9,10 +9,13 @@ import { JwtStrategy } from './jwt.strategy';
 import { Profile } from '../../database/entities/profile.entity';
 import { MailModule } from '../mail/mail.module';
 
+import { ReferralsModule } from '../referrals/referrals.module';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([Profile]),
     MailModule,
+    ReferralsModule,
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.registerAsync({
       imports: [ConfigModule],

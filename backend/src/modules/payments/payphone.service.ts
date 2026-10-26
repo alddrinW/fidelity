@@ -25,6 +25,9 @@ export interface PayphoneConfirmation {
 
 export const PAYPHONE_APPROVED = 3;
 
+/** Ruta (tras el prefijo de la API) de las direcciones de retorno de los pagos de registro. */
+const PAYMENTS_AREA = 'payments/payphone';
+
 /**
  * Cliente de PayPhone (botón de pago por redirección): "Prepare" crea la
  * página de pago y, cuando el cliente vuelve, "Confirm" verifica el cobro
@@ -70,9 +73,9 @@ export class PayphoneService {
    * autorizado"), así que no se abre PayPhone directo: se pasa por una página
    * del backend, que redirige y así deja ese dominio como origen.
    */
-  launchUrl(clientTransactionId: string): string {
+  launchUrl(clientTransactionId: string, area: string = PAYMENTS_AREA): string {
     const prefix = this.configService.get<string>('apiPrefix') ?? 'api/v1';
-    return `${this.publicApiUrl}/${prefix}/payments/payphone/pay/${encodeURIComponent(clientTransactionId)}`;
+    return `${this.publicApiUrl}/${prefix}/${area}/pay/${encodeURIComponent(clientTransactionId)}`;
   }
 
   /** Solo se redirige a páginas de PayPhone (nunca a una dirección arbitraria). */
@@ -86,9 +89,9 @@ export class PayphoneService {
   }
 
   /** Dirección a la que PayPhone devuelve al cliente (`path` es `return` o `cancel`). */
-  returnUrl(path: 'return' | 'cancel'): string {
+  returnUrl(path: 'return' | 'cancel', area: string = PAYMENTS_AREA): string {
     const prefix = this.configService.get<string>('apiPrefix') ?? 'api/v1';
-    return `${this.publicApiUrl}/${prefix}/payments/payphone/${path}`;
+    return `${this.publicApiUrl}/${prefix}/${area}/${path}`;
   }
 
   async prepare(input: {
@@ -97,6 +100,8 @@ export class PayphoneService {
     clientTransactionId: string;
     reference: string;
     email?: string | null;
+    /** Dónde vuelve el cliente: por defecto, los pagos de registro; las compras usan la suya. */
+    area?: string;
   }): Promise<PayphoneCheckout> {
     const body: Record<string, unknown> = {
       amount: input.amountCents,
@@ -104,8 +109,8 @@ export class PayphoneService {
       currency: this.configService.get<string>('payments.currency') ?? 'USD',
       clientTransactionId: input.clientTransactionId,
       reference: input.reference,
-      responseUrl: this.returnUrl('return'),
-      cancellationUrl: this.returnUrl('cancel'),
+      responseUrl: this.returnUrl('return', input.area),
+      cancellationUrl: this.returnUrl('cancel', input.area),
       lang: 'es',
     };
     if (this.storeId) body.storeId = this.storeId;

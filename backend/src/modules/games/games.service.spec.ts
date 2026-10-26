@@ -22,6 +22,7 @@ import { FLAPPY_MIN_MS_PER_PIPE, FLAPPY_TARGET } from './games.logic';
 import { SettingsService } from '../settings/settings.service';
 import { SETTING_KEYS } from '../settings/settings.definitions';
 import { fakeSettings } from '../settings/settings.testing';
+import { WeeklyGameService } from './weekly-game.service';
 
 const owner = { id: 'owner-1', role: UserRole.BUSINESS };
 const admin = { id: 'admin-1', role: UserRole.ADMIN };
@@ -38,6 +39,7 @@ describe('GamesService', () => {
   let notifications: any;
   let access: any;
   let settings: ReturnType<typeof fakeSettings>;
+  let weekly: any;
 
   const business = (extra: any = {}) => ({
     id: 'b1',
@@ -117,6 +119,10 @@ describe('GamesService', () => {
     };
     access = { canManage: jest.fn().mockResolvedValue(true) };
     settings = fakeSettings();
+    weekly = {
+      awardPoint: jest.fn().mockResolvedValue(undefined),
+      prizeLabel: jest.fn().mockResolvedValue('1 punto en Café Aurora'),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -131,6 +137,7 @@ describe('GamesService', () => {
         { provide: NotificationsService, useValue: notifications },
         { provide: BusinessAccessService, useValue: access },
         { provide: SettingsService, useValue: settings },
+        { provide: WeeklyGameService, useValue: weekly },
       ],
     }).compile();
     service = module.get(GamesService);
@@ -941,6 +948,71 @@ describe('GamesService', () => {
       expect(list[0]).toMatchObject({ attempts: 0, maxAttempts: 3, attemptsLeft: 3 });
       expect(list[2].attemptsLeft).toBe(0);
       expect(list[0]).toMatchObject({ businessId: 'b1', businessName: 'Café Aurora', prizeLabel: '20% de descuento', gameName: 'Ahorcado' });
+    });
+
+    describe('juego semanal (usa los mismos juegos, pero da puntos)', () => {
+      const weeklyInvite = (extra: any = {}) =>
+        invite({
+          weekly: true,
+          weekStart: '2026-10-19',
+          game: 'hangman',
+          status: 'playing',
+          startedAt: new Date(),
+          state: { word: 'MESA', guessed: ['M', 'E', 'S'] },
+          ...extra,
+        });
+
+      it('al ganar, suma el punto en el negocio y no entrega gift card', async () => {
+        inviteRepo.findOne.mockResolvedValue(weeklyInvite());
+
+        const view: any = await service.guess('u1', 'i1', 'a');
+
+        expect(view.result).toBe('won');
+        expect(weekly.awardPoint).toHaveBeenCalledWith(expect.objectContaining({ id: 'i1', businessId: 'b1', userId: 'u1' }));
+        expect(claimRepo.create).not.toHaveBeenCalled();
+        expect(claimRepo.save).not.toHaveBeenCalled();
+      });
+
+      it('un reto de un dueño sigue dando su gift card y no puntos', async () => {
+        inviteRepo.findOne.mockResolvedValue(weeklyInvite({ weekly: false }));
+
+        await service.guess('u1', 'i1', 'a');
+
+        expect(weekly.awardPoint).not.toHaveBeenCalled();
+        expect(claimRepo.create).toHaveBeenCalled();
+      });
+
+      it('al perder los intentos no suma nada', async () => {
+        inviteRepo.findOne.mockResolvedValue(
+          weeklyInvite({ attempts: 3, state: { word: 'MESA', guessed: ['Z', 'X', 'Q', 'W', 'K', 'J'] } }),
+        );
+
+        const view: any = await service.guess('u1', 'i1', 'Y');
+
+        expect(view.result).toBe('lost');
+        expect(weekly.awardPoint).not.toHaveBeenCalled();
+      });
+
+      it('la partida dice que es semanal y su premio es el punto en el negocio', async () => {
+        inviteRepo.findOne.mockResolvedValue(weeklyInvite({ status: 'sent', state: null, startedAt: null }));
+
+        const view: any = await service.getInvite('u1', 'i1');
+
+        expect(view).toMatchObject({ weekly: true, prizeLabel: '1 punto en Café Aurora' });
+        expect(weekly.prizeLabel).toHaveBeenCalledWith('Café Aurora');
+      });
+
+      it('"mis retos" no incluye los semanales (tienen su propia pantalla)', async () => {
+        await service.myInvites('u1');
+
+        expect(inviteRepo.find.mock.calls[0][0].where).toEqual({ userId: 'u1', weekly: false });
+      });
+
+      it('lo que el dueño envió no cuenta los semanales', async () => {
+        await service.listSent({ id: 'o1', role: 'business' } as any, 'b1');
+
+        expect(inviteRepo.find.mock.calls[0][0].where).toEqual({ businessId: 'b1', weekly: false });
+      });
     });
 
     it('sin retos no hay nada que consultar', async () => {

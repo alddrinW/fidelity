@@ -11,6 +11,6 @@ import { Business } from '../../database/entities/business.entity';
   imports: [TypeOrmModule.forFeature([Payment, Business])],
   controllers: [PaymentsController, PayphoneReturnController],
   providers: [PaymentsService, PayphoneService],
-  exports: [PaymentsService],
+  exports: [PaymentsService, PayphoneService],
 })
 export class PaymentsModule {}

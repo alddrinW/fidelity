@@ -55,6 +55,26 @@ export class Profile {
   @Column({ name: 'birth_date', type: 'date', nullable: true })
   birthDate: string | null;
 
+  /**
+   * Si ya vio el mensaje de bienvenida de su primera entrada. Se guarda aquí (y
+   * no solo en el teléfono) para que no vuelva a salir al iniciar sesión de
+   * nuevo ni desde otro dispositivo.
+   */
+  @Column({ name: 'has_seen_welcome', type: 'boolean', default: false })
+  hasSeenWelcome: boolean;
+
+  /** Su código para invitar amigos a la app (se crea la primera vez que lo pide). */
+  @Column({ name: 'referral_code', type: 'varchar', length: 12, nullable: true, unique: true })
+  referralCode: string | null;
+
+  /** Puntos de invitación que ganó y todavía no usa: los gasta en el local que elija. */
+  @Column({ name: 'referral_balance', type: 'int', default: 0 })
+  referralBalance: number;
+
+  /** Cuántos grupos de amigos ya le pagaron a quien invita (para no pagar dos veces el mismo). */
+  @Column({ name: 'referral_groups_paid', type: 'int', default: 0 })
+  referralGroupsPaid: number;
+
   /** Idioma de la app del usuario (`es` o `en`): los avisos del servidor salen en él. */
   @Column({ type: 'varchar', length: 5, default: 'es' })
   language: string;

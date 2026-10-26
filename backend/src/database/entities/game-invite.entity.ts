@@ -21,6 +21,8 @@ export type GameResult = 'won' | 'lost';
 @Entity('game_invites')
 @Index('idx_game_invites_user_created', ['userId', 'createdAt'])
 @Index('idx_game_invites_expires', ['expiresAt'])
+// Un cliente tiene como máximo un juego semanal por semana.
+@Index('uq_game_invites_weekly', ['userId', 'weekStart'], { unique: true, where: '"weekly" = true' })
 export class GameInvite {
   @PrimaryGeneratedColumn('uuid')
   id: string;
@@ -57,6 +59,17 @@ export class GameInvite {
   /** Estado de la partida (la palabra del ahorcado, el tablero...). */
   @Column({ type: 'jsonb', nullable: true })
   state: Record<string, any> | null;
+
+  /**
+   * Es el juego semanal de Fidelity (el cliente lo empieza eligiendo un negocio
+   * y, si gana, suma un punto ahí), no un juego que mandó un dueño.
+   */
+  @Column({ type: 'boolean', default: false })
+  weekly: boolean;
+
+  /** Juego semanal: el lunes de su semana (hora de Ecuador), `AAAA-MM-DD`. */
+  @Column({ name: 'week_start', type: 'date', nullable: true })
+  weekStart: string | null;
 
   /** Gift card que ganó (si ganó y era la primera vez). */
   @Column({ name: 'claim_id', type: 'uuid', nullable: true })

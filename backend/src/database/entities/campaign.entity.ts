@@ -84,6 +84,21 @@ export class Campaign {
   @Column({ name: 'required_scans', type: 'int', nullable: true })
   requiredScans: number | null;
 
+  /**
+   * Tarjeta en venta: lo que cuesta, en centavos. Con precio, la gift card no
+   * se reclama: la compra cualquier cliente con PayPhone.
+   */
+  @Column({ name: 'price_cents', type: 'int', nullable: true })
+  priceCents: number | null;
+
+  /** Tarjetas en venta: cuántas se pueden vender en total. */
+  @Column({ type: 'int', nullable: true })
+  stock: number | null;
+
+  /** Tarjetas en venta: cuántos días vale la tarjeta desde que se compra. */
+  @Column({ name: 'card_valid_days', type: 'int', nullable: true })
+  cardValidDays: number | null;
+
   @Column({ name: 'starts_at', type: 'timestamptz' })
   startsAt: Date;
 

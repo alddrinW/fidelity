@@ -68,6 +68,12 @@ export class UsersController {
     return this.usersService.updateLanguage(user.id, dto);
   }
 
+  /** La persona ya vio la bienvenida de su primera entrada. */
+  @Patch('welcome-seen')
+  async markWelcomeSeen(@CurrentUser() user: AuthenticatedUser) {
+    return this.usersService.markWelcomeSeen(user.id);
+  }
+
   @Get('search')
   async searchUsers(
     @CurrentUser() user: AuthenticatedUser,

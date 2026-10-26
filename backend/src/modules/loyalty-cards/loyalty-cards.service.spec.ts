@@ -104,6 +104,83 @@ describe('LoyaltyCardsService (insignia FidelyUsuario)', () => {
     });
   });
 
+  describe('tarjetas de un cliente en varios locales', () => {
+    it('trae solo las de esos locales', async () => {
+      cardRepo.find.mockResolvedValue([{ businessId: 'b1', currentPoints: 3 }]);
+
+      const cards = await service.cardsOf('u1', ['b1', 'b2']);
+
+      expect(cardRepo.find).toHaveBeenCalledWith({ where: { userId: 'u1', businessId: expect.anything() } });
+      expect(cards).toEqual([{ businessId: 'b1', currentPoints: 3 }]);
+    });
+  });
+
+  describe('puntos de regalo (invitar amigos)', () => {
+    let saved: any[];
+    let transactionManager: any;
+
+    beforeEach(() => {
+      saved = [];
+      transactionManager = {
+        findOne: jest.fn(async (entity: any) =>
+          entity.name === 'Business'
+            ? { id: 'b1', pointsRequired: 10, rewardDescription: 'Café gratis' }
+            : { id: 'card-1', userId: 'u1', businessId: 'b1', currentPoints: 4, totalPointsLifetime: 4, rewardsClaimed: 0 },
+        ),
+        create: jest.fn((_entity: any, data: any) => data),
+        save: jest.fn(async (_entity: any, data: any) => {
+          saved.push(data);
+          return { id: 'card-1', ...data };
+        }),
+      };
+      cardRepo.manager = { transaction: (cb: any) => cb(transactionManager) };
+    });
+
+    it('suma los puntos a la tarjeta', async () => {
+      const result = await service.grantBonusPoints('u1', 'b1', 2);
+
+      expect(result).toEqual({ cardId: 'card-1', currentPoints: 6, newRewards: 0 });
+      expect(saved[0]).toMatchObject({ currentPoints: 6, totalPointsLifetime: 6, rewardsClaimed: 0 });
+    });
+
+    it('al completar los puntos del local genera el premio', async () => {
+      transactionManager.findOne.mockImplementation(async (entity: any) =>
+        entity.name === 'Business'
+          ? { id: 'b1', pointsRequired: 10, rewardDescription: 'Café gratis' }
+          : { id: 'card-1', userId: 'u1', businessId: 'b1', currentPoints: 9, totalPointsLifetime: 19, rewardsClaimed: 1 },
+      );
+
+      const result = await service.grantBonusPoints('u1', 'b1', 1);
+
+      expect(result).toEqual({ cardId: 'card-1', currentPoints: 0, newRewards: 1 });
+      expect(saved[0]).toMatchObject({ currentPoints: 0, totalPointsLifetime: 20, rewardsClaimed: 2 });
+      expect(saved[1]).toMatchObject({ userId: 'u1', businessId: 'b1', status: 'pending', description: 'Café gratis', pointsUsed: 10 });
+    });
+
+    it('no se frena si ya tenía un premio pendiente: invitar amigos nunca le quita puntos', async () => {
+      rewardRepo.find.mockResolvedValue([{ id: 'r1', status: 'pending' }]);
+
+      await expect(service.grantBonusPoints('u1', 'b1', 1)).resolves.toMatchObject({ currentPoints: 5 });
+    });
+
+    it('si no tenía tarjeta en ese local, se la crea', async () => {
+      transactionManager.findOne.mockImplementation(async (entity: any) =>
+        entity.name === 'Business' ? { id: 'b1', pointsRequired: 10 } : null,
+      );
+
+      const result = await service.grantBonusPoints('u1', 'b1', 1);
+
+      expect(transactionManager.create).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ userId: 'u1', businessId: 'b1' }));
+      expect(result.currentPoints).toBe(1);
+    });
+
+    it('un local que no existe se rechaza', async () => {
+      transactionManager.findOne.mockResolvedValue(null);
+
+      await expect(service.grantBonusPoints('u1', 'nada', 1)).rejects.toThrow('Negocio no encontrado');
+    });
+  });
+
   describe('historial de una tarjeta', () => {
     it('trae la insignia del cliente en ese local', async () => {
       cardRepo.findOne.mockResolvedValue({

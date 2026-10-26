@@ -27,6 +27,9 @@ import { Scan } from '../../database/entities/scan.entity';
 import { UserRole } from '../../database/entities/profile.entity';
 import { NotificationsService } from '../notifications/notifications.service';
 import { BusinessAccessService } from '../businesses/business-access.service';
+import { SettingsService } from '../settings/settings.service';
+import { fakeSettings } from '../settings/settings.testing';
+import { SETTING_KEYS } from '../settings/settings.definitions';
 
 const HOUR = 60 * 60 * 1000;
 const inHours = (h: number) => new Date(Date.now() + h * HOUR).toISOString();
@@ -62,6 +65,7 @@ describe('CampaignsService', () => {
   let scanRepo: any;
   let notifications: any;
   let access: any;
+  let settings: any;
 
   const owner = { id: 'owner-1', role: UserRole.BUSINESS };
   const biz = (id: string, extra: any = {}) => ({ id, name: `Local ${id}`, ownerId: 'owner-1', isActive: true, ...extra });
@@ -132,6 +136,8 @@ describe('CampaignsService', () => {
       canOperate: jest.fn().mockResolvedValue(true),
     };
 
+    settings = fakeSettings({ [SETTING_KEYS.paidCardsEnabled]: 1 });
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CampaignsService,
@@ -145,6 +151,7 @@ describe('CampaignsService', () => {
         { provide: getRepositoryToken(Scan), useValue: scanRepo },
         { provide: NotificationsService, useValue: notifications },
         { provide: BusinessAccessService, useValue: access },
+        { provide: SettingsService, useValue: settings },
       ],
     }).compile();
 
@@ -1407,6 +1414,185 @@ describe('CampaignsService', () => {
 
       expect(campaign.stats.recipients).toBe(2);
       expect(campaign.audience).toBe('selected');
+    });
+  });
+  describe('tarjetas en venta', () => {
+    const saleDto = (extra: any = {}) => ({
+      type: CampaignType.GIFT_CARD,
+      title: 'Café por 25 centavos',
+      benefitType: CampaignBenefit.MINI_PRIZE,
+      benefitLabel: 'Café pequeño',
+      businessIds: ['b1'],
+      priceCents: 25,
+      stock: 50,
+      ...extra,
+    });
+
+    beforeEach(() => {
+      campaignRepo.findOne.mockResolvedValue(activeCampaign());
+    });
+
+    it('crea una tarjeta en venta con su precio, sus cupos y 30 días de vigencia', async () => {
+      await service.create(owner, saleDto() as any);
+
+      expect(campaignRepo.create.mock.calls[0][0]).toMatchObject({
+        priceCents: 25,
+        stock: 50,
+        cardValidDays: 30,
+        audience: 'all',
+      });
+    });
+
+    it('respeta los días de vigencia que pide el dueño', async () => {
+      await service.create(owner, saleDto({ cardValidDays: 7 }) as any);
+
+      expect(campaignRepo.create.mock.calls[0][0]).toMatchObject({ cardValidDays: 7 });
+    });
+
+    it('una gift card normal no lleva precio ni cupos', async () => {
+      await service.create(owner, saleDto({ priceCents: undefined, stock: undefined }) as any);
+
+      expect(campaignRepo.create.mock.calls[0][0]).toMatchObject({
+        priceCents: null,
+        stock: null,
+        cardValidDays: null,
+      });
+    });
+
+    it('no se puede crear si el administrador apagó la venta de tarjetas', async () => {
+      settings.get.mockImplementation(async (key: string) => (key === SETTING_KEYS.paidCardsEnabled ? 0 : 1));
+
+      await expect(service.create(owner, saleDto() as any)).rejects.toThrow('no está disponible');
+    });
+
+    it('el precio debe estar entre el mínimo y el máximo del administrador', async () => {
+      await expect(service.create(owner, saleDto({ priceCents: 10 }) as any)).rejects.toThrow('entre $0.25 y $25.00');
+      await expect(service.create(owner, saleDto({ priceCents: 2600 }) as any)).rejects.toThrow('entre $0.25 y $25.00');
+      expect(campaignRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('pide cuántas tarjetas se ponen a la venta', async () => {
+      await expect(service.create(owner, saleDto({ stock: undefined }) as any)).rejects.toThrow('cuántas tarjetas');
+    });
+
+    it('solo una gift card se pone en venta', async () => {
+      await expect(
+        service.create(owner, { ...saleDto(), type: CampaignType.EVENT } as any),
+      ).rejects.toThrow('Solo una gift card');
+    });
+
+    it('es para todos los clientes y de un solo local', async () => {
+      await expect(service.create(owner, saleDto({ audience: 'selected', recipientIds: ['u1'] }) as any)).rejects.toThrow(
+        'todos los clientes',
+      );
+      businessRepo.find.mockResolvedValue([biz('b1'), biz('b2')]);
+      await expect(service.create(owner, saleDto({ businessIds: ['b1', 'b2'] }) as any)).rejects.toThrow('un solo local');
+    });
+
+    it('al empezar solo anuncia la tarjeta: no la entrega a nadie', async () => {
+      campaignRepo.findOne.mockResolvedValue(
+        activeCampaign({ priceCents: 25, stock: 50, cardValidDays: 30, benefitLabel: 'Café pequeño' }),
+      );
+      cardRepo.find.mockResolvedValue([{ userId: 'u1' }, { userId: 'u2' }]);
+
+      await service.dispatch('c1');
+
+      expect(claimRepo.save).not.toHaveBeenCalled();
+      expect(notifications.sendToUsers).toHaveBeenCalledWith(
+        ['u1', 'u2'],
+        expect.stringContaining('en venta'),
+        expect.stringContaining('$0.25'),
+        expect.objectContaining({ type: 'card_offer', campaign_id: 'c1' }),
+      );
+    });
+
+    it('las tarjetas con precio no salen en Novedades (tienen su propia sección)', async () => {
+      cardRepo.find.mockResolvedValue([{ businessId: 'b1' }]);
+      participantRepo.find.mockResolvedValue([{ campaignId: 'c1' }, { campaignId: 'c2' }]);
+      campaignRepo.find.mockResolvedValue([
+        activeCampaign({ id: 'c1', priceCents: 25, stock: 50 }),
+        activeCampaign({ id: 'c2' }),
+      ]);
+
+      const feed = await service.feed('u1');
+
+      expect(feed.map((c: any) => c.id)).toEqual(['c2']);
+    });
+
+    it('cancelar una oferta no le avisa a quienes ya pagaron (su tarjeta sigue valiendo)', async () => {
+      campaignRepo.findOne.mockResolvedValue(activeCampaign({ priceCents: 25, stock: 50 }));
+      claimRepo.find.mockResolvedValue([{ userId: 'u1' }]);
+
+      await service.cancel('c1', owner);
+
+      expect(campaignRepo.save).toHaveBeenCalledWith(expect.objectContaining({ cancelledAt: expect.any(Date) }));
+      expect(notifications.sendToUsers).not.toHaveBeenCalled();
+    });
+
+    it('el beneficio de una tarjeta en venta no se edita', async () => {
+      campaignRepo.findOne.mockResolvedValue(activeCampaign({ priceCents: 25, stock: 50 }));
+
+      await expect(service.update('c1', owner, { benefitLabel: 'Café grande' } as any)).rejects.toThrow('no cambia de beneficio');
+      expect(campaignRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('sí se puede cambiar el fin de la venta, sin avisar a los compradores', async () => {
+      campaignRepo.findOne.mockResolvedValue(activeCampaign({ priceCents: 25, stock: 50 }));
+      claimRepo.find.mockResolvedValue([{ userId: 'u1' }]);
+
+      await service.update('c1', owner, { endsAt: inHours(48) } as any);
+
+      expect(campaignRepo.save).toHaveBeenCalled();
+      expect(notifications.sendToUsers).not.toHaveBeenCalled();
+    });
+
+    it('no se reclama: se compra', async () => {
+      campaignRepo.findOne.mockResolvedValue(activeCampaign({ priceCents: 25, stock: 50 }));
+
+      await expect(service.claim('u1', 'c1')).rejects.toThrow('en venta');
+      expect(claimRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('la vista de la campaña incluye precio, cupos y vigencia', async () => {
+      const view = service.toView(activeCampaign({ priceCents: 25, stock: 50, cardValidDays: 30 }) as any);
+
+      expect(view).toMatchObject({ priceCents: 25, stock: 50, cardValidDays: 30 });
+      expect(service.toView(activeCampaign() as any)).toMatchObject({ priceCents: null, stock: null });
+    });
+
+    describe('canjear una tarjeta comprada', () => {
+      const purchased = (extra: any = {}) => ({
+        id: 'cl1',
+        code: 'GFT-ABC234',
+        userId: 'u1',
+        status: ClaimStatus.ACTIVE,
+        source: ClaimSource.PURCHASE,
+        expiresAt: new Date(Date.now() + 5 * HOUR),
+        campaign: activeCampaign({ priceCents: 25, stock: 50, endsAt: new Date(Date.now() - HOUR) }),
+        user: { fullName: 'Luis Mora' },
+        ...extra,
+      });
+
+      it('sigue valiendo aunque la oferta ya cerró su venta', async () => {
+        claimRepo.findOne.mockResolvedValue(purchased());
+
+        await expect(service.redeem(owner, 'GFT-ABC234')).resolves.toMatchObject({ status: ClaimStatus.REDEEMED });
+      });
+
+      it('sigue valiendo aunque el dueño cancele la oferta (ya está pagada)', async () => {
+        claimRepo.findOne.mockResolvedValue(
+          purchased({ campaign: activeCampaign({ priceCents: 25, cancelledAt: new Date() }) }),
+        );
+
+        await expect(service.redeem(owner, 'GFT-ABC234')).resolves.toMatchObject({ status: ClaimStatus.REDEEMED });
+      });
+
+      it('vence a los N días de la compra', async () => {
+        claimRepo.findOne.mockResolvedValue(purchased({ expiresAt: new Date(Date.now() - HOUR) }));
+
+        await expect(service.redeem(owner, 'GFT-ABC234')).rejects.toThrow('ya venció');
+        expect(claimRepo.save).not.toHaveBeenCalled();
+      });
     });
   });
 });

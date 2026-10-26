@@ -16,6 +16,7 @@ import { RegisterDto, LoginDto, ForgotPasswordDto, ResetPasswordDto } from './dt
 import { JwtPayload } from '../../common/interfaces/jwt-payload.interface';
 import { NotificationsService } from '../notifications/notifications.service';
 import { MailService } from '../mail/mail.service';
+import { ReferralsService } from '../referrals/referrals.service';
 import { passwordChangedEmail, passwordResetEmail } from '../mail/mail-templates';
 
 /** Cuánto dura un código de recuperación, cada cuánto se puede pedir otro y cuántos fallos admite. */
@@ -33,6 +34,7 @@ export class AuthService {
     private readonly jwtService: JwtService,
     private readonly notificationsService: NotificationsService,
     private readonly mailService: MailService,
+    private readonly referralsService: ReferralsService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -43,6 +45,11 @@ export class AuthService {
     if (existing) {
       throw new ConflictException('El correo electronico ya esta registrado');
     }
+
+    // Código de un amigo: se revisa antes de crear la cuenta, para avisar si no sirve.
+    const referralCode = dto.referralCode?.trim();
+    const useReferral = !!referralCode && (dto.role ?? UserRole.CLIENT) === UserRole.CLIENT;
+    if (useReferral) await this.referralsService.validateCode(referralCode!);
 
     // Solo se puede registrar un cliente o un dueño de negocio. El administrador
     // lo asigna el sistema y el aprobador lo asigna un dueño desde su equipo.
@@ -69,6 +76,15 @@ export class AuthService {
 
     const savedProfile = await this.profileRepository.save(profile);
 
+    // El amigo queda invitado: con su primer escaneo aprobado ganan los dos.
+    if (useReferral) {
+      try {
+        await this.referralsService.redeem(savedProfile.id, referralCode!);
+      } catch (error) {
+        this.logger.warn(`No se pudo aplicar el código de amigo: ${error.message}`);
+      }
+    }
+
     // Notify admins
     const notificationTitle =
       roleToAssign === UserRole.BUSINESS ? 'Nueva Cuenta de Negocio' : 'Nuevo Cliente';
@@ -90,6 +106,7 @@ export class AuthService {
         avatarUrl: savedProfile.avatarUrl,
         phone: savedProfile.phone,
         birthDate: savedProfile.birthDate,
+        hasSeenWelcome: savedProfile.hasSeenWelcome ?? false,
         isDemo: savedProfile.isDemo,
       },
       accessToken: token,
@@ -133,6 +150,7 @@ export class AuthService {
         avatarUrl: user.avatarUrl,
         phone: user.phone,
         birthDate: user.birthDate,
+        hasSeenWelcome: user.hasSeenWelcome ?? false,
         fcmToken: user.fcmToken,
         isDemo: user.isDemo,
       },

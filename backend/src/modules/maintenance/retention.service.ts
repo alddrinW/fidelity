@@ -115,12 +115,15 @@ export class RetentionService implements OnModuleInit, OnModuleDestroy {
     });
 
     const gameInvites =
+      // Los juegos semanales no se borran: de ellos depende qué negocios tiene bloqueados.
       (await this.deleteInBatches(this.inviteRepository, {
+        weekly: false,
         status: 'finished',
         finishedAt: LessThan(before(inviteDays)),
       })) +
       // Retos que nunca se jugaron y vencieron hace tiempo.
       (await this.deleteInBatches(this.inviteRepository, {
+        weekly: false,
         expiresAt: LessThan(before(inviteDays)),
       }));
 

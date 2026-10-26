@@ -11,6 +11,9 @@ import { CampaignClaim } from '../../database/entities/campaign-claim.entity';
 import { Business } from '../../database/entities/business.entity';
 import { LoyaltyCard } from '../../database/entities/loyalty-card.entity';
 import { BusinessesModule } from '../businesses/businesses.module';
+import { LoyaltyCardsModule } from '../loyalty-cards/loyalty-cards.module';
+import { WeeklyGameController } from './weekly-game.controller';
+import { WeeklyGameService } from './weekly-game.service';
 
 @Module({
   imports: [
@@ -24,8 +27,9 @@ import { BusinessesModule } from '../businesses/businesses.module';
       LoyaltyCard,
     ]),
     BusinessesModule,
+    LoyaltyCardsModule,
   ],
-  controllers: [GamesController],
-  providers: [GamesService, GamesSchedulerService],
+  controllers: [GamesController, WeeklyGameController],
+  providers: [GamesService, GamesSchedulerService, WeeklyGameService],
 })
 export class GamesModule {}

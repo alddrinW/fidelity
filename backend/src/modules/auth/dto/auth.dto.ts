@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsString,
   Matches,
+  MaxLength,
   IsEnum,
   IsBoolean,
 } from 'class-validator';
@@ -36,6 +37,12 @@ export class RegisterDto {
   @IsOptional()
   @IsBirthDate()
   birthDate?: string;
+
+  /** Código de un amigo (`AMG-XXXXXX`) para que los dos ganen puntos con el primer escaneo. */
+  @IsOptional()
+  @IsString()
+  @MaxLength(20, { message: 'Ese código de amigo no es válido' })
+  referralCode?: string;
 
   @IsImageSource()
   @IsOptional()

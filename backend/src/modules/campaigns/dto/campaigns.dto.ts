@@ -52,6 +52,27 @@ export class CreateCampaignDto {
   @MaxLength(120)
   benefitLabel?: string;
 
+  /** Solo gift cards: la pone en venta a este precio, en centavos (p. ej. 25 = $0.25). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(100000)
+  priceCents?: number;
+
+  /** Tarjetas en venta: cuántas se pueden vender. */
+  @IsOptional()
+  @IsInt()
+  @Min(1, { message: 'Pon al menos 1 tarjeta a la venta' })
+  @Max(5000, { message: 'No puedes poner más de 5000 tarjetas a la venta' })
+  stock?: number;
+
+  /** Tarjetas en venta: cuántos días vale la tarjeta desde que se compra (30 por defecto). */
+  @IsOptional()
+  @IsInt()
+  @Min(1)
+  @Max(365)
+  cardValidDays?: number;
+
   /** Cuándo empieza. Sin valor, empieza ahora. Una fecha futura la programa. */
   @IsOptional()
   @IsISO8601()

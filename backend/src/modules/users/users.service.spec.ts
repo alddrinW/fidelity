@@ -165,3 +165,39 @@ describe('UsersService.updateProfile (fecha de nacimiento)', () => {
     expect(saved.fullName).toBe('Ana María');
   });
 });
+
+describe('UsersService.markWelcomeSeen', () => {
+  let service: UsersService;
+  let profileRepo: any;
+
+  beforeEach(async () => {
+    profileRepo = { update: jest.fn().mockResolvedValue({ affected: 1 }) };
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        UsersService,
+        { provide: getRepositoryToken(Profile), useValue: profileRepo },
+        { provide: DataSource, useValue: {} },
+        { provide: MailService, useValue: { sendContent: jest.fn().mockResolvedValue(true) } },
+      ],
+    }).compile();
+    service = module.get(UsersService);
+  });
+
+  it('guarda en el servidor que ya vio la bienvenida', async () => {
+    const result = await service.markWelcomeSeen('u1');
+
+    expect(profileRepo.update).toHaveBeenCalledWith({ id: 'u1' }, { hasSeenWelcome: true });
+    expect(result).toEqual({ hasSeenWelcome: true });
+  });
+
+  it('se puede repetir sin problema (siempre queda como vista)', async () => {
+    await service.markWelcomeSeen('u1');
+    await expect(service.markWelcomeSeen('u1')).resolves.toEqual({ hasSeenWelcome: true });
+  });
+
+  it('un usuario que no existe se rechaza', async () => {
+    profileRepo.update.mockResolvedValue({ affected: 0 });
+
+    await expect(service.markWelcomeSeen('nadie')).rejects.toBeInstanceOf(NotFoundException);
+  });
+});

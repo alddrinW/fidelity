@@ -92,6 +92,17 @@ describe('RetentionService', () => {
     });
   });
 
+  describe('juegos semanales', () => {
+    it('no se borran nunca: de ellos depende qué negocios tiene bloqueados el cliente', async () => {
+      await make().purge(now);
+
+      // Las dos consultas sobre retos (terminados y vencidos) excluyen los semanales.
+      const wheres = invites.find.mock.calls.map((c) => (c[0] as any).where);
+      expect(wheres).toHaveLength(2);
+      for (const where of wheres) expect(where.weekly).toBe(false);
+    });
+  });
+
   describe('cómo se borra', () => {
     it('borra lo que encuentra y devuelve cuántas filas fueron', async () => {
       notifications = fakeRepo(5);

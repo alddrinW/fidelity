@@ -28,6 +28,9 @@ import {
   GameAccess,
   GameInvite,
   BirthdayNotice,
+  Referral,
+  ReferralUse,
+  CardPurchase,
 } from './database/entities';
 
 // Feature Modules
@@ -52,6 +55,8 @@ import { FeedbackModule } from './modules/feedback/feedback.module';
 import { CampaignsModule } from './modules/campaigns/campaigns.module';
 import { SettingsModule } from './modules/settings/settings.module';
 import { BirthdaysModule } from './modules/birthdays/birthdays.module';
+import { ReferralsModule } from './modules/referrals/referrals.module';
+import { CardSalesModule } from './modules/card-sales/card-sales.module';
 
 @Module({
   imports: [
@@ -107,6 +112,9 @@ import { BirthdaysModule } from './modules/birthdays/birthdays.module';
           GameAccess,
           GameInvite,
           BirthdayNotice,
+          Referral,
+          ReferralUse,
+          CardPurchase,
         ],
       }),
       inject: [ConfigService],
@@ -116,6 +124,8 @@ import { BirthdaysModule } from './modules/birthdays/birthdays.module';
     AuthModule,
     GamesModule,
     BirthdaysModule,
+    ReferralsModule,
+    CardSalesModule,
     UsersModule,
     BusinessesModule,
     LoyaltyCardsModule,

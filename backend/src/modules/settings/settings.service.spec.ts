@@ -121,7 +121,7 @@ describe('SettingsService', () => {
         group: 'minijuegos',
       });
       expect(view.items.find((i) => i.key === SETTING_KEYS.maxApprovers)).toMatchObject({ value: 10, isCustom: false });
-      expect(view.groups.map((g) => g.id)).toEqual(['precios', 'minijuegos', 'negocios', 'cumpleanos', 'datos']);
+      expect(view.groups.map((g) => g.id)).toEqual(['precios', 'minijuegos', 'negocios', 'tarjetas', 'cumpleanos', 'referidos', 'datos']);
     });
 
     it('el valor por defecto de un precio es el de la configuración del servidor', async () => {

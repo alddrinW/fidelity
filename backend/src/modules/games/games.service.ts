@@ -28,6 +28,7 @@ import { BusinessAccessService } from '../businesses/business-access.service';
 import { randomCode } from '../campaigns/campaigns.service';
 import { SETTING_KEYS } from '../settings/settings.definitions';
 import { SettingsService } from '../settings/settings.service';
+import { WeeklyGameService } from './weekly-game.service';
 import {
   ApproveGamesDto,
   FinishFlappyDto,
@@ -146,6 +147,7 @@ export class GamesService {
     private readonly notificationsService: NotificationsService,
     private readonly businessAccess: BusinessAccessService,
     private readonly settings: SettingsService,
+    private readonly weekly: WeeklyGameService,
   ) {}
 
   /** Los límites vigentes de los minijuegos (los fija el administrador). */
@@ -416,6 +418,7 @@ export class GamesService {
         businessId: business.id,
         game: dto.game,
         userId: In(userIds),
+        weekly: false,
         status: In(['sent', 'playing']),
         expiresAt: MoreThan(now),
       },
@@ -512,7 +515,8 @@ export class GamesService {
     }
     const maxAttempts = await this.maxAttempts();
     const invites = await this.inviteRepository.find({
-      where: { businessId },
+      // Los juegos semanales no los manda el dueño: no cuentan en lo que él envió.
+      where: { businessId, weekly: false },
       relations: ['user'],
       order: { createdAt: 'DESC' },
       take: 200,
@@ -546,7 +550,8 @@ export class GamesService {
   async myInvites(userId: string) {
     const maxAttempts = await this.maxAttempts();
     const invites = await this.inviteRepository.find({
-      where: { userId },
+      // El juego semanal tiene su propio banner y pantalla.
+      where: { userId, weekly: false },
       relations: ['business'],
       order: { createdAt: 'DESC' },
       take: 50,
@@ -714,7 +719,11 @@ export class GamesService {
       invite.status = 'finished';
       invite.result = result;
       invite.finishedAt = new Date();
-      if (result === 'won') await this.awardPrize(invite);
+      if (result === 'won') {
+        // El juego semanal da puntos en el negocio elegido; los retos de los dueños, una gift card.
+        if (invite.weekly) await this.weekly.awardPoint(invite);
+        else await this.awardPrize(invite);
+      }
     }
     await this.inviteRepository.save(invite);
   }
@@ -800,7 +809,8 @@ export class GamesService {
       game,
       gameName: GAME_NAMES[game],
       businessName: invite.business?.name ?? null,
-      prizeLabel: access?.prizeLabel ?? null,
+      weekly: invite.weekly,
+      prizeLabel: invite.weekly ? await this.weekly.prizeLabel(invite.business?.name) : (access?.prizeLabel ?? null),
       status: this.statusOf(invite),
       result: invite.result,
       score: invite.score,
