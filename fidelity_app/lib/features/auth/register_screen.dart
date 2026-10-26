@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
@@ -39,8 +40,21 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
   /// Opcional: con ella, el local del cliente lo saluda y puede regalarle algo.
   DateTime? _birthDate;
 
+  /// Opcional: el código de un amigo que lo invitó (cuenta como amigo suyo).
+  final _referralController = TextEditingController();
+
   bool _isLoading = false;
   Uint8List? _avatarBytes;
+
+  @override
+  void initState() {
+    super.initState();
+    // En la versión web, el enlace de invitación trae el código (`?code=AMG-XXXXXX`).
+    if (kIsWeb && widget.role == 'client') {
+      final code = Uri.base.queryParameters['code'];
+      if (code != null && code.length <= 12) _referralController.text = code.toUpperCase();
+    }
+  }
 
   @override
   void dispose() {
@@ -48,6 +62,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
     _passwordController.dispose();
     _confirmPasswordController.dispose();
     _fullNameController.dispose();
+    _referralController.dispose();
     _phoneController.dispose();
     super.dispose();
   }
@@ -80,6 +95,7 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
         role: widget.role,
         phone: _phoneController.text.trim(),
         birthDate: _birthDate == null ? null : BirthDate.toApi(_birthDate!),
+        referralCode: widget.role == 'client' ? _referralController.text.trim() : null,
       );
 
       if (!mounted) return;
@@ -216,6 +232,19 @@ class _RegisterScreenState extends ConsumerState<RegisterScreen> {
                             BirthDateField(
                               value: _birthDate,
                               onChanged: (date) => setState(() => _birthDate = date),
+                            ),
+                            const SizedBox(height: 16),
+                            AppTextField(
+                              controller: _referralController,
+                              hint: 'Código de un amigo (opcional)',
+                              icon: Icons.group_add_rounded,
+                              helperText: '¿Te invitó alguien a Fidelity? Escribe su código.',
+                              textCapitalization: TextCapitalization.characters,
+                              textInputAction: TextInputAction.next,
+                              inputFormatters: [
+                                FilteringTextInputFormatter.allow(RegExp(r'[A-Za-z0-9 -]')),
+                                LengthLimitingTextInputFormatter(12),
+                              ],
                             ),
                           ],
                           const SizedBox(height: 16),

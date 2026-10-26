@@ -1,5 +1,6 @@
 import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart' hide Text;
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -31,13 +32,25 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
   @override
   void initState() {
     super.initState();
-    _confetti.play();
+    // Un punto sumado o un premio se celebra; un escaneo pendiente solo espera.
+    if (!widget.result.isPending) {
+      _confetti.play();
+      HapticFeedback.mediumImpact();
+    }
   }
 
   @override
   void dispose() {
     _confetti.dispose();
     super.dispose();
+  }
+
+  /// El título grande: lo que pasó con el escaneo.
+  String get _title {
+    final r = widget.result;
+    if (r.isPending) return 'ESPERANDO\nAL LOCAL';
+    if (r.rewardCompleted) return '¡PREMIO\nGANADO!';
+    return '¡PUNTO\nSUMADO!';
   }
 
   String get _summary {
@@ -58,6 +71,13 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
       return 'Sumaste un punto en ${r.businessName}. Llevas $points de $required.';
     }
     return 'Sumaste un punto en ${r.businessName}.';
+  }
+
+  /// Los puntitos de avance solo se muestran con un punto ya sumado.
+  bool get _showProgress {
+    final r = widget.result;
+    if (r.isPending || r.pointsRequired == null) return false;
+    return r.rewardCompleted || r.currentPoints != null;
   }
 
   /// Frase de ánimo de Fido según cómo terminó el escaneo.
@@ -114,7 +134,7 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
                               Semantics(
                                 header: true,
                                 child: Text(
-                                  'ESCANEO\nEXITOSO',
+                                  _title,
                                   textAlign: TextAlign.center,
                                   style: AppTypography.display(size: 64)
                                       .copyWith(height: 1.05),
@@ -143,17 +163,30 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
                                   weight: FontWeight.w300,
                                 ),
                               ).animate(delay: 200.ms).fadeIn(),
+                              if (_showProgress) ...[
+                                const SizedBox(height: 16),
+                                ScanProgressDots(
+                                  done: widget.result.rewardCompleted
+                                      ? widget.result.pointsRequired!
+                                      : widget.result.currentPoints!,
+                                  total: widget.result.pointsRequired!,
+                                ).animate(delay: 300.ms).fadeIn(),
+                              ],
                               if (widget.result.businessId != null)
                                 AppTextAction(
                                   label: 'Califica la atención',
                                   onPressed: _openFeedback,
                                 ).animate(delay: 400.ms).fadeIn(),
                               const SizedBox(height: 8),
-                              FidoMascot(
-                                mood: FidoMood.celebrate,
-                                width: (MediaQuery.sizeOf(context).width * 0.8)
-                                    .clamp(220.0, 340.0),
-                              )
+                              (widget.result.isPending
+                                      ? const FidoCooldownBanner()
+                                      : FidoMascot(
+                                          mood: widget.result.rewardCompleted
+                                              ? FidoMood.euphoric
+                                              : FidoMood.celebrate,
+                                          width: (MediaQuery.sizeOf(context).width * 0.8)
+                                              .clamp(220.0, 340.0),
+                                        ))
                                   .animate(delay: 150.ms)
                                   .scale(
                                     begin: const Offset(0.6, 0.6),
@@ -195,5 +228,69 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
         ),
       ),
     );
+  }
+}
+
+/// Un punto por cada sello de la tarjeta; los ganados van rosas con visto y el
+/// último se llena con un pequeño salto. Con muchos sellos, una barra.
+class ScanProgressDots extends StatelessWidget {
+  final int done;
+  final int total;
+
+  const ScanProgressDots({super.key, required this.done, required this.total});
+
+  static const int maxDots = 12;
+
+  @override
+  Widget build(BuildContext context) {
+    final count = total < 1 ? 1 : total;
+    final filled = done.clamp(0, count);
+
+    if (count > maxDots) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(99),
+        child: LinearProgressIndicator(
+          value: filled / count,
+          minHeight: 14,
+          backgroundColor: AppColors.surfaceMuted,
+          color: AppColors.pink,
+        ),
+      );
+    }
+
+    final still = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    return Semantics(
+      label: '$filled de $count',
+      excludeSemantics: true,
+      child: Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (var i = 0; i < count; i++)
+            _dot(i < filled, i == filled - 1 && !still)
+        ],
+      ),
+    );
+  }
+
+  Widget _dot(bool on, bool newest) {
+    final dot = Container(
+      width: 26,
+      height: 26,
+      decoration: BoxDecoration(
+        color: on ? AppColors.pink : AppColors.white,
+        shape: BoxShape.circle,
+        border: Border.all(color: AppColors.black, width: 1.2),
+      ),
+      child: on ? const Icon(Icons.check_rounded, size: 16, color: AppColors.black) : null,
+    );
+    if (!newest) return dot;
+    // El sello recién ganado entra con un salto elástico.
+    return dot.animate(delay: 500.ms).scale(
+          begin: const Offset(0.2, 0.2),
+          duration: 600.ms,
+          curve: Curves.elasticOut,
+        );
   }
 }

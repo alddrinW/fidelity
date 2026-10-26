@@ -50,6 +50,11 @@ class AuthUser {
     );
   }
 
+  /// Ya vio el mensaje de bienvenida de su primera entrada (lo guarda el
+  /// servidor; `has_seen_welcome` es como lo guardaban las versiones anteriores
+  /// solo en el teléfono).
+  bool get hasSeenWelcome => raw['hasSeenWelcome'] == true || raw['has_seen_welcome'] == true;
+
   Map<String, dynamic>? get userMetadata => {
     'role': role,
     'full_name': fullName,
@@ -116,6 +121,7 @@ class AuthRepository {
     String role = 'client',
     String? phone,
     String? birthDate,
+    String? referralCode,
     String? avatarUrl,
     String? fcmToken,
   }) async {
@@ -126,6 +132,7 @@ class AuthRepository {
       'role': role,
       if (phone != null && phone.isNotEmpty) 'phone': phone.trim(),
       if (birthDate != null && birthDate.isNotEmpty) 'birthDate': birthDate,
+      if (referralCode != null && referralCode.isNotEmpty) 'referralCode': referralCode,
       if (avatarUrl != null) 'avatarUrl': avatarUrl,
       if (fcmToken != null) 'fcmToken': fcmToken,
     });
@@ -147,6 +154,21 @@ class AuthRepository {
     } catch (_) {}
     await _api.clearSession();
     _authStateController.add(null);
+  }
+
+  /// La persona ya vio la bienvenida de su primera entrada: se guarda en el
+  /// servidor (para que no vuelva a salir al iniciar sesión de nuevo ni desde
+  /// otro dispositivo) y en la sesión de este teléfono.
+  Future<void> markWelcomeSeen() async {
+    final current = Map<String, dynamic>.from(_api.currentUser ?? {});
+    current['hasSeenWelcome'] = true;
+    current['has_seen_welcome'] = true;
+    await _api.updateUser(current);
+    try {
+      await _api.patch('users/welcome-seen');
+    } catch (e) {
+      debugPrint('No se pudo guardar la bienvenida vista: $e');
+    }
   }
 
   Future<void> refreshProfile() async {

@@ -1,5 +1,7 @@
 import 'package:fidelity_app/features/cards/customer_home_view.dart';
 import 'package:fidelity_app/features/cards/providers/my_cards_provider.dart';
+import 'package:fidelity_app/features/cards/widgets/customer_greeting.dart';
+import 'package:fidelity_app/features/cards/widgets/fido_banner_carousel.dart';
 import 'package:fidelity_app/features/cards/widgets/registered_scans_list.dart';
 import 'package:fidelity_app/features/games/data/games_repository.dart';
 import 'package:flutter/material.dart';
@@ -16,12 +18,13 @@ Map<String, dynamic> card(
   int points = 0,
   int required = 10,
   String? reward = 'Café gratis',
+  List<Map<String, dynamic>> rewards = const [],
 }) =>
     {
       'id': id,
       'current_points': points,
       'pending_scans': 0,
-      'rewards': const [],
+      'rewards': rewards,
       'businesses': {
         'id': 'b-$id',
         'name': name,
@@ -102,6 +105,22 @@ void main() {
       expect(find.text('MIS ESCANEOS REGISTRADOS'), findsNothing);
     });
 
+    testWidgets('al local al que le falta 1 punto lo destaca con "¡TE FALTA 1!"', (tester) async {
+      await pump(tester, [card('1', 'Aurora', points: 9), card('2', 'Vilcanatu', points: 3)]);
+
+      expect(find.text('¡TE FALTA 1!'), findsOneWidget);
+    });
+
+    testWidgets('con el premio ya listo no dice "te falta 1"', (tester) async {
+      await pump(tester, [
+        card('1', 'Aurora', points: 9, rewards: [
+          {'status': 'pending'},
+        ]),
+      ]);
+
+      expect(find.text('¡TE FALTA 1!'), findsNothing);
+    });
+
     testWidgets('en un celular angosto y con letra grande no se desborda', (tester) async {
       tester.view.physicalSize = const Size(320, 900);
       tester.view.devicePixelRatio = 1;
@@ -157,6 +176,54 @@ void main() {
 
       expect(find.text('NOVEDADES'), findsNothing);
       expect(find.text('EMPIEZA A GANAR'), findsOneWidget);
+      expect(find.text('Suma puntos'), findsOneWidget);
+      // Sin pestaña a la que ir, no ofrece "Explorar locales".
+      expect(find.text('Explorar locales'), findsNothing);
+    });
+
+    testWidgets('con un premio por reclamar, Fido se lo dice en el banner', (tester) async {
+      await pump(tester, [
+        card('1', 'Aurora', points: 10, rewards: [
+          {'status': 'pending'},
+        ]),
+      ]);
+
+      expect(find.text('¡PREMIO LISTO!'), findsOneWidget);
+      expect(find.text('VER PREMIO'), findsOneWidget);
+    });
+  });
+
+  group('resumen del saludo', () {
+    test('sin tarjetas invita a escanear', () {
+      expect(greetingSummary(const []).text, 'Escanea tu primer QR y empieza a ganar');
+    });
+
+    test('un premio por reclamar', () {
+      final summary = greetingSummary([
+        card('1', 'Aurora', points: 10, rewards: [
+          {'status': 'pending'},
+        ]),
+      ]);
+      expect(summary.text, '1 premio por reclamar');
+    });
+
+    test('varios premios por reclamar, sumados en todos los locales', () {
+      final summary = greetingSummary([
+        card('1', 'Aurora', rewards: [
+          {'status': 'pending'},
+          {'status': 'approved'},
+        ]),
+        card('2', 'Vilcanatu', rewards: [
+          {'status': 'pending'},
+        ]),
+      ]);
+      expect(summary.text, '2 premios por reclamar');
+      expect(pendingRewardCount([card('1', 'A', rewards: [{'status': 'approved'}])]), 0);
+    });
+
+    test('a un punto de un premio, y si no, ánimo', () {
+      expect(greetingSummary([card('1', 'Aurora', points: 9)]).text, 'Estás a 1 punto de un premio');
+      expect(greetingSummary([card('1', 'Aurora', points: 2)]).text, 'Sigue sumando puntos');
     });
   });
 }

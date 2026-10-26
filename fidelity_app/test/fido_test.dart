@@ -4,6 +4,7 @@ import 'package:fidelity_app/core/widgets/fido_mascot.dart';
 import 'package:fidelity_app/features/business/dashboard/widgets/fido_guide_strip.dart';
 import 'package:fidelity_app/features/scanner/data/scanner_repository.dart';
 import 'package:fidelity_app/features/scanner/scan_success_screen.dart';
+import 'package:fidelity_app/features/scanner/scan_waiting_screen.dart';
 import 'package:fidelity_app/features/scanner/scanner_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -151,6 +152,86 @@ void main() {
 
       expect(find.text('¡Buen trabajo! Fido ya avisó al local'), findsOneWidget);
       await tester.pump(const Duration(seconds: 10));
+    });
+  });
+
+  group('resultado del escaneo (pantalla completa)', () {
+    Future<void> open(WidgetTester tester, ScanResult result) async {
+      tester.view.physicalSize = const Size(900, 2400);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        ProviderScope(child: spanishApp(ScanSuccessScreen(result: result))),
+      );
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    testWidgets('un punto sumado dice "PUNTO SUMADO" y marca el avance con puntitos', (tester) async {
+      await open(tester, const ScanResult(businessName: 'Café Aurora', currentPoints: 3, pointsRequired: 10));
+
+      expect(find.text('¡PUNTO\nSUMADO!'), findsOneWidget);
+      expect(find.byType(ScanProgressDots), findsOneWidget);
+      expect(find.byIcon(Icons.check_rounded), findsNWidgets(3));
+      await tester.pump(const Duration(seconds: 10));
+    });
+
+    testWidgets('un premio ganado llena todos los puntitos y Fido se emociona', (tester) async {
+      await open(
+        tester,
+        const ScanResult(businessName: 'Café Aurora', pointsRequired: 5, rewardCompleted: true, rewardDescription: 'Café gratis'),
+      );
+
+      expect(find.text('¡PREMIO\nGANADO!'), findsOneWidget);
+      expect(find.byIcon(Icons.check_rounded), findsNWidgets(5));
+      expect(
+        find.byWidgetPredicate((w) => w is FidoMascot && w.mood == FidoMood.euphoric),
+        findsOneWidget,
+      );
+      await tester.pump(const Duration(seconds: 10));
+    });
+
+    testWidgets('un escaneo pendiente espera al local: sin puntitos y con Fido pensativo', (tester) async {
+      await open(tester, const ScanResult(businessName: 'Café Aurora', isPending: true, pointsRequired: 10));
+
+      expect(find.text('ESPERANDO\nAL LOCAL'), findsOneWidget);
+      expect(find.byType(ScanProgressDots), findsNothing);
+      expect(find.byType(FidoCooldownBanner), findsOneWidget);
+      await tester.pump(const Duration(seconds: 10));
+    });
+
+    testWidgets('con muchos sellos los puntitos pasan a una barra', (tester) async {
+      await tester.pumpWidget(spanishApp(const Scaffold(body: ScanProgressDots(done: 5, total: 30))));
+      await tester.pump();
+
+      expect(find.byType(LinearProgressIndicator), findsOneWidget);
+      expect(find.byIcon(Icons.check_rounded), findsNothing);
+    });
+
+    testWidgets('la pantalla de espera muestra lo que dijo el servidor y vuelve con el botón', (tester) async {
+      await tester.pumpWidget(spanishApp(
+        Builder(
+          builder: (context) => Scaffold(
+            body: TextButton(
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => const ScanWaitingScreen(message: 'Tu escaneo en Café Aurora espera su aprobación.'),
+                ),
+              ),
+              child: const Text('abrir'),
+            ),
+          ),
+        ),
+      ));
+      await tester.tap(find.text('abrir'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('ESPERANDO\nAL LOCAL'), findsOneWidget);
+      expect(find.text('Tu escaneo en Café Aurora espera su aprobación.'), findsOneWidget);
+      expect(find.byType(FidoCooldownBanner), findsOneWidget);
+
+      await tester.tap(find.byTooltip('Entendido'));
+      await tester.pumpAndSettle();
+      expect(find.byType(ScanWaitingScreen), findsNothing);
     });
   });
 

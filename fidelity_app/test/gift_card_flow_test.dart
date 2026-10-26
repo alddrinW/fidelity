@@ -98,6 +98,9 @@ class _FakeCampaignsRepository extends CampaignsRepository {
     int? requiredScans,
     CampaignAudience audience = CampaignAudience.all,
     List<String> recipientIds = const [],
+    int? priceCents,
+    int? stock,
+    int? cardValidDays,
     DateTime? startsAt,
     DateTime? endsAt,
   }) async {
@@ -246,7 +249,7 @@ void main() {
       await showForm(tester);
       await tester.enterText(
         find.widgetWithText(
-            TextFormField, 'Nombre (ej. Regalo de aniversario)'),
+            TextFormField, 'Nombre de la gift card (ej. Regalo de aniversario)'),
         'Regalo de aniversario',
       );
       await tester.pumpAndSettle();

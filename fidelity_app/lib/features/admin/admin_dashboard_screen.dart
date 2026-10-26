@@ -16,6 +16,8 @@ import 'admin_activity_screen.dart';
 import 'admin_businesses_screen.dart';
 import 'admin_payments_screen.dart';
 import 'admin_games_screen.dart';
+import 'admin_card_payouts_screen.dart';
+import 'admin_referral_locals_screen.dart';
 import 'admin_settings_screen.dart';
 import '../notifications/widgets/notification_bell.dart';
 import '../feedback/data/feedback_repository.dart';
@@ -137,6 +139,8 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
     final modules = <(IconData, String, Widget)>[
       (Icons.payments_rounded, 'Pagos de registro', const AdminPaymentsScreen()),
       (Icons.sports_esports_rounded, 'Minijuegos', const AdminGamesScreen()),
+      (Icons.group_add_rounded, 'Invitar amigos', const AdminReferralLocalsScreen()),
+      (Icons.payments_outlined, 'Pagos a locales', const AdminCardPayoutsScreen()),
       (Icons.storefront_rounded, 'Gestión de negocios', const AdminBusinessesScreen()),
       (Icons.category_rounded, 'Gestión de categorías', const AdminCategoriesScreen()),
       (Icons.people_alt_rounded, 'Gestión de usuarios', const AdminUsersScreen()),

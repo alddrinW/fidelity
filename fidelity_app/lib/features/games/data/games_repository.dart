@@ -188,6 +188,9 @@ class GamePlay {
   final String? claimCode;
   final Map<String, dynamic> play;
 
+  /// Es el juego semanal de Fidelity: el premio es un punto en el negocio, no una gift card.
+  final bool weekly;
+
   /// El horario del reto.
   final DateTime? startsAt;
   final DateTime? expiresAt;
@@ -211,6 +214,7 @@ class GamePlay {
     this.score,
     this.claimCode,
     this.play = const {},
+    this.weekly = false,
     this.startsAt,
     this.expiresAt,
     this.attempts = 0,
@@ -239,6 +243,7 @@ class GamePlay {
         result: json['result']?.toString(),
         score: (json['score'] as num?)?.toInt(),
         claimCode: json['claimCode']?.toString(),
+        weekly: json['weekly'] == true,
         play: json['play'] is Map ? Map<String, dynamic>.from(json['play'] as Map) : const {},
         startsAt: DateTime.tryParse('${json['startsAt'] ?? ''}')?.toLocal(),
         expiresAt: DateTime.tryParse('${json['expiresAt'] ?? ''}')?.toLocal(),

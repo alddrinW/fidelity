@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/l10n/language_selector.dart';
 import '../../../core/layout/breakpoints.dart';
-import '../../../core/services/api_client.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/image_source.dart';
@@ -133,21 +132,14 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
 
   void _checkWelcomeMessage() async {
     if (_welcomeShown) return;
-    final user = ref.read(authRepositoryProvider).currentUser;
-    if (user != null) {
-      final hasSeen = user.raw['has_seen_welcome'] == true ||
-          user.userMetadata?['has_seen_welcome'] == true;
-      if (!hasSeen) {
-        _welcomeShown = true;
-        if (mounted) {
-          _showWelcomeDialog();
-        }
-        try {
-          final current = Map<String, dynamic>.from(user.raw);
-          current['has_seen_welcome'] = true;
-          await ApiClient().updateUser(current);
-        } catch (_) {}
-      }
+    final repository = ref.read(authRepositoryProvider);
+    final user = repository.currentUser;
+    // Solo la primera vez que el dueño entra a su cuenta: el servidor recuerda
+    // que ya la vio, aunque cierre sesión, vuelva a entrar o use otro dispositivo.
+    if (user != null && !user.hasSeenWelcome) {
+      _welcomeShown = true;
+      if (mounted) _showWelcomeDialog();
+      await repository.markWelcomeSeen();
     }
   }
 

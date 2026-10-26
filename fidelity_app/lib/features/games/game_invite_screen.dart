@@ -192,7 +192,9 @@ class _Intro extends StatelessWidget {
           Text(
             play.lostLastAttempt
                 ? 'ESTA VEZ NO'
-                : '${play.businessName ?? 'Un local'} te reta a jugar'.toUpperCase(),
+                : play.weekly
+                    ? 'TU JUEGO DE LA SEMANA'
+                    : '${play.businessName ?? 'Un local'} te reta a jugar'.toUpperCase(),
             textAlign: TextAlign.center,
             style: AppTypography.display(size: 34),
           ),
@@ -230,7 +232,14 @@ class _Intro extends StatelessWidget {
             textAlign: TextAlign.center,
             style: AppTypography.label(size: 13, tracking: 2),
           ),
-          if (play.expiresAt != null) ...[
+          if (play.weekly) ...[
+            const SizedBox(height: 6),
+            Text(
+              'Juegas una vez por semana. Si ganas, sumas el punto en ${play.businessName ?? 'el negocio que elegiste'}.',
+              textAlign: TextAlign.center,
+              style: AppTypography.body(size: 13, weight: FontWeight.w300, color: AppColors.textSecondary),
+            ),
+          ] else if (play.expiresAt != null) ...[
             const SizedBox(height: 6),
             Text(
               'Disponible hasta el ${formatCampaignDateTime(play.expiresAt!)}',

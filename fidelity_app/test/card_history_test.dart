@@ -1,3 +1,5 @@
+import 'package:fidelity_app/core/widgets/app_card.dart';
+import 'package:fidelity_app/core/widgets/fido_mascot.dart';
 import 'package:fidelity_app/features/campaigns/data/campaigns_repository.dart';
 import 'package:fidelity_app/features/cards/card_history_screen.dart';
 import 'package:fidelity_app/features/cards/providers/card_history_provider.dart';
@@ -158,6 +160,23 @@ void main() {
       expect(find.byIcon(Icons.storefront_outlined), findsOneWidget);
     });
 
+    testWidgets('la cabecera va centrada y sin franja de color: logo, nombre y dirección en el medio', (tester) async {
+      await _open(tester, _FakeHistory());
+
+      const screenCenter = 450.0; // la pantalla de la prueba mide 900 de ancho
+      expect(tester.getCenter(find.byIcon(Icons.storefront_outlined)).dx, closeTo(screenCenter, 1));
+      expect(tester.getCenter(find.text('VILCANATU')).dx, closeTo(screenCenter, 1));
+      expect(tester.getCenter(find.text('Servicios · Av. Amazonas N31, Quito')).dx, closeTo(screenCenter, 1));
+      // Volver a la izquierda y filtrar a la derecha, a la altura del logo.
+      final back = tester.getCenter(find.byTooltip('Volver')).dx;
+      final filter = tester.getCenter(find.byTooltip('Filtrar por fechas')).dx;
+      expect(back, lessThan(screenCenter - 100));
+      expect(filter, greaterThan(screenCenter + 100));
+      // Los dos botones quedan a la misma distancia del logo.
+      expect(screenCenter - back, closeTo(filter - screenCenter, 20));
+      expect(tester.getCenter(find.byTooltip('Volver')).dy, closeTo(tester.getCenter(find.byIcon(Icons.storefront_outlined)).dy, 4));
+    });
+
     testWidgets('un sello por cada punto: ganados, por ganar y el premio al final', (tester) async {
       await _open(tester, _FakeHistory(points: 7, required: 8, withRewards: false));
 
@@ -175,6 +194,31 @@ void main() {
       expect(stamp('ganado'), findsNWidgets(10));
       expect(stamp('falta'), findsNothing);
       expect(find.text('¡Tu premio está listo: hiernalife 20% de descuento!'), findsOneWidget);
+    });
+
+    testWidgets('la insignia FidelyUsuario va dentro de la misma tarjeta que los sellos', (tester) async {
+      await _open(tester, _FakeHistory());
+
+      final card = find.ancestor(of: find.text('TUS SELLOS'), matching: find.byType(AppCard)).first;
+      expect(
+        find.descendant(of: card, matching: find.text('Te faltan 3 escaneos para ser FidelyUsuario')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('con el premio listo, Fido celebra dentro de la tarjeta', (tester) async {
+      await _open(tester, _FakeHistory(points: 10, required: 10));
+
+      expect(
+        find.byWidgetPredicate((w) => w is FidoMascot && w.mood == FidoMood.celebrate),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('sin el premio listo, Fido no aparece en la tarjeta', (tester) async {
+      await _open(tester, _FakeHistory(points: 4, required: 10));
+
+      expect(find.byType(FidoMascot), findsNothing);
     });
 
     testWidgets('con el premio listo y un local sin premio descrito, el mensaje no lo nombra', (tester) async {

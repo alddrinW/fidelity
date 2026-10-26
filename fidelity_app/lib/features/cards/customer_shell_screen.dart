@@ -52,7 +52,13 @@ class _CustomerShellScreenState extends ConsumerState<CustomerShellScreen> {
     // Las pantallas de cada destino, en el mismo orden. La clave mantiene el
     // estado de cada pestaña aunque la lista de destinos cambie.
     final tabs = <(CustomerTab, Widget)>[
-      (CustomerTab.home, const CustomerHomeView(key: ValueKey('home'))),
+      (
+        CustomerTab.home,
+        CustomerHomeView(
+          key: const ValueKey('home'),
+          onExplore: () => setState(() => _tab = CustomerTab.explore),
+        ),
+      ),
       (CustomerTab.explore, const CustomerExploreView(key: ValueKey('explore'))),
       if (gifts > 0) (CustomerTab.gifts, const MyGiftsView(key: ValueKey('gifts'))),
     ];
@@ -109,6 +115,7 @@ class _CustomerShellScreenState extends ConsumerState<CustomerShellScreen> {
                   displayName: _displayName(state.userName),
                   avatarUrl: state.avatarUrl,
                   onAvatarTap: _openProfile,
+                  summary: greetingSummary(state.cards),
                 ),
                 AppPillTabBar(
                   labels: [for (final destination in destinations) destination.label],

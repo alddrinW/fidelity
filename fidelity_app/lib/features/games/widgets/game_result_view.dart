@@ -48,11 +48,16 @@ class _GameResultViewState extends State<GameResultView> {
     final code = play.claimCode;
 
     final title = won ? '¡GANASTE!' : 'ESTA VEZ NO';
-    final message = won
-        ? (code != null
-            ? 'Tu premio: ${play.prizeLabel ?? 'una gift card'}. Ya está en Mis regalos.'
-            : 'Ganaste, pero este premio ya lo tenías.')
-        : 'Fido dice: ¡la próxima será! Usaste tus ${play.maxAttempts} intentos.';
+    final message = play.weekly
+        // El juego semanal da puntos, no una gift card.
+        ? (won
+            ? 'Sumaste ${play.prizeLabel ?? 'un punto'}. La próxima semana juega en otro negocio.'
+            : 'Fido dice: ¡la próxima semana será! Usaste tus ${play.maxAttempts} intentos. Vuelve el lunes.')
+        : won
+            ? (code != null
+                ? 'Tu premio: ${play.prizeLabel ?? 'una gift card'}. Ya está en Mis regalos.'
+                : 'Ganaste, pero este premio ya lo tenías.')
+            : 'Fido dice: ¡la próxima será! Usaste tus ${play.maxAttempts} intentos.';
 
     return Stack(
       alignment: Alignment.topCenter,

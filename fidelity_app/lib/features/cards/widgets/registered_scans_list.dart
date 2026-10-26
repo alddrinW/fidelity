@@ -5,7 +5,19 @@ import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
 import '../../../core/utils/image_source.dart';
 import '../../../core/widgets/app_card.dart';
+import '../../../core/widgets/app_chip.dart';
 import '../../../core/widgets/fidely_badge.dart';
+
+/// Si a la tarjeta le falta un solo punto para el premio (y no tiene uno
+/// esperando): se destaca en el inicio con "¡TE FALTA 1!".
+bool isOnePointAway(Map<String, dynamic> card) {
+  final business = (card['businesses'] as Map?) ?? const {};
+  final points = (card['current_points'] as num?)?.toInt() ?? 0;
+  final required = (business['points_required'] as num?)?.toInt() ?? 10;
+  final rewards = (card['rewards'] as List?) ?? const [];
+  final hasPending = rewards.any((r) => (r as Map)['status'] == 'pending');
+  return required > 1 && points == required - 1 && !hasPending;
+}
 
 /// "MIS ESCANEOS REGISTRADOS": los locales donde el cliente ya escaneó, con
 /// su avance hacia el premio. Tocar uno abre su historial (escaneos y premios).
@@ -69,9 +81,13 @@ class _ScanCard extends StatelessWidget {
     final required = (business['points_required'] as num?)?.toInt() ?? 10;
     final image = imageProviderFromUrl(business['logo_url']?.toString());
 
+    final almost = isOnePointAway(card);
+
     return AppCard(
       radius: 32,
       padding: const EdgeInsets.all(18),
+      // A un punto del premio, la tarjeta se tiñe de rosa.
+      color: almost ? Color.alphaBlend(AppColors.pink.withValues(alpha: 0.4), AppColors.white) : null,
       onTap: onTap,
       child: Row(
         children: [
@@ -102,6 +118,10 @@ class _ScanCard extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.display(size: 24),
                 ),
+                if (almost) ...[
+                  const SizedBox(height: 6),
+                  const AppChip(label: '¡TE FALTA 1!', icon: Icons.bolt_rounded, style: AppChipStyle.dark),
+                ],
                 // Su insignia: ya es fiel a este local.
                 if (card['is_fidely'] == true) ...[
                   const SizedBox(height: 6),

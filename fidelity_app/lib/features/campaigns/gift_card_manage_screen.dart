@@ -491,6 +491,8 @@ class _GiftCardEditDialogState extends ConsumerState<GiftCardEditDialog> {
       imageUrl: _imageChanged
           ? (_imageDataUri?.isEmpty == true ? null : _imageDataUri)
           : c.imageUrl,
+      priceCents: c.priceCents,
+      cardValidDays: c.cardValidDays,
       businesses: c.businesses,
       endsAt: _endsAt ?? c.endsAt,
     );
@@ -553,7 +555,9 @@ class _GiftCardEditDialogState extends ConsumerState<GiftCardEditDialog> {
               ),
               const SizedBox(height: 20),
               Text(
-                'Quienes ya la tienen recibirán un aviso del cambio.',
+                widget.campaign.isForSale
+                    ? 'Quienes ya la compraron conservan su tarjeta tal cual.'
+                    : 'Quienes ya la tienen recibirán un aviso del cambio.',
                 textAlign: TextAlign.center,
                 style: AppTypography.body(size: 14, weight: FontWeight.w300),
               ),
@@ -588,7 +592,10 @@ class _GiftCardEditDialogState extends ConsumerState<GiftCardEditDialog> {
                 }),
               ),
               const SizedBox(height: 12),
-              if (_isDiscount)
+              // El beneficio de una tarjeta en venta no se cambia: los clientes la pagan por lo que ofrece.
+              if (widget.campaign.isForSale)
+                const SizedBox.shrink()
+              else if (_isDiscount)
                 AppTextField(
                   controller: _value,
                   hint: 'Porcentaje de descuento',

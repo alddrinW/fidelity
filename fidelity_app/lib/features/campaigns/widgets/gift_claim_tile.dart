@@ -24,6 +24,7 @@ class GiftClaimTile extends StatelessWidget {
         campaign: campaign,
         code: claim.code,
         redeemed: claim.isRedeemed,
+        validUntil: claim.isPurchase ? claim.expiresAt : null,
         logoUrl: business?.logoUrl,
         businessName: business?.name,
       ),

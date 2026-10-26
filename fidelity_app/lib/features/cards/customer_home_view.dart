@@ -5,13 +5,13 @@ import 'package:flutter/material.dart' hide Text;
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/services/api_client.dart';
 import '../../core/services/realtime_sync_service.dart';
 import '../../core/theme/app_colors.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_message_dialog.dart';
 import '../../core/widgets/app_responsive_body.dart';
+import '../../core/widgets/fido_mascot.dart';
 import '../../core/widgets/global_celebration_dialog.dart';
 import '../auth/data/auth_repository.dart';
 import '../scanner/scanner_screen.dart';
@@ -19,7 +19,10 @@ import 'card_history_screen.dart';
 import 'providers/my_cards_provider.dart';
 import 'widgets/registered_scans_list.dart';
 import '../games/data/games_repository.dart';
-import '../games/widgets/pending_games_strip.dart';
+import '../card_sales/data/card_sales_repository.dart';
+import '../games/data/weekly_game_repository.dart';
+import '../referrals/data/referrals_repository.dart';
+import 'widgets/fido_banner_carousel.dart';
 import '../../core/l10n/tr_text.dart';
 
 /// Inicio del cliente: los juegos que le mandaron y sus escaneos registrados
@@ -28,7 +31,10 @@ import '../../core/l10n/tr_text.dart';
 /// Es la primera pestaña del panel de usuario ([CustomerShellScreen]); el
 /// "escanear" vive ahora en la acción central de la barra inferior.
 class CustomerHomeView extends ConsumerStatefulWidget {
-  const CustomerHomeView({super.key});
+  const CustomerHomeView({super.key, this.onExplore});
+
+  /// Lleva a la pestaña de explorar locales (desde el inicio vacío).
+  final VoidCallback? onExplore;
 
   /// Resetea los flags de sesión (bienvenida / recordatorio de premio) al cerrar
   /// sesión, para que el próximo usuario en el mismo proceso los vea bien.
@@ -112,21 +118,15 @@ class _CustomerHomeViewState extends ConsumerState<CustomerHomeView> {
 
   void _checkWelcomeMessage() async {
     if (_welcomeShown) return;
-    final user = ref.read(authRepositoryProvider).currentUser;
-    if (user != null) {
-      final hasSeen = user.raw['has_seen_welcome'] == true ||
-          user.userMetadata?['has_seen_welcome'] == true;
-      if (!hasSeen) {
-        _welcomeShown = true;
-        if (mounted) {
-          _showWelcomeDialog();
-        }
-        try {
-          final current = Map<String, dynamic>.from(user.raw);
-          current['has_seen_welcome'] = true;
-          await ApiClient().updateUser(current);
-        } catch (_) {}
-      }
+    final repository = ref.read(authRepositoryProvider);
+    final user = repository.currentUser;
+    // Solo la primera vez que la persona entra a su cuenta: el servidor
+    // recuerda que ya la vio, aunque cierre sesión, vuelva a entrar o use otro
+    // dispositivo.
+    if (user != null && !user.hasSeenWelcome) {
+      _welcomeShown = true;
+      if (mounted) _showWelcomeDialog();
+      await repository.markWelcomeSeen();
     }
   }
 
@@ -226,6 +226,21 @@ class _CustomerHomeViewState extends ConsumerState<CustomerHomeView> {
     );
   }
 
+  void _openCardRewards(Map<String, dynamic> card) {
+    final business = card['businesses'];
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => CardHistoryScreen(
+          loyaltyCardId: card['id'],
+          businessId: business['id'],
+          businessName: business['name'],
+          initialTabIndex: CardHistoryScreen.rewardsTab,
+        ),
+      ),
+    );
+  }
+
   void _openCard(Map<String, dynamic> card) {
     final business = card['businesses'];
     Navigator.push(
@@ -300,6 +315,9 @@ class _CustomerHomeViewState extends ConsumerState<CustomerHomeView> {
       color: AppColors.black,
       onRefresh: () {
         ref.invalidate(myGameInvitesProvider);
+        ref.invalidate(referralInfoProvider);
+        ref.invalidate(cardOffersProvider);
+        ref.invalidate(weeklyGameProvider);
         return ref.read(myCardsProvider.notifier).refreshCards();
       },
       child: ListView(
@@ -307,8 +325,14 @@ class _CustomerHomeViewState extends ConsumerState<CustomerHomeView> {
         // Abajo hay espacio para el botón flotante de escanear.
         padding: const EdgeInsets.fromLTRB(24, 16, 24, 110),
         children: [
-          // Los juegos que le mandaron los locales y aún no ha jugado.
-          const PendingGamesStrip(),
+          // Fido le dice al cliente qué puede hacer: reclamar un premio, comprar una
+          // tarjeta, jugar, invitar a un amigo...
+          FidoBannerCarousel(
+            cards: state.cards,
+            onOpenReward: _openCardRewards,
+            onOpenOffers: widget.onExplore,
+            onScan: _openScanner,
+          ),
           // Los locales donde el cliente ya escaneó, con su avance.
           RegisteredScansList(cards: state.cards, onOpen: _openCard),
         ],
@@ -326,12 +350,10 @@ class _CustomerHomeViewState extends ConsumerState<CustomerHomeView> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Image.asset(
-                    'assets/images/logo_transparente.png',
-                    height: 280,
-                    fit: BoxFit.contain,
-                    semanticLabel: 'Fido',
-                  ).animate().scale(
+                  // Fido con los brazos arriba: ¡a ganar!
+                  const FidoMascot(mood: FidoMood.celebrate, height: 220)
+                      .animate()
+                      .scale(
                         begin: const Offset(0.8, 0.8),
                         duration: 700.ms,
                         curve: const Cubic(0.34, 1.56, 0.64, 1),
@@ -348,6 +370,18 @@ class _CustomerHomeViewState extends ConsumerState<CustomerHomeView> {
                     textAlign: TextAlign.center,
                     style: AppTypography.body(size: 16, weight: FontWeight.w300),
                   ),
+                  const SizedBox(height: 20),
+                  // Cómo funciona, en tres pasos.
+                  const Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _Step(icon: Icons.qr_code_scanner_rounded, label: 'Escanea'),
+                      _StepArrow(),
+                      _Step(icon: Icons.add_circle_outline_rounded, label: 'Suma puntos'),
+                      _StepArrow(),
+                      _Step(icon: Icons.card_giftcard_rounded, label: 'Gana premios'),
+                    ],
+                  ),
                 ],
               ).animate().fadeIn(),
             ),
@@ -355,12 +389,60 @@ class _CustomerHomeViewState extends ConsumerState<CustomerHomeView> {
         ),
         Padding(
           padding: const EdgeInsets.fromLTRB(48, 8, 48, 24),
-          child: AppPrimaryButton(label: 'Escanear', onPressed: _openScanner)
-              .animate(delay: 300.ms)
-              .fadeIn()
-              .moveY(begin: 16, curve: Curves.easeOut),
+          child: Column(
+            children: [
+              AppPrimaryButton(label: 'Escanear', onPressed: _openScanner),
+              if (widget.onExplore != null) ...[
+                const SizedBox(height: 4),
+                TextButton(
+                  onPressed: widget.onExplore,
+                  child: Text(
+                    'Explorar locales',
+                    style: AppTypography.label(size: 14, tracking: 1),
+                  ),
+                ),
+              ],
+            ],
+          ).animate(delay: 300.ms).fadeIn().moveY(begin: 16, curve: Curves.easeOut),
         ),
       ],
+    );
+  }
+}
+
+/// Un paso de "cómo funciona" en el inicio vacío.
+class _Step extends StatelessWidget {
+  final IconData icon;
+  final String label;
+
+  const _Step({required this.icon, required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 52,
+          height: 52,
+          decoration: const BoxDecoration(color: AppColors.pink, shape: BoxShape.circle),
+          child: Icon(icon, color: AppColors.black),
+        ),
+        const SizedBox(height: 6),
+        Text(label, style: AppTypography.label(size: 11, tracking: 1)),
+      ],
+    );
+  }
+}
+
+class _StepArrow extends StatelessWidget {
+  const _StepArrow();
+
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.fromLTRB(8, 0, 8, 20),
+      child: Icon(Icons.arrow_forward_rounded, size: 18),
     );
   }
 }

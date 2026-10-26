@@ -2,6 +2,7 @@ import 'package:flutter/material.dart' show IconData, Icons;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/api_client.dart';
+import '../../../core/utils/money_format.dart';
 
 enum CampaignType {
   event('event', 'Evento', 'Avisa de una novedad a tus clientes', Icons.celebration_outlined),
@@ -113,8 +114,14 @@ class CampaignClaim {
   final String code;
   final bool isRedeemed;
   final bool isRoutePrize;
+
+  /// La compró con tarjeta (vale hasta [expiresAt], no hasta que cierre la campaña).
+  final bool isPurchase;
   final DateTime? createdAt;
   final DateTime? redeemedAt;
+
+  /// Tarjetas compradas: hasta cuándo vale.
+  final DateTime? expiresAt;
 
   /// Solo en "mis tarjetas": la campaña a la que pertenece.
   final Campaign? campaign;
@@ -124,8 +131,10 @@ class CampaignClaim {
     required this.code,
     required this.isRedeemed,
     required this.isRoutePrize,
+    this.isPurchase = false,
     this.createdAt,
     this.redeemedAt,
+    this.expiresAt,
     this.campaign,
   });
 
@@ -136,8 +145,10 @@ class CampaignClaim {
       code: json['code']?.toString() ?? '',
       isRedeemed: json['status'] == 'redeemed',
       isRoutePrize: json['source'] == 'route_complete' || json['source'] == 'challenge_complete',
+      isPurchase: json['source'] == 'purchase',
       createdAt: DateTime.tryParse('${json['createdAt'] ?? ''}')?.toLocal(),
       redeemedAt: DateTime.tryParse('${json['redeemedAt'] ?? ''}')?.toLocal(),
+      expiresAt: DateTime.tryParse('${json['expiresAt'] ?? ''}')?.toLocal(),
       campaign: campaign is Map ? Campaign.fromJson(Map<String, dynamic>.from(campaign)) : null,
     );
   }
@@ -179,6 +190,16 @@ class Campaign {
   /// Reto de escaneos: cuántos lleva el cliente (vista de cliente).
   final int scanProgress;
   final CampaignAudience audience;
+
+  /// Tarjeta en venta: lo que cuesta, en centavos (`null` si se regala).
+  final int? priceCents;
+
+  /// Tarjeta en venta: cuántas se ponen a la venta y cuántas quedan.
+  final int? stock;
+  final int? stockLeft;
+
+  /// Tarjeta en venta: cuántos días vale desde que se compra.
+  final int? cardValidDays;
   final DateTime? startsAt;
   final DateTime? endsAt;
   final CampaignPhase phase;
@@ -210,6 +231,10 @@ class Campaign {
     this.requiredScans,
     this.scanProgress = 0,
     this.audience = CampaignAudience.all,
+    this.priceCents,
+    this.stock,
+    this.stockLeft,
+    this.cardValidDays,
     this.startsAt,
     this.endsAt,
     this.claim,
@@ -228,6 +253,12 @@ class Campaign {
   int get scansNeeded => requiredScans ?? 0;
 
   bool get isActive => phase == CampaignPhase.active;
+
+  /// Es una tarjeta en venta (se compra, no se reclama).
+  bool get isForSale => priceCents != null;
+
+  /// "\$0.25"
+  String get priceText => priceCents == null ? '' : centsText(priceCents!);
 
   factory Campaign.fromJson(Map<String, dynamic> json) {
     final claim = json['claim'];
@@ -248,6 +279,10 @@ class Campaign {
       requiredScans: (json['requiredScans'] as num?)?.toInt(),
       scanProgress: (json['scanProgress'] as num?)?.toInt() ?? 0,
       audience: CampaignAudience.parse(json['audience']),
+      priceCents: (json['priceCents'] as num?)?.toInt(),
+      stock: (json['stock'] as num?)?.toInt(),
+      stockLeft: (json['stockLeft'] as num?)?.toInt(),
+      cardValidDays: (json['cardValidDays'] as num?)?.toInt(),
       startsAt: DateTime.tryParse('${json['startsAt'] ?? ''}')?.toLocal(),
       endsAt: DateTime.tryParse('${json['endsAt'] ?? ''}')?.toLocal(),
       phase: CampaignPhase.parse(json['phase']),
@@ -383,6 +418,9 @@ class CampaignsRepository {
     int? requiredScans,
     CampaignAudience audience = CampaignAudience.all,
     List<String> recipientIds = const [],
+    int? priceCents,
+    int? stock,
+    int? cardValidDays,
     DateTime? startsAt,
     DateTime? endsAt,
   }) async {
@@ -400,6 +438,9 @@ class CampaignsRepository {
       if (type == CampaignType.giftCard) 'audience': audience.apiValue,
       if (type == CampaignType.giftCard && audience == CampaignAudience.selected)
         'recipientIds': recipientIds,
+      if (priceCents != null) 'priceCents': priceCents,
+      if (priceCents != null && stock != null) 'stock': stock,
+      if (priceCents != null && cardValidDays != null) 'cardValidDays': cardValidDays,
       if (startsAt != null) 'startsAt': startsAt.toUtc().toIso8601String(),
       if (endsAt != null) 'endsAt': endsAt.toUtc().toIso8601String(),
     });

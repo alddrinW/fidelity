@@ -6,7 +6,7 @@ import 'package:fidelity_app/features/games/game_invite_screen.dart';
 import 'package:fidelity_app/features/games/widgets/flappy_game.dart';
 import 'package:fidelity_app/features/games/widgets/game_result_view.dart';
 import 'package:fidelity_app/features/games/widgets/hangman_game.dart';
-import 'package:fidelity_app/features/games/widgets/pending_games_strip.dart';
+import 'package:fidelity_app/features/cards/widgets/fido_banner_carousel.dart';
 import 'package:fidelity_app/features/games/widgets/tic_tac_toe_game.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -676,13 +676,13 @@ void main() {
     });
   });
 
-  group('PendingGamesStrip (juegos pendientes en el inicio)', () {
+  group('FidoBannerCarousel (juegos pendientes en el inicio)', () {
     Future<void> open(WidgetTester tester, List<GameInvite> invites) async {
       final repo = _FakeGamesRepository(_play())..invites = invites;
       await tester.pumpWidget(
         ProviderScope(
           overrides: [gamesRepositoryProvider.overrideWithValue(repo)],
-          child: spanishApp(const Scaffold(body: PendingGamesStrip())),
+          child: spanishApp(const Scaffold(body: FidoBannerCarousel(autoPlay: false))),
         ),
       );
       await tester.pump();
@@ -698,7 +698,7 @@ void main() {
           prizeLabel: '20% de descuento',
         );
 
-    testWidgets('muestra solo los retos que se pueden jugar', (tester) async {
+    testWidgets('muestra solo los retos que se pueden jugar, uno por mensaje', (tester) async {
       await open(tester, [
         invite('1', 'sent'),
         invite('2', 'finished'),
@@ -707,21 +707,27 @@ void main() {
       ]);
 
       expect(find.text('JUEGA Y GANA'), findsOneWidget);
-      expect(find.text('AHORCADO'), findsOneWidget);
-      expect(find.text('FLAPPY BIRD'), findsOneWidget);
-      expect(find.textContaining('Gana: 20% de descuento'), findsNWidgets(2));
+      expect(find.textContaining('Ahorcado de Café Aurora'), findsOneWidget);
+      expect(find.text('JUGAR'), findsOneWidget);
+
+      // El segundo reto está al deslizar; los terminados y vencidos nunca salen.
+      await tester.drag(find.byType(PageView), const Offset(-700, 0));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Flappy Bird de Café Aurora'), findsOneWidget);
+      expect(find.textContaining('Te quedan'), findsOneWidget);
     });
 
     testWidgets('sin retos abiertos no ocupa espacio', (tester) async {
       await open(tester, [invite('1', 'finished')]);
 
       expect(find.text('JUEGA Y GANA'), findsNothing);
+      expect(find.byType(PageView), findsNothing);
     });
 
     testWidgets('tocar un reto abre su juego', (tester) async {
       await open(tester, [invite('1', 'sent')]);
 
-      await tester.tap(find.text('AHORCADO'));
+      await tester.tap(find.text('JUGAR'));
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 500));
 

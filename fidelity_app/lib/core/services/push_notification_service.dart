@@ -16,8 +16,10 @@ import '../widgets/global_celebration_dialog.dart';
 import '../../features/campaigns/my_gifts_screen.dart';
 import 'inbox_events.dart';
 import '../../features/games/game_invite_screen.dart';
+import '../../features/admin/admin_card_payouts_screen.dart';
 import '../../features/admin/admin_games_screen.dart';
 import '../../features/birthdays/birthday_gift_screen.dart';
+import '../../features/referrals/invite_screen.dart';
 
 class PushNotificationService {
   static final _localNotifications = FlutterLocalNotificationsPlugin();
@@ -173,11 +175,17 @@ class PushNotificationService {
           builder: (_) => BirthdayGiftScreen(initialUserId: userId, initialBusinessId: businessId),
         ),
       );
+    } else if (route == '/admin_card_payouts') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminCardPayoutsScreen()));
     } else if (route == '/admin_games') {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminGamesScreen()));
     } else if (route == '/business_dashboard/games') {
       // Los juegos del dueño viven en "Crear y gestionar": se vuelve al panel.
+    } else if (route == '/referral') {
+      // Puntos de invitación (ganados o usados): se abre Invitar amigos.
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const InviteScreen()));
     } else if (route == '/fidely_user') {
+      // Insignia FidelyUsuario: se abre la tarjeta del local.
       // "¡Ya eres FidelyUsuario!": se abre la tarjeta del local, donde se ve su insignia.
       final loyaltyCardId = data['loyalty_card_id'] as String?;
       final businessId = data['business_id'] as String?;

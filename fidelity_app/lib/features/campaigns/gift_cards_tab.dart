@@ -9,7 +9,10 @@ import '../../core/widgets/app_button.dart';
 import '../../core/widgets/app_card.dart';
 import '../../core/widgets/app_chip.dart';
 import '../../core/widgets/app_empty_state.dart';
+import '../../core/utils/money_format.dart';
 import '../birthdays/birthday_gift_screen.dart';
+import '../card_sales/data/card_sales_repository.dart';
+import '../card_sales/my_sales_screen.dart';
 import 'data/campaigns_repository.dart';
 import 'gift_card_form_screen.dart';
 import 'gift_card_manage_screen.dart';
@@ -39,10 +42,15 @@ class GiftCardsTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final campaigns = ref.watch(myCampaignsProvider);
+    final sales = ref.watch(mySalesProvider).valueOrNull;
+    final canSell = ref.watch(cardSalesRulesProvider).valueOrNull?.enabled ?? false;
 
     return RefreshIndicator(
       color: AppColors.black,
-      onRefresh: () async => ref.invalidate(myCampaignsProvider),
+      onRefresh: () async {
+        ref.invalidate(myCampaignsProvider);
+        ref.invalidate(mySalesProvider);
+      },
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         padding: const EdgeInsets.fromLTRB(24, 0, 24, 32),
@@ -55,6 +63,17 @@ class GiftCardsTab extends ConsumerWidget {
           ),
           const SizedBox(height: 12),
           _BirthdayTemplateCard(onTap: () => _birthday(context, ref)),
+          // Las ventas aparecen si el administrador las permite o si ya vendió alguna.
+          if (canSell || (sales?.sold ?? 0) > 0) ...[
+            const SizedBox(height: 12),
+            _SalesCard(
+              sales: sales,
+              onTap: () async {
+                await Navigator.of(context).push(MaterialPageRoute(builder: (_) => const MySalesScreen()));
+                ref.invalidate(mySalesProvider);
+              },
+            ),
+          ],
           const SizedBox(height: 24),
           campaigns.when(
             loading: () => const Padding(
@@ -75,7 +94,7 @@ class GiftCardsTab extends ConsumerWidget {
                   child: AppEmptyState(
                     title: 'Sin gift cards',
                     message:
-                        'Regala descuentos o mini premios: a cada cliente le llega la suya, con su cheque y su código.',
+                        'Regala descuentos o mini premios: a cada cliente le llega su gift card, con su código.',
                     imageHeight: 120,
                   ),
                 );
@@ -122,7 +141,10 @@ class GiftCardTile extends StatelessWidget {
       CampaignPhase.scheduled => AppChipStyle.pink,
       _ => AppChipStyle.outline,
     };
-    final audience = campaign.audience == CampaignAudience.selected
+    final forSale = campaign.isForSale;
+    final audience = forSale
+        ? 'En venta · ${campaign.priceText}'
+        : campaign.audience == CampaignAudience.selected
         ? '${stats?.recipients ?? 0} ${(stats?.recipients ?? 0) == 1 ? 'cliente elegido' : 'clientes elegidos'}'
         : 'Todos mis clientes';
 
@@ -181,9 +203,11 @@ class GiftCardTile extends StatelessWidget {
             const SizedBox(height: 12),
             Row(
               children: [
-                _TileStat(label: 'Enviadas', value: stats.claims),
+                _TileStat(label: forSale ? 'Vendidas' : 'Enviadas', value: stats.claims),
+                if (forSale)
+                  _TileStat(label: 'Quedan', value: ((campaign.stock ?? 0) - stats.claims).clamp(0, 1 << 30)),
                 _TileStat(label: 'Canjeadas', value: stats.redeemed),
-                _TileStat(label: 'Sin canjear', value: stats.claims - stats.redeemed),
+                if (!forSale) _TileStat(label: 'Sin canjear', value: stats.claims - stats.redeemed),
               ],
             ),
           ],
@@ -241,6 +265,46 @@ class _BirthdayTemplateCard extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   'Plantilla lista: tú eliges el premio, a quién y la hora. Vale solo el día del cumpleaños.',
+                  style: AppTypography.body(size: 13, weight: FontWeight.w300),
+                ),
+              ],
+            ),
+          ),
+          const Icon(Icons.chevron_right_rounded),
+        ],
+      ),
+    );
+  }
+}
+
+/// Entrada a "Mis ventas": lo que vendió y lo que ya puede cobrar.
+class _SalesCard extends StatelessWidget {
+  final SalesSummary? sales;
+  final VoidCallback onTap;
+
+  const _SalesCard({required this.sales, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final sold = sales?.sold ?? 0;
+    return AppCard(
+      radius: 28,
+      padding: const EdgeInsets.all(18),
+      onTap: onTap,
+      child: Row(
+        children: [
+          const Icon(Icons.payments_outlined, size: 32),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('MIS VENTAS', style: AppTypography.display(size: 22)),
+                const SizedBox(height: 2),
+                Text(
+                  sold == 0
+                      ? 'Vende tarjetas y cobra cuando tus clientes las canjeen.'
+                      : '$sold ${sold == 1 ? 'tarjeta vendida' : 'tarjetas vendidas'} · ${centsText(sales!.payableCents)} por cobrar',
                   style: AppTypography.body(size: 13, weight: FontWeight.w300),
                 ),
               ],

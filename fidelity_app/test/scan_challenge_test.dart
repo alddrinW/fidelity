@@ -29,6 +29,9 @@ class _FakeCampaigns extends CampaignsRepository {
     int? requiredScans,
     CampaignAudience audience = CampaignAudience.all,
     List<String> recipientIds = const [],
+    int? priceCents,
+    int? stock,
+    int? cardValidDays,
     DateTime? startsAt,
     DateTime? endsAt,
   }) async {

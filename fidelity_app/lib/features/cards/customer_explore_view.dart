@@ -11,6 +11,8 @@ import '../../core/widgets/app_empty_state.dart';
 import '../../core/widgets/app_page_header.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../business/data/business_repository.dart';
+import '../card_sales/card_offer_screen.dart';
+import '../card_sales/data/card_sales_repository.dart';
 import '../campaigns/campaign_detail_screen.dart';
 import '../campaigns/data/campaigns_repository.dart';
 import '../campaigns/widgets/campaign_visuals.dart';
@@ -55,6 +57,7 @@ class _CustomerExploreViewState extends ConsumerState<CustomerExploreView> {
   Widget build(BuildContext context) {
     final businesses = ref.watch(businessesDirectoryProvider);
     final campaigns = ref.watch(campaignFeedProvider).valueOrNull ?? const <Campaign>[];
+    final offers = ref.watch(cardOffersProvider).valueOrNull ?? const <Campaign>[];
 
     final visible = (businesses.valueOrNull ?? const <Map<String, dynamic>>[])
         .where(_matches)
@@ -97,7 +100,7 @@ class _CustomerExploreViewState extends ConsumerState<CustomerExploreView> {
             Expanded(
               child: businesses.isLoading && businesses.valueOrNull == null
                   ? const Center(child: CircularProgressIndicator())
-                  : visible.isEmpty && campaigns.isEmpty
+                  : visible.isEmpty && campaigns.isEmpty && offers.isEmpty
                       ? AppEmptyState(
                           title: _query.isEmpty ? 'Sin negocios' : 'Sin resultados',
                           message: _query.isEmpty
@@ -109,12 +112,28 @@ class _CustomerExploreViewState extends ConsumerState<CustomerExploreView> {
                           onRefresh: () async {
                             ref.invalidate(businessesDirectoryProvider);
                             ref.invalidate(campaignFeedProvider);
+                            ref.invalidate(cardOffersProvider);
                           },
                           child: ListView(
                             physics: const AlwaysScrollableScrollPhysics(),
                             // Abajo hay espacio para el botón flotante.
                             padding: const EdgeInsets.fromLTRB(24, 0, 24, 110),
                             children: [
+                              // Gift cards que los locales venden: se pagan con tarjeta.
+                              if (offers.isNotEmpty) ...[
+                                _SectionTitle(text: 'TARJETAS EN VENTA'),
+                                for (final offer in offers)
+                                  _OfferTile(
+                                    offer: offer,
+                                    onTap: () async {
+                                      await Navigator.of(context).push(
+                                        MaterialPageRoute(builder: (_) => CardOfferScreen(offer: offer)),
+                                      );
+                                      ref.invalidate(cardOffersProvider);
+                                    },
+                                  ).animate().fadeIn().slideY(begin: 0.05),
+                                const SizedBox(height: 8),
+                              ],
                               if (visible.isNotEmpty) ...[
                                 _SectionTitle(text: 'NEGOCIOS'),
                                 for (final business in visible)
@@ -436,6 +455,65 @@ class _CampaignTile extends StatelessWidget {
               ),
             ),
             Icon(Icons.chevron_right_rounded, size: 28, color: colors.foreground),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Una tarjeta en venta en la lista de Explorar: qué incluye, de qué local y a cuánto.
+class _OfferTile extends StatelessWidget {
+  final Campaign offer;
+  final VoidCallback onTap;
+
+  const _OfferTile({required this.offer, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final business = offer.businesses.firstOrNull;
+    final bought = offer.claim != null;
+    final left = offer.stockLeft ?? 0;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: AppCard(
+        radius: 28,
+        padding: const EdgeInsets.all(18),
+        color: AppColors.pink,
+        onTap: onTap,
+        child: Row(
+          children: [
+            const Icon(Icons.local_offer_rounded, size: 26),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    (offer.benefitLabel ?? offer.title).toUpperCase(),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.display(size: 20),
+                  ),
+                  Text(
+                    [
+                      business?.name ?? 'Un local',
+                      if (bought) 'Ya la tienes' else if (left <= 5) 'Quedan $left',
+                    ].join(' · '),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: AppTypography.body(size: 14, weight: FontWeight.w300),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(color: AppColors.black, borderRadius: BorderRadius.circular(99)),
+              child: Text(offer.priceText, style: AppTypography.display(size: 20, color: AppColors.white)),
+            ),
           ],
         ),
       ),

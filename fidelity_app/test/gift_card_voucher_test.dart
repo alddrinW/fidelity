@@ -41,7 +41,7 @@ void main() {
         Scaffold(
           body: SingleChildScrollView(
             child: GiftCardVoucher(
-              campaign: gift(endsAt: DateTime(2026, 12, 10)),
+              campaign: gift(endsAt: DateTime.utc(2026, 12, 10, 23, 0)),
               code: 'GFT-ABC234',
               businessName: 'Café Aurora',
             ),
@@ -53,7 +53,8 @@ void main() {
       expect(find.text('CAFÉ AURORA'), findsOneWidget);
       expect(find.text('REGALO DE ANIVERSARIO'), findsOneWidget);
       expect(find.text('20% DE DESCUENTO'), findsOneWidget);
-      expect(find.textContaining('VÁLIDA HASTA'), findsOneWidget);
+      // Con su día y su hora (en hora de Ecuador: 23:00 UTC = 18:00).
+      expect(find.text('VÁLIDA HASTA 10/12/2026 18:00'), findsOneWidget);
       expect(find.text('GFT-ABC234'), findsOneWidget);
     });
 

@@ -9,11 +9,13 @@ import '../../core/theme/app_typography.dart';
 import '../../core/utils/image_picking.dart';
 import '../../core/validators/app_validators.dart';
 import '../../core/widgets/app_button.dart';
+import '../../core/widgets/app_chip.dart';
 import '../../core/widgets/app_nav_row.dart';
 import '../../core/widgets/app_page_header.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/birth_date_field.dart';
+import '../referrals/invite_screen.dart';
 import '../../core/widgets/user_avatar_circle.dart';
 import '../auth/data/auth_repository.dart';
 import '../campaigns/my_gifts_screen.dart';
@@ -274,14 +276,20 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            Center(
-                              child: _AvatarEditor(
-                                avatarUrl: state.avatarUrl,
-                                newAvatarBytes: _newAvatar?.bytes,
-                                onTap: _pickImage,
-                              ),
+                            _ProfileCard(
+                              avatarUrl: state.avatarUrl,
+                              newAvatarBytes: _newAvatar?.bytes,
+                              onAvatarTap: _pickImage,
+                              nameListenable: _fullNameController,
+                              fallbackName: state.fullName,
+                              email: state.email,
+                              roleLabel: _isBusinessOwner
+                                  ? 'DUEÑO DE NEGOCIO'
+                                  : _isClient
+                                      ? 'CLIENTE'
+                                      : 'ADMINISTRADOR',
                             ),
-                            const SizedBox(height: 32),
+                            const SizedBox(height: 28),
                             Padding(
                               padding: const EdgeInsets.only(left: 8, bottom: 12),
                               child: Text(
@@ -350,6 +358,17 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
                                 onTap: _openMyGifts,
                               ),
                               const SizedBox(height: 16),
+                              // Un amigo le pasó su código de invitación.
+                              if (_isClient) ...[
+                                AppNavRow(
+                                  icon: Icons.group_add_rounded,
+                                  label: 'Invitar amigos',
+                                  onTap: () => Navigator.of(context).push(
+                                    MaterialPageRoute(builder: (_) => const InviteScreen()),
+                                  ),
+                                ),
+                                const SizedBox(height: 16),
+                              ],
                               AppNavRow(
                                 icon: Icons.chat_bubble_outline_rounded,
                                 label: 'Mis sugerencias y reclamos',
@@ -397,20 +416,31 @@ class _UserProfileViewState extends ConsumerState<UserProfileView> {
   }
 }
 
-/// Foto de perfil con lápiz de edición y leyenda. Conserva el `Hero` que enlaza
-/// con el avatar de Inicio para que vuele como una sola pieza.
-class _AvatarEditor extends StatelessWidget {
+/// La cabecera del perfil como una tarjeta de presentación: la foto grande con
+/// su lápiz de edición, el nombre y el rol. Conserva el `Hero` que enlaza con el
+/// avatar de Inicio para que vuele como una sola pieza.
+class _ProfileCard extends StatelessWidget {
   final String? avatarUrl;
   final Uint8List? newAvatarBytes;
-  final VoidCallback onTap;
+  final VoidCallback onAvatarTap;
 
-  const _AvatarEditor({
+  /// El nombre se actualiza mientras la persona lo escribe.
+  final TextEditingController nameListenable;
+  final String fallbackName;
+  final String? email;
+  final String roleLabel;
+
+  const _ProfileCard({
     required this.avatarUrl,
     required this.newAvatarBytes,
-    required this.onTap,
+    required this.onAvatarTap,
+    required this.nameListenable,
+    required this.fallbackName,
+    required this.email,
+    required this.roleLabel,
   });
 
-  static const double _size = 100;
+  static const double _size = 104;
 
   @override
   Widget build(BuildContext context) {
@@ -419,51 +449,72 @@ class _AvatarEditor extends StatelessWidget {
           newAvatarBytes: newAvatarBytes,
         );
 
-    final photo = SizedBox(width: _size, height: _size, child: avatar());
-
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Semantics(
-          button: true,
-          label: 'Cambiar foto de perfil',
-          child: GestureDetector(
-            onTap: onTap,
-            child: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Hero(
-                  tag: 'user_avatar',
-                  flightShuttleBuilder: (_, __, ___, ____, _____) => avatar(),
-                  child: photo,
-                ),
-                Positioned(
-                  right: -2,
-                  bottom: -2,
-                  child: Container(
-                    padding: const EdgeInsets.all(8),
-                    decoration: BoxDecoration(
-                      color: AppColors.white,
-                      shape: BoxShape.circle,
-                      border: Border.all(color: AppColors.black, width: 1),
-                    ),
-                    child: const Icon(
-                      Icons.edit_outlined,
-                      size: 16,
-                      color: AppColors.black,
+    return Container(
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 20),
+      decoration: BoxDecoration(
+        color: AppColors.pink,
+        borderRadius: BorderRadius.circular(32),
+        border: Border.all(color: AppColors.black, width: 1.2),
+      ),
+      child: Column(
+        children: [
+          Semantics(
+            button: true,
+            label: 'Cambiar foto de perfil',
+            child: GestureDetector(
+              onTap: onAvatarTap,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(4),
+                    decoration: const BoxDecoration(color: AppColors.white, shape: BoxShape.circle),
+                    child: Hero(
+                      tag: 'user_avatar',
+                      flightShuttleBuilder: (_, __, ___, ____, _____) => avatar(),
+                      child: SizedBox(width: _size, height: _size, child: avatar()),
                     ),
                   ),
-                ),
-              ],
+                  Positioned(
+                    right: -2,
+                    bottom: -2,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: AppColors.white,
+                        shape: BoxShape.circle,
+                        border: Border.all(color: AppColors.black, width: 1),
+                      ),
+                      child: const Icon(Icons.edit_outlined, size: 16, color: AppColors.black),
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
-        const SizedBox(height: 8),
-        Text(
-          'FOTO DE PERFIL',
-          style: AppTypography.body(size: 12, weight: FontWeight.w300),
-        ),
-      ],
+          const SizedBox(height: 14),
+          ValueListenableBuilder<TextEditingValue>(
+            valueListenable: nameListenable,
+            builder: (_, value, __) {
+              final name = value.text.trim().isEmpty ? fallbackName : value.text.trim();
+              if (name.isEmpty) return const SizedBox.shrink();
+              return FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Text(name.toUpperCase(), style: AppTypography.display(size: 30)),
+              );
+            },
+          ),
+          if ((email ?? '').isNotEmpty)
+            Text(
+              email!,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.body(size: 13, weight: FontWeight.w300),
+            ),
+          const SizedBox(height: 10),
+          AppChip(label: roleLabel, style: AppChipStyle.dark, icon: Icons.verified_user_outlined),
+        ],
+      ),
     );
   }
 }

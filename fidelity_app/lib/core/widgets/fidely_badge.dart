@@ -14,7 +14,8 @@ class FidelyInfo {
   final int required;
   final bool isFidely;
 
-  const FidelyInfo({this.verifiedScans = 0, this.required = 3, this.isFidely = false});
+  const FidelyInfo(
+      {this.verifiedScans = 0, this.required = 3, this.isFidely = false});
 
   /// Lee los datos que trae el servidor (`verified_scans`, `fidely_required`, `is_fidely`).
   factory FidelyInfo.fromMap(Map<String, dynamic>? map) {
@@ -27,7 +28,8 @@ class FidelyInfo {
   }
 
   /// Cuántos escaneos le faltan (0 si ya lo es).
-  int get missing => isFidely ? 0 : (required - verifiedScans).clamp(0, required);
+  int get missing =>
+      isFidely ? 0 : (required - verifiedScans).clamp(0, required);
 }
 
 /// La insignia FidelyUsuario: la gana quien es fiel a un local (por defecto, a
@@ -43,7 +45,8 @@ class FidelyBadge extends StatelessWidget {
     return Semantics(
       label: context.tr('FidelyUsuario'),
       child: Container(
-        padding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12, vertical: compact ? 3 : 6),
+        padding: EdgeInsets.symmetric(
+            horizontal: compact ? 8 : 12, vertical: compact ? 3 : 6),
         decoration: BoxDecoration(
           color: AppColors.pink,
           borderRadius: BorderRadius.circular(999),
@@ -52,11 +55,13 @@ class FidelyBadge extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.favorite_rounded, size: compact ? 12 : 16, color: AppColors.black),
+            Icon(Icons.favorite_rounded,
+                size: compact ? 12 : 16, color: AppColors.black),
             SizedBox(width: compact ? 4 : 6),
             Text(
               'FIDELYUSUARIO',
-              style: AppTypography.label(size: compact ? 10 : 12, tracking: compact ? 1 : 2),
+              style: AppTypography.label(
+                  size: compact ? 10 : 12, tracking: compact ? 1 : 2),
             ),
           ],
         ),
@@ -71,7 +76,15 @@ class FidelyStatusCard extends StatelessWidget {
   final FidelyInfo info;
   final String businessName;
 
-  const FidelyStatusCard({super.key, required this.info, required this.businessName});
+  /// Sin marco propio: para ir dentro de otra tarjeta (la de los sellos).
+  final bool embedded;
+
+  const FidelyStatusCard({
+    super.key,
+    required this.info,
+    required this.businessName,
+    this.embedded = false,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -84,6 +97,46 @@ class FidelyStatusCard extends StatelessWidget {
       message = 'Te faltan ${info.missing} escaneos para ser FidelyUsuario';
     }
 
+    final content = Row(
+      children: [
+        Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: info.isFidely ? AppColors.white : AppColors.pink,
+            shape: BoxShape.circle,
+            border: Border.all(color: AppColors.black, width: 1.2),
+          ),
+          child: const Icon(Icons.favorite_rounded,
+              size: 22, color: AppColors.black),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (info.isFidely)
+                Text('FIDELYUSUARIO', style: AppTypography.display(size: 22))
+              else
+                Text(
+                  message,
+                  style: AppTypography.body(size: 15, weight: FontWeight.w600),
+                ),
+              if (info.isFidely)
+                Text(message,
+                    style:
+                        AppTypography.body(size: 14, weight: FontWeight.w300))
+              else ...[
+                const SizedBox(height: 8),
+                _Dots(done: info.verifiedScans, total: info.required),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+
+    if (embedded) return content;
     return Container(
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       decoration: BoxDecoration(
@@ -91,41 +144,7 @@ class FidelyStatusCard extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         border: Border.all(color: AppColors.black, width: 1.2),
       ),
-      child: Row(
-        children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: info.isFidely ? AppColors.white : AppColors.pink,
-              shape: BoxShape.circle,
-              border: Border.all(color: AppColors.black, width: 1.2),
-            ),
-            child: const Icon(Icons.favorite_rounded, size: 22, color: AppColors.black),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (info.isFidely)
-                  Text('FIDELYUSUARIO', style: AppTypography.display(size: 22))
-                else
-                  Text(
-                    message,
-                    style: AppTypography.body(size: 15, weight: FontWeight.w600),
-                  ),
-                if (info.isFidely)
-                  Text(message, style: AppTypography.body(size: 14, weight: FontWeight.w300))
-                else ...[
-                  const SizedBox(height: 8),
-                  _Dots(done: info.verifiedScans, total: info.required),
-                ],
-              ],
-            ),
-          ),
-        ],
-      ),
+      child: content,
     );
   }
 }

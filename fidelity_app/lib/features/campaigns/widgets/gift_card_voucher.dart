@@ -27,6 +27,12 @@ class GiftCardVoucher extends StatelessWidget {
   /// Si el beneficio se revela raspando (así lo ve el cliente).
   final bool scratchable;
 
+  /// Tarjeta comprada: hasta cuándo vale (en vez de la fecha de fin de la campaña).
+  final DateTime? validUntil;
+
+  /// Tarjeta en venta: el precio que se muestra en lugar del código ("\$0.25").
+  final String? priceLabel;
+
   /// El logo del local y su nombre.
   final String? logoUrl;
   final String? businessName;
@@ -37,6 +43,8 @@ class GiftCardVoucher extends StatelessWidget {
     this.code,
     this.redeemed = false,
     this.scratchable = false,
+    this.validUntil,
+    this.priceLabel,
     this.logoUrl,
     this.businessName,
   });
@@ -156,6 +164,18 @@ class GiftCardVoucher extends StatelessWidget {
       mainAxisAlignment: MainAxisAlignment.center,
       crossAxisAlignment: CrossAxisAlignment.center,
       children: [
+        if (priceLabel != null) ...[
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+            decoration: BoxDecoration(
+              color: AppColors.pink,
+              borderRadius: BorderRadius.circular(99),
+              border: Border.all(color: AppColors.black, width: 1.2),
+            ),
+            child: Text(priceLabel!, style: AppTypography.display(size: 22)),
+          ),
+          const SizedBox(height: 8),
+        ],
         Text(
           _benefitLabel,
           textAlign: TextAlign.center,
@@ -207,12 +227,22 @@ class GiftCardVoucher extends StatelessWidget {
 
   /// "VÁLIDA HASTA 10.12.25" o "SIN FECHA DE FIN".
   String get _validity {
+    // Una tarjeta comprada vale hasta su propia fecha; una en venta, N días desde la compra.
+    final until = validUntil;
+    if (until != null) {
+      return 'VÁLIDA HASTA ${EcuadorDateUtils.formatEcuadorDate(until.toUtc().toIso8601String())}';
+    }
+    if (campaign.isForSale && campaign.cardValidDays != null) {
+      return 'VALE ${campaign.cardValidDays} DÍAS DESDE LA COMPRA';
+    }
     final ends = campaign.endsAt;
     if (ends == null) return 'SIN FECHA DE FIN';
-    final day =
-        EcuadorDateUtils.formatEcuadorDate(ends.toUtc().toIso8601String());
+    final iso = ends.toUtc().toIso8601String();
+    final day = EcuadorDateUtils.formatEcuadorDate(iso);
     // La de cumpleaños vale un solo día.
-    return campaign.isBirthday ? 'VÁLIDA SOLO EL $day' : 'VÁLIDA HASTA $day';
+    if (campaign.isBirthday) return 'VÁLIDA SOLO EL $day';
+    // Con su hora: "VÁLIDA HASTA 10/12/2026 18:00".
+    return 'VÁLIDA HASTA ${EcuadorDateUtils.formatEcuadorTime(iso)}';
   }
 
   Widget get _logo {

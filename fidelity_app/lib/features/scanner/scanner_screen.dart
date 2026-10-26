@@ -5,12 +5,12 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../../core/theme/app_colors.dart';
 import '../../core/widgets/fido_mascot.dart';
-import '../../core/widgets/fido_says.dart';
 import '../../core/theme/app_typography.dart';
 import '../../core/widgets/app_message_dialog.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import 'providers/scanner_provider.dart';
 import 'scan_success_screen.dart';
+import 'scan_waiting_screen.dart';
 import '../../core/l10n/tr_text.dart';
 
 /// El backend responde "Ya escaneaste en X. Vuelve en 3h 20min"; Fido lo dice
@@ -57,18 +57,13 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     );
   }
 
-  void _showPendingScanDialog(String message) {
-    showDialog(
-      context: context,
-      builder: (_) => AppMessageDialog(
-        icon: Icons.pending_actions_rounded,
-        title: 'Escaneo pendiente',
-        message: message,
-        hint: 'Cuando el local lo apruebe, sumarás tu punto.',
-        primaryLabel: 'Entendido',
-        onPrimary: cameraController.start,
-      ),
+  /// Ya tiene un escaneo esperando al local: una pantalla completa con Fido
+  /// esperando; al volver, la cámara sigue lista.
+  Future<void> _showPendingScan(String message) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => ScanWaitingScreen(message: message)),
     );
+    if (mounted) cameraController.start();
   }
 
   void _showPendingRewardDialog() {
@@ -134,7 +129,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       } else if (next.cooldownMessage != null) {
         _showCooldownDialog(next.cooldownMessage!);
       } else if (next.pendingScanMessage != null) {
-        _showPendingScanDialog(next.pendingScanMessage!);
+        _showPendingScan(next.pendingScanMessage!);
       } else if (next.hasPendingReward) {
         _showPendingRewardDialog();
       } else if (next.error != null) {
@@ -198,13 +193,8 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
                           : Center(child: _buildViewfinder(context)),
                     ),
                   ),
-                  const Padding(
-                    padding: EdgeInsets.fromLTRB(24, 0, 24, 20),
-                    child: FidoSays(
-                      message: 'Apunta al código QR del local y yo me encargo del resto.',
-                      fidoHeight: 64,
-                    ),
-                  ),
+                  // Abajo no va un mensaje de Fido: el título de arriba ya dice cómo apuntar.
+                  const SizedBox(height: 20),
                 ],
               ),
             ),
@@ -298,14 +288,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Container(
-          width: side,
-          height: side,
-          decoration: BoxDecoration(
-            border: Border.all(color: AppColors.white, width: 4),
-            borderRadius: BorderRadius.circular(40),
-          ),
-        ),
+        _Viewfinder(side: side),
         const SizedBox(height: 32),
         Text(
           'ESCANEA EL CÓDIGO QR\nY POR FAVOR... APUNTA BIEN',
@@ -319,4 +302,103 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
       ],
     );
   }
+}
+
+/// El marco del escáner: cuatro esquinas rosas y una línea que barre de arriba
+/// abajo (quieta si el usuario pidió reducir el movimiento).
+class _Viewfinder extends StatefulWidget {
+  final double side;
+
+  const _Viewfinder({required this.side});
+
+  @override
+  State<_Viewfinder> createState() => _ViewfinderState();
+}
+
+class _ViewfinderState extends State<_Viewfinder> with SingleTickerProviderStateMixin {
+  late final AnimationController _controller =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 2200))..repeat(reverse: true);
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final still = MediaQuery.maybeDisableAnimationsOf(context) ?? false;
+    if (still && _controller.isAnimating) _controller.stop();
+
+    final side = widget.side;
+    const inset = 28.0;
+    return SizedBox(
+      width: side,
+      height: side,
+      child: Stack(
+        children: [
+          CustomPaint(size: Size(side, side), painter: const _CornersPainter()),
+          if (!still)
+            AnimatedBuilder(
+              animation: _controller,
+              builder: (_, __) => Positioned(
+                left: inset,
+                right: inset,
+                top: inset + (side - inset * 2 - 3) * Curves.easeInOut.transform(_controller.value),
+                child: Container(
+                  height: 3,
+                  decoration: BoxDecoration(
+                    color: AppColors.pink,
+                    borderRadius: BorderRadius.circular(99),
+                    boxShadow: const [BoxShadow(color: AppColors.pink, blurRadius: 12)],
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CornersPainter extends CustomPainter {
+  const _CornersPainter();
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final paint = Paint()
+      ..color = AppColors.pink
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 6
+      ..strokeCap = StrokeCap.round;
+    const radius = 36.0;
+    const arm = 44.0;
+    final w = size.width;
+    final h = size.height;
+    final path = Path()
+      // Arriba a la izquierda.
+      ..moveTo(0, arm)
+      ..lineTo(0, radius)
+      ..arcToPoint(const Offset(radius, 0), radius: const Radius.circular(radius))
+      ..lineTo(arm, 0)
+      // Arriba a la derecha.
+      ..moveTo(w - arm, 0)
+      ..lineTo(w - radius, 0)
+      ..arcToPoint(Offset(w, radius), radius: const Radius.circular(radius))
+      ..lineTo(w, arm)
+      // Abajo a la derecha.
+      ..moveTo(w, h - arm)
+      ..lineTo(w, h - radius)
+      ..arcToPoint(Offset(w - radius, h), radius: const Radius.circular(radius))
+      ..lineTo(w - arm, h)
+      // Abajo a la izquierda.
+      ..moveTo(arm, h)
+      ..lineTo(radius, h)
+      ..arcToPoint(Offset(0, h - radius), radius: const Radius.circular(radius))
+      ..lineTo(0, h - arm);
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

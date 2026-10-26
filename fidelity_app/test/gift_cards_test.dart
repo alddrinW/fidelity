@@ -55,6 +55,9 @@ class _FakeCampaignsRepository extends CampaignsRepository {
     int? requiredScans,
     CampaignAudience audience = CampaignAudience.all,
     List<String> recipientIds = const [],
+    int? priceCents,
+    int? stock,
+    int? cardValidDays,
     DateTime? startsAt,
     DateTime? endsAt,
   }) async {
@@ -67,6 +70,8 @@ class _FakeCampaignsRepository extends CampaignsRepository {
       'benefitLabel': benefitLabel,
       'audience': audience,
       'recipientIds': recipientIds,
+      'startsAt': startsAt,
+      'endsAt': endsAt,
     });
     return campaigns.isNotEmpty ? campaigns.first : _gift();
   }
@@ -266,14 +271,14 @@ void main() {
     }
 
     Future<void> typeTitle(WidgetTester tester, String text) async {
-      await tester.enterText(find.widgetWithText(TextFormField, 'Nombre (ej. Regalo de aniversario)'), text);
+      await tester.enterText(find.widgetWithText(TextFormField, 'Nombre de la gift card (ej. Regalo de aniversario)'), text);
     }
 
-    testWidgets('muestra la plantilla del cheque y se actualiza al escribir', (tester) async {
+    testWidgets('muestra la plantilla de la gift card y se actualiza al escribir', (tester) async {
       await open(tester);
 
       // La vista previa del cheque, con el nombre de ejemplo.
-      expect(find.text('ASÍ SE VERÁ EL CHEQUE'), findsOneWidget);
+      expect(find.text('ASÍ SE VERÁ TU GIFT CARD'), findsOneWidget);
       expect(find.text('TU GIFT CARD'), findsOneWidget);
       expect(find.byType(GiftCardVoucher), findsOneWidget);
 
@@ -282,6 +287,113 @@ void main() {
 
       // El cheque ya muestra el nombre que se escribió.
       expect(find.text('REGALO DE ANIVERSARIO'), findsOneWidget);
+    });
+
+    testWidgets('los pasos van numerados y cada uno explica qué llenar (sin hablar de "cheque")', (tester) async {
+      await open(tester);
+
+      for (final step in [
+        'PASO 1 · DATOS DE TU GIFT CARD',
+        'PASO 2 · QUÉ REGALAS',
+        'PASO 3 · NEGOCIO',
+        'PASO 4 · ¿A QUIÉN LE LLEGA?',
+        'PASO 5 · FECHA Y HORA',
+      ]) {
+        expect(find.text(step), findsOneWidget, reason: step);
+      }
+      expect(find.textContaining('Lo que escribas aparece arriba, en la gift card.'), findsOneWidget);
+      expect(find.textContaining('Descuento: un porcentaje menos en la cuenta'), findsOneWidget);
+      expect(find.text('Se actualiza mientras escribes.'), findsOneWidget);
+      expect(find.textContaining('cheque', findRichText: true), findsNothing);
+      expect(find.textContaining('CHEQUE', findRichText: true), findsNothing);
+    });
+
+    testWidgets('el campo del descuento explica qué escribir', (tester) async {
+      await open(tester);
+
+      expect(find.text('Escribe un número de 1 a 100. Ej.: 10 = 10% de descuento.'), findsOneWidget);
+      await tester.tap(find.text('MINI PREMIO'));
+      await tester.pumpAndSettle();
+      expect(find.text('Escribe qué se lleva el cliente. Ej.: Café pequeño gratis.'), findsOneWidget);
+    });
+
+    group('fecha y hora por separado', () {
+      testWidgets('sin fecha de fin no hay botones de fecha ni hora', (tester) async {
+        await open(tester);
+
+        expect(find.text('HASTA CUÁNDO VALE'), findsOneWidget);
+        expect(find.text('FECHA'), findsNothing);
+        expect(find.text('HORA'), findsNothing);
+      });
+
+      testWidgets('al elegir fecha de fin pregunta el día y deja ver y cambiar la hora aparte', (tester) async {
+        await open(tester);
+
+        await tester.tap(_pill('Elegir fecha y hora'));
+        await tester.pumpAndSettle();
+        // Primero el día (selector de fecha del sistema).
+        expect(find.byType(DatePickerDialog), findsOneWidget);
+        await tester.tap(find.text('ACEPTAR'));
+        await tester.pumpAndSettle();
+
+        // Ahora hay un botón de fecha y otro de hora; por defecto vence a las 23:59.
+        expect(find.text('FECHA'), findsOneWidget);
+        expect(find.text('HORA'), findsOneWidget);
+        expect(find.text('23:59'), findsOneWidget);
+
+        // Tocar la hora abre el selector de hora.
+        await tester.tap(find.text('23:59'));
+        await tester.pumpAndSettle();
+        expect(find.byType(TimePickerDialog), findsOneWidget);
+        // El selector de hora se cierra tocando fuera (como el de fecha en otras pruebas).
+        await tester.tapAt(const Offset(4, 4));
+        await tester.pumpAndSettle();
+        expect(find.text('23:59'), findsOneWidget);
+      });
+
+      testWidgets('la fecha y la hora elegidas viajan juntas al enviar y la gift card muestra su vencimiento', (tester) async {
+        final repo = await open(tester);
+
+        await typeTitle(tester, 'Con vencimiento');
+        await tester.tap(_pill('Elegir fecha y hora'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('ACEPTAR'));
+        await tester.pumpAndSettle();
+
+        // La vista previa ya muestra cuándo vence, con su hora.
+        expect(find.textContaining('VÁLIDA HASTA'), findsOneWidget);
+
+        await tester.tap(find.text('ENVIAR GIFT CARD'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+
+        final ends = repo.created.single['endsAt'] as DateTime;
+        expect([ends.hour, ends.minute], [23, 59]);
+        await tester.pump(const Duration(seconds: 5));
+      });
+
+      testWidgets('programar el envío también pide día y hora, y se puede volver a "Ahora"', (tester) async {
+        final repo = await open(tester);
+
+        await typeTitle(tester, 'Programada');
+        await tester.tap(_pill('Programar'));
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('ACEPTAR'));
+        await tester.pumpAndSettle();
+
+        expect(find.text('FECHA'), findsOneWidget);
+        expect(find.text('HORA'), findsOneWidget);
+
+        await tester.tap(_pill('Ahora'));
+        await tester.pumpAndSettle();
+        expect(find.text('FECHA'), findsNothing);
+
+        await tester.tap(find.text('ENVIAR GIFT CARD'));
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 500));
+        expect(repo.created.single['startsAt'], isNull);
+        await tester.pump(const Duration(seconds: 5));
+      });
     });
 
     testWidgets('el beneficio se elige entre descuento y mini premio', (tester) async {
@@ -302,7 +414,7 @@ void main() {
     testWidgets('se elige a quién le llega', (tester) async {
       await open(tester);
 
-      expect(find.text('¿A QUIÉN LE LLEGA?'), findsOneWidget);
+      expect(find.text('PASO 4 · ¿A QUIÉN LE LLEGA?'), findsOneWidget);
       expect(find.text('TODOS MIS CLIENTES'), findsOneWidget);
       expect(find.text('CLIENTES ELEGIDOS'), findsOneWidget);
     });

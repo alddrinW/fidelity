@@ -1,4 +1,6 @@
+import 'package:confetti/confetti.dart';
 import 'package:flutter/material.dart' hide Text;
+import 'package:flutter/services.dart';
 import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:share_plus/share_plus.dart';
@@ -16,6 +18,7 @@ import '../../core/widgets/app_pill_tab_bar.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../../core/widgets/app_text_field.dart';
 import '../../core/widgets/fidely_badge.dart';
+import '../../core/widgets/fido_mascot.dart';
 import '../feedback/widgets/feedback_sheet.dart';
 import '../campaigns/campaign_detail_screen.dart';
 import '../campaigns/data/campaigns_repository.dart';
@@ -411,9 +414,10 @@ class _PinnedTabs extends SliverPersistentHeaderDelegate {
   bool shouldRebuild(covariant _PinnedTabs oldDelegate) => oldDelegate.labels != labels;
 }
 
-/// La cabecera de la tarjeta de un local: una franja rosa con el logo del
-/// negocio, su nombre y dónde queda, y debajo sus sellos (el premio va en el
-/// mensaje de la tarjeta de sellos).
+/// La cabecera de la tarjeta de un local, toda centrada: el logo del negocio
+/// arriba en el medio (con volver y filtrar por fechas a los lados), su nombre y
+/// dónde queda, y debajo sus sellos (el premio va en el mensaje de la tarjeta de
+/// sellos).
 class _CardHeader extends StatelessWidget {
   final String name;
   final String? logoUrl;
@@ -447,37 +451,54 @@ class _CardHeader extends StatelessWidget {
     required this.onClearFilter,
   });
 
-  static const double _logoSize = 88;
+  static const double _logoSize = 96;
 
   @override
   Widget build(BuildContext context) {
     final topInset = MediaQuery.paddingOf(context).top;
     final image = imageProviderFromUrl(logoUrl);
+    const iconBox = 48.0;
 
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
+      crossAxisAlignment: CrossAxisAlignment.center,
       children: [
-        Stack(
-          clipBehavior: Clip.none,
-          children: [
-            // La franja rosa: volver y filtrar por fechas.
-            Container(
-              height: topInset + 112,
-              padding: EdgeInsets.fromLTRB(8, topInset + 8, 8, 0),
-              decoration: const BoxDecoration(
-                color: AppColors.pink,
-                border: Border(bottom: BorderSide(color: AppColors.black, width: 1.5)),
-              ),
-              alignment: Alignment.topCenter,
-              child: Row(
-                children: [
-                  IconButton(
+        // Sin franja de color: el logo del negocio va en el centro y los dos
+        // botones (volver y filtrar por fechas) en las esquinas, a su altura.
+        Padding(
+          padding: EdgeInsets.fromLTRB(8, topInset + 12, 8, 0),
+          child: SizedBox(
+            height: _logoSize,
+            child: Stack(
+              children: [
+                Center(
+                  child: Container(
+                    width: _logoSize,
+                    height: _logoSize,
+                    padding: const EdgeInsets.all(14),
+                    decoration: BoxDecoration(
+                      color: AppColors.white,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.black, width: 2),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: image == null
+                        ? const Icon(Icons.storefront_outlined, color: AppColors.black, size: 34)
+                        : Image(image: image, fit: BoxFit.contain),
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  top: (_logoSize - iconBox) / 2,
+                  child: IconButton(
                     tooltip: context.tr('Volver'),
                     icon: const Icon(Icons.chevron_left_rounded, size: 40, color: AppColors.black),
                     onPressed: () => Navigator.of(context).maybePop(),
                   ),
-                  const Spacer(),
-                  IconButton(
+                ),
+                Positioned(
+                  right: 0,
+                  top: (_logoSize - iconBox) / 2,
+                  child: IconButton(
                     tooltip: context.tr('Filtrar por fechas'),
                     icon: Icon(
                       Icons.calendar_today_outlined,
@@ -486,43 +507,25 @@ class _CardHeader extends StatelessWidget {
                     ),
                     style: range == null
                         ? null
-                        : IconButton.styleFrom(backgroundColor: AppColors.white),
+                        : IconButton.styleFrom(backgroundColor: AppColors.pink),
                     onPressed: onFilter,
                   ),
-                ],
-              ),
-            ),
-            // El logo del negocio, montado sobre el borde de la franja.
-            Positioned(
-              left: 24,
-              bottom: -_logoSize / 2,
-              child: Container(
-                width: _logoSize,
-                height: _logoSize,
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.black, width: 2),
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: image == null
-                    ? const Icon(Icons.storefront_outlined, color: AppColors.black, size: 34)
-                    : Image(image: image, fit: BoxFit.contain),
-              ),
+              ],
             ),
-          ],
+          ),
         ),
-        SizedBox(height: _logoSize / 2 + 12),
+        const SizedBox(height: 14),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Semantics(
                 header: true,
                 child: Text(
                   name.toUpperCase(),
+                  textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.display(size: 32),
@@ -532,6 +535,7 @@ class _CardHeader extends StatelessWidget {
                 const SizedBox(height: 2),
                 Text(
                   subtitle!,
+                  textAlign: TextAlign.center,
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: AppTypography.body(size: 14, weight: FontWeight.w300, color: AppColors.textSecondary),
@@ -540,6 +544,7 @@ class _CardHeader extends StatelessWidget {
               if (rangeLabel != null) ...[
                 const SizedBox(height: 10),
                 Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     AppChip(label: rangeLabel!, icon: Icons.filter_alt_outlined),
                     IconButton(
@@ -552,10 +557,14 @@ class _CardHeader extends StatelessWidget {
               ],
               if (hasData) ...[
                 const SizedBox(height: 16),
-                // Al entrar al local: su insignia FidelyUsuario o cuánto le falta.
-                FidelyStatusCard(info: fidely, businessName: name),
-                const SizedBox(height: 12),
-                _StampsCard(points: points, required: required, reward: reward),
+                // Sus sellos y, debajo, su insignia FidelyUsuario (o cuánto le falta).
+                _StampsCard(
+                  points: points,
+                  required: required,
+                  reward: reward,
+                  fidely: fidely,
+                  businessName: name,
+                ),
               ],
               const SizedBox(height: 8),
             ],
@@ -566,25 +575,72 @@ class _CardHeader extends StatelessWidget {
   }
 }
 
-/// "TUS SELLOS": un círculo por cada punto; el último es el premio.
-class _StampsCard extends StatelessWidget {
+/// "TUS SELLOS": un círculo por cada punto; el último es el premio. Lleva
+/// dentro la insignia FidelyUsuario. Al ganar un sello, este entra con un salto
+/// (y una vibración suave); al completar la tarjeta, Fido celebra con confeti.
+class _StampsCard extends StatefulWidget {
   final int points;
   final int required;
   final String reward;
+  final FidelyInfo fidely;
+  final String businessName;
 
-  const _StampsCard({required this.points, required this.required, required this.reward});
+  const _StampsCard({
+    required this.points,
+    required this.required,
+    required this.reward,
+    required this.fidely,
+    required this.businessName,
+  });
 
   /// A partir de aquí los círculos no caben bien y se usa una barra.
   static const int maxStamps = 12;
 
   @override
+  State<_StampsCard> createState() => _StampsCardState();
+}
+
+class _StampsCardState extends State<_StampsCard> {
+  late final ConfettiController _confetti = ConfettiController(duration: const Duration(seconds: 2));
+
+  /// Los sellos que acaban de ganarse (para que entren con un salto).
+  final Set<int> _fresh = {};
+
+  int get _total => widget.required < 1 ? 1 : widget.required;
+  int get _done => widget.points.clamp(0, _total);
+
+  @override
+  void didUpdateWidget(covariant _StampsCard old) {
+    super.didUpdateWidget(old);
+    final before = old.points.clamp(0, _total);
+    if (_done > before && old.required == widget.required) {
+      _fresh
+        ..clear()
+        ..addAll([for (var i = before; i < _done; i++) i]);
+      HapticFeedback.lightImpact();
+      if (_done == _total) {
+        _confetti.play();
+        HapticFeedback.mediumImpact();
+      }
+    }
+  }
+
+  @override
+  void dispose() {
+    _confetti.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final total = required < 1 ? 1 : required;
-    final done = points.clamp(0, total);
+    final total = _total;
+    final done = _done;
     final left = total - done;
+    final reward = widget.reward;
+    final complete = left == 0;
 
     final String message;
-    if (left == 0) {
+    if (complete) {
       message = reward.isEmpty ? '¡Tu premio está listo!' : '¡Tu premio está listo: $reward!';
     } else if (left == 1) {
       message = reward.isEmpty ? 'Te falta 1 punto para tu premio' : 'Un punto más y consigues: $reward';
@@ -592,46 +648,72 @@ class _StampsCard extends StatelessWidget {
       message = reward.isEmpty ? 'Te faltan $left puntos para tu premio' : 'Te faltan $left puntos para: $reward';
     }
 
-    return AppCard(
-      radius: 28,
-      padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
-      child: Column(
-        children: [
-          Row(
+    return Stack(
+      alignment: Alignment.topCenter,
+      children: [
+        AppCard(
+          radius: 28,
+          padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+          color: complete ? AppColors.pink : null,
+          child: Column(
             children: [
-              Expanded(child: Text('TUS SELLOS', style: AppTypography.label(size: 12, tracking: 3))),
-              Text('$done / $total', style: AppTypography.display(size: 22)),
+              Row(
+                children: [
+                  Expanded(child: Text('TUS SELLOS', style: AppTypography.label(size: 12, tracking: 3))),
+                  Text('$done / $total', style: AppTypography.display(size: 22)),
+                ],
+              ),
+              const SizedBox(height: 14),
+              if (total > _StampsCard.maxStamps)
+                ProgressBar(value: done / total, height: 14)
+              else
+                GridView.count(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  crossAxisCount: total <= 4 ? total : (total <= 8 ? 4 : 6),
+                  mainAxisSpacing: 10,
+                  crossAxisSpacing: 10,
+                  children: [
+                    for (var i = 0; i < total; i++)
+                      Center(
+                        child: _Stamp(
+                          key: ValueKey(i < done ? 'sello-$i-ganado' : 'sello-$i-falta'),
+                          filled: i < done,
+                          isPrize: i == total - 1 && left > 0,
+                          pop: _fresh.contains(i),
+                        ),
+                      ),
+                  ],
+                ),
+              const SizedBox(height: 14),
+              if (complete) ...[
+                const FidoMascot(mood: FidoMood.celebrate, height: 96),
+                const SizedBox(height: 6),
+              ],
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: AppTypography.body(size: 14, weight: complete ? FontWeight.w600 : FontWeight.w300),
+              ),
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 14),
+                child: Divider(height: 1, thickness: 1, color: AppColors.black),
+              ),
+              FidelyStatusCard(info: widget.fidely, businessName: widget.businessName, embedded: true),
             ],
           ),
-          const SizedBox(height: 14),
-          if (total > maxStamps)
-            ProgressBar(value: done / total, height: 14)
-          else
-            GridView.count(
-              shrinkWrap: true,
-              physics: const NeverScrollableScrollPhysics(),
-              crossAxisCount: total <= 4 ? total : (total <= 8 ? 4 : 6),
-              mainAxisSpacing: 10,
-              crossAxisSpacing: 10,
-              children: [
-                for (var i = 0; i < total; i++)
-                  Center(
-                    child: _Stamp(
-                      key: ValueKey(i < done ? 'sello-$i-ganado' : 'sello-$i-falta'),
-                      filled: i < done,
-                      isPrize: i == total - 1 && left > 0,
-                    ),
-                  ),
-              ],
-            ),
-          const SizedBox(height: 14),
-          Text(
-            message,
-            textAlign: TextAlign.center,
-            style: AppTypography.body(size: 14, weight: FontWeight.w300),
-          ),
-        ],
-      ),
+        ),
+        ConfettiWidget(
+          confettiController: _confetti,
+          blastDirectionality: BlastDirectionality.explosive,
+          numberOfParticles: 20,
+          maxBlastForce: 14,
+          minBlastForce: 5,
+          gravity: 0.25,
+          shouldLoop: false,
+          colors: const [AppColors.pink, AppColors.black],
+        ),
+      ],
     );
   }
 }
@@ -642,7 +724,10 @@ class _Stamp extends StatelessWidget {
   final bool filled;
   final bool isPrize;
 
-  const _Stamp({super.key, required this.filled, required this.isPrize});
+  /// Acaba de ganarse: entra con un salto elástico.
+  final bool pop;
+
+  const _Stamp({super.key, required this.filled, required this.isPrize, this.pop = false});
 
   static const double size = 38;
 
@@ -658,7 +743,7 @@ class _Stamp extends StatelessWidget {
         ),
       );
     }
-    return Container(
+    final stamp = Container(
       width: size,
       height: size,
       decoration: BoxDecoration(
@@ -668,6 +753,12 @@ class _Stamp extends StatelessWidget {
       ),
       child: filled ? const Icon(Icons.check_rounded, size: 21, color: AppColors.black) : null,
     );
+    if (!pop || (MediaQuery.maybeDisableAnimationsOf(context) ?? false)) return stamp;
+    return stamp.animate().scale(
+          begin: const Offset(0.2, 0.2),
+          duration: 600.ms,
+          curve: Curves.elasticOut,
+        );
   }
 }
 
