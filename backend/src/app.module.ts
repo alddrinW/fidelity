@@ -31,6 +31,7 @@ import {
   Referral,
   ReferralUse,
   CardPurchase,
+  Banner,
 } from './database/entities';
 
 // Feature Modules
@@ -57,6 +58,7 @@ import { SettingsModule } from './modules/settings/settings.module';
 import { BirthdaysModule } from './modules/birthdays/birthdays.module';
 import { ReferralsModule } from './modules/referrals/referrals.module';
 import { CardSalesModule } from './modules/card-sales/card-sales.module';
+import { BannersModule } from './modules/banners/banners.module';
 
 @Module({
   imports: [
@@ -115,6 +117,7 @@ import { CardSalesModule } from './modules/card-sales/card-sales.module';
           Referral,
           ReferralUse,
           CardPurchase,
+          Banner,
         ],
       }),
       inject: [ConfigService],
@@ -126,6 +129,7 @@ import { CardSalesModule } from './modules/card-sales/card-sales.module';
     BirthdaysModule,
     ReferralsModule,
     CardSalesModule,
+    BannersModule,
     UsersModule,
     BusinessesModule,
     LoyaltyCardsModule,
