@@ -339,7 +339,7 @@ void main() {
       expect(find.text('CAFÉ PEQUEÑO POR \$0.25'), findsOneWidget);
       expect(find.text('Café Aurora. Cómprala y canjéala en el local.'), findsOneWidget);
       expect(find.text('COMPRAR'), findsOneWidget);
-      expect(find.byWidgetPredicate((w) => w is Image && w.semanticLabel == 'Fido con un café'), findsOneWidget);
+      expect(find.byWidgetPredicate((w) => w is Image && w.semanticLabel == 'Fido'), findsOneWidget);
     });
 
     testWidgets('varias: dice cuántas y desde qué precio', (tester) async {

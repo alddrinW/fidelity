@@ -1,6 +1,9 @@
+import 'package:fidelity_app/core/l10n/app_language.dart';
+import 'package:fidelity_app/features/banners/data/banners_repository.dart';
 import 'package:fidelity_app/core/l10n/translator.dart';
 import 'package:fidelity_app/features/admin/admin_referral_locals_screen.dart';
 import 'package:fidelity_app/features/cards/providers/my_cards_provider.dart';
+import 'package:fidelity_app/features/games/data/weekly_game_repository.dart';
 import 'package:fidelity_app/features/referrals/choose_local_screen.dart';
 import 'package:fidelity_app/features/referrals/data/referrals_repository.dart';
 import 'package:fidelity_app/features/referrals/invite_screen.dart';
@@ -13,6 +16,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import 'fake_banners.dart';
 import 'spanish_app.dart';
 
 class _FakeReferrals extends ReferralsRepository {
@@ -83,6 +87,11 @@ class _FakeCards extends MyCardsNotifier {
   Future<void> refreshCards({bool silent = false}) async => refreshed++;
 }
 
+/// El banner ya diseñado (la imagen) de un archivo.
+Finder bannerImage(String asset) => find.byWidgetPredicate(
+      (w) => w is Image && w.image is AssetImage && (w.image as AssetImage).assetName == asset,
+    );
+
 const _on = ReferralInfo(
   enabled: true,
   code: 'AMG-ABC234',
@@ -103,6 +112,7 @@ void main() {
     Widget screen,
     _FakeReferrals repo, {
     Size size = const Size(900, 2400),
+    List<Override> overrides = const [],
   }) async {
     tester.view.physicalSize = size;
     tester.view.devicePixelRatio = 1;
@@ -111,7 +121,9 @@ void main() {
       ProviderScope(
         overrides: [
           referralsRepositoryProvider.overrideWithValue(repo),
+          bannersRepositoryProvider.overrideWithValue(FakeBannersRepository()),
           myCardsProvider.overrideWith(_FakeCards.new),
+          ...overrides,
         ],
         child: spanishApp(screen),
       ),
@@ -559,25 +571,93 @@ void main() {
   });
 
   group('acceso en el inicio del cliente (banner de Fido)', () {
-    testWidgets('con invitaciones activas Fido pide invitar a 3 amigos y abre la pantalla', (tester) async {
-      await pump(tester, const Scaffold(body: FidoBannerCarousel(autoPlay: false)), _FakeReferrals(_on));
+    const carousel = Scaffold(body: FidoBannerCarousel(autoPlay: false));
 
-      expect(find.text('INVITA A 3 AMIGOS'), findsOneWidget);
-      expect(find.text('Cuando se registren los 3 con tu código, ganas 1 punto.'), findsOneWidget);
+    testWidgets('con la regla de siempre (3 amigos, 1 punto) sale el banner diseñado y abre la pantalla', (tester) async {
+      await pump(tester, carousel, _FakeReferrals(_on));
 
-      await tester.tap(find.text('INVITAR'));
+      expect(bannerImage(BannerImages.invite), findsOneWidget);
+      // Es una imagen con su texto: no hay nube ni botón aparte.
+      expect(find.text('INVITAR'), findsNothing);
+
+      await tester.tap(bannerImage(BannerImages.invite));
       await tester.pumpAndSettle();
       expect(find.text('INVITA A UN AMIGO A FIDELITY'), findsOneWidget);
     });
 
-    testWidgets('con amigos a medias, dice cómo va', (tester) async {
+    testWidgets('los dos banners del ingeniero salen juntos en el carrusel (aunque el juego esté apagado) y se pasan solos', (tester) async {
       await pump(
         tester,
-        const Scaffold(body: FidoBannerCarousel(autoPlay: false)),
+        const Scaffold(body: FidoBannerCarousel()),
+        _FakeReferrals(_on),
+        overrides: [weeklyGameProvider.overrideWith((ref) async => const WeeklyStatus(state: 'off'))],
+      );
+
+      // Primero "Juega y gana" (el juego de la semana va antes), luego "Gana 1 punto".
+      expect(find.byType(PageView), findsOneWidget);
+      expect(bannerImage(BannerImages.play), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pump(const Duration(milliseconds: 600));
+      expect(bannerImage(BannerImages.invite), findsOneWidget);
+      await tester.pump(const Duration(seconds: 6));
+    });
+
+    testWidgets('con amigos a medias sigue el mismo banner (la regla no cambió)', (tester) async {
+      await pump(
+        tester,
+        carousel,
         _FakeReferrals(const ReferralInfo(enabled: true, code: 'AMG-ABC234', invited: 2, counted: 2)),
       );
 
-      expect(find.text('Van 2 de 3 amigos. Al completar, ganas 1 punto.'), findsOneWidget);
+      expect(bannerImage(BannerImages.invite), findsOneWidget);
+    });
+
+    testWidgets('si el administrador pide otra cantidad de amigos, la imagen ya no vale: sale la nube con el dato correcto', (tester) async {
+      await pump(
+        tester,
+        carousel,
+        _FakeReferrals(const ReferralInfo(enabled: true, code: 'AMG-ABC234', friendsRequired: 5)),
+      );
+
+      expect(bannerImage(BannerImages.invite), findsNothing);
+      expect(find.text('INVITA A 5 AMIGOS'), findsOneWidget);
+      expect(find.text('Cuando se registren los 5 con tu código, ganas 1 punto.'), findsOneWidget);
+      expect(find.text('INVITAR'), findsOneWidget);
+    });
+
+    testWidgets('con otros puntos, también sale la nube', (tester) async {
+      await pump(
+        tester,
+        carousel,
+        _FakeReferrals(const ReferralInfo(enabled: true, code: 'AMG-ABC234', referrerPoints: 2)),
+      );
+
+      expect(bannerImage(BannerImages.invite), findsNothing);
+      expect(find.text('Cuando se registren los 3 con tu código, ganas 2 puntos.'), findsOneWidget);
+    });
+
+    testWidgets('con amigos a medias y otra regla, la nube dice cómo va', (tester) async {
+      await pump(
+        tester,
+        carousel,
+        _FakeReferrals(const ReferralInfo(enabled: true, code: 'AMG-ABC234', friendsRequired: 5, invited: 2, counted: 2)),
+      );
+
+      expect(find.text('Van 2 de 5 amigos. Al completar, ganas 1 punto.'), findsOneWidget);
+    });
+
+    testWidgets('con la app en inglés no sale la imagen (trae el texto en español): sale la nube, que sí se traduce', (tester) async {
+      await pump(
+        tester,
+        carousel,
+        _FakeReferrals(_on),
+        overrides: [initialLanguageProvider.overrideWithValue(AppLanguage.en)],
+      );
+
+      expect(bannerImage(BannerImages.invite), findsNothing);
+      // (La prueba fija el idioma de los textos en español; lo que se comprueba es que cambia a la nube.)
+      expect(find.text('INVITA A 3 AMIGOS'), findsOneWidget);
     });
 
     testWidgets('con puntos por usar, los anuncia y ofrece elegir el local', (tester) async {
@@ -589,6 +669,7 @@ void main() {
 
       expect(find.text('Tienes 2 puntos de invitación: elige en qué local usarlos.'), findsOneWidget);
       expect(find.text('ELEGIR LOCAL'), findsOneWidget);
+      expect(bannerImage(BannerImages.invite), findsNothing);
     });
 
     testWidgets('apagado y sin puntos: no aparece', (tester) async {
@@ -599,6 +680,7 @@ void main() {
       );
 
       expect(find.text('INVITA A UN AMIGO'), findsNothing);
+      expect(bannerImage(BannerImages.invite), findsNothing);
     });
   });
 

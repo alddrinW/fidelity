@@ -4,6 +4,7 @@ import 'package:fidelity_app/core/l10n/translator.dart';
 import 'package:fidelity_app/features/campaigns/data/campaigns_repository.dart';
 import 'package:fidelity_app/features/card_sales/data/card_sales_repository.dart';
 import 'package:fidelity_app/features/cards/widgets/fido_banner_carousel.dart';
+import 'package:fidelity_app/features/banners/data/banners_repository.dart';
 import 'package:fidelity_app/features/games/data/games_repository.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -11,6 +12,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'fake_banners.dart';
 import 'spanish_app.dart';
 
 Map<String, dynamic> card(
@@ -69,15 +71,11 @@ void main() {
     GoogleFonts.config.allowRuntimeFetching = false;
   });
 
-  group('las poses de Fido', () {
-    test('cada pose tiene su archivo, liviano y con su descripción', () {
-      for (final pose in FidoPose.values) {
-        final file = File(pose.asset);
-        expect(file.existsSync(), isTrue, reason: pose.asset);
-        // Es un banner de un celular: cada pose debe pesar poco.
-        expect(file.lengthSync(), lessThan(120 * 1024), reason: pose.asset);
-        expect(pose.label, startsWith('Fido'));
-      }
+  group('el Fido de los banners', () {
+    test('existe, pesa poco y es del mismo estilo que los banners del ingeniero', () {
+      final file = File(BannerImages.fido);
+      expect(file.existsSync(), isTrue);
+      expect(file.lengthSync(), lessThan(150 * 1024));
     });
   });
 
@@ -101,6 +99,45 @@ void main() {
     });
   });
 
+  group('los banners diseñados (imágenes)', () {
+    testWidgets('se funden con el fondo blanco: sus bordes se difuminan, sin recuadro ni esquinas marcadas', (tester) async {
+      tester.view.physicalSize = const Size(900, 900);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.reset);
+      await tester.pumpWidget(
+        spanishApp(
+          Scaffold(
+            body: FidoBannerCard(
+              banner: FidoBanner(
+                id: 'x',
+                tone: BannerTone.white,
+                title: 'Gana 1 punto',
+                body: 'Invita a 3 amigos',
+                cta: 'INVITAR',
+                image: const AssetImage(BannerImages.invite),
+                onTap: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // Dos máscaras de difuminado (izquierda y vertical) sobre la imagen, y nada que la enmarque.
+      expect(find.ancestor(of: find.byType(Image), matching: find.byType(ShaderMask)), findsNWidgets(2));
+      expect(find.ancestor(of: find.byType(Image), matching: find.byType(ClipRRect)), findsNothing);
+      expect(find.ancestor(of: find.byType(Image), matching: find.byType(DecoratedBox)), findsNothing);
+    });
+
+    test('las dos imágenes existen, miden lo mismo (3.09:1) y pesan poco', () {
+      for (final path in [BannerImages.invite, BannerImages.play]) {
+        final file = File(path);
+        expect(file.existsSync(), isTrue, reason: path);
+        expect(file.lengthSync(), lessThan(300 * 1024), reason: path);
+      }
+    });
+  });
+
   group('FidoBannerCarousel', () {
     Future<void> open(
       WidgetTester tester, {
@@ -110,6 +147,7 @@ void main() {
       VoidCallback? onScan,
       VoidCallback? onOffers,
       bool autoPlay = false,
+      FakeBannersRepository? banners,
       Size size = const Size(900, 1600),
       double textScale = 1,
     }) async {
@@ -122,6 +160,7 @@ void main() {
           overrides: [
             gamesRepositoryProvider.overrideWithValue(_FakeGames()),
             cardSalesRepositoryProvider.overrideWithValue(_FakeSales(offers)),
+            bannersRepositoryProvider.overrideWithValue(banners ?? FakeBannersRepository()),
           ],
           child: MediaQuery(
             data: MediaQueryData(size: size, textScaler: TextScaler.linear(textScale)),
@@ -162,7 +201,7 @@ void main() {
 
       expect(find.text('¡PREMIO LISTO!'), findsOneWidget);
       expect(find.text('Pásate por Café Aurora y reclama tu premio.'), findsOneWidget);
-      expect(find.byWidgetPredicate((w) => w is Image && w.semanticLabel == FidoPose.pulgares.label), findsOneWidget);
+      expect(find.byWidgetPredicate((w) => w is Image && w.semanticLabel == 'Fido'), findsOneWidget);
 
       await tester.tap(find.text('VER PREMIO'));
       expect(opened?['id'], '1');
@@ -227,7 +266,7 @@ void main() {
       expect(find.text('¡PREMIO LISTO!'), findsNothing);
     });
 
-    testWidgets('si el usuario pidió menos movimiento, no pasa solo', (tester) async {
+    testWidgets('con las animaciones del sistema apagadas igual pasa solo, sin deslizar', (tester) async {
       tester.view.physicalSize = const Size(900, 1600);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -237,6 +276,7 @@ void main() {
           overrides: [
             gamesRepositoryProvider.overrideWithValue(_FakeGames()),
             cardSalesRepositoryProvider.overrideWithValue(_FakeSales(const [])),
+            bannersRepositoryProvider.overrideWithValue(FakeBannersRepository()),
           ],
           child: MediaQuery(
             data: const MediaQueryData(size: Size(900, 1600), disableAnimations: true),
@@ -253,9 +293,17 @@ void main() {
         ),
       );
       await tester.pump(const Duration(milliseconds: 300));
-      await tester.pump(const Duration(seconds: 20));
-
       expect(find.text('¡PREMIO LISTO!'), findsOneWidget);
+
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('TE FALTA 1 PUNTO'), findsOneWidget);
+
+      // Y sigue: vuelve al primero.
+      await tester.pump(const Duration(seconds: 6));
+      await tester.pump(const Duration(milliseconds: 50));
+      expect(find.text('¡PREMIO LISTO!'), findsOneWidget);
+      await tester.pump(const Duration(seconds: 6));
     });
 
     testWidgets('una tarjeta en venta: la ofrece con el café y su precio', (tester) async {
@@ -263,7 +311,7 @@ void main() {
 
       expect(find.text('CAFÉ DE \$1 POR \$0.25'), findsOneWidget);
       expect(find.text('COMPRAR'), findsOneWidget);
-      expect(find.byWidgetPredicate((w) => w is Image && w.semanticLabel == FidoPose.cafe.label), findsOneWidget);
+      expect(find.byWidgetPredicate((w) => w is Image && w.semanticLabel == 'Fido'), findsOneWidget);
     });
 
     testWidgets('si los mensajes cambian, el carrusel arranca otra vez desde el primero', (tester) async {

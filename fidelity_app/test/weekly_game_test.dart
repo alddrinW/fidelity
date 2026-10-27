@@ -1,7 +1,9 @@
+import 'package:fidelity_app/core/l10n/app_language.dart';
 import 'package:fidelity_app/core/l10n/translator.dart';
 import 'package:fidelity_app/features/campaigns/data/campaigns_repository.dart';
 import 'package:fidelity_app/features/cards/widgets/fido_banner_carousel.dart';
 import 'package:fidelity_app/features/card_sales/data/card_sales_repository.dart';
+import 'package:fidelity_app/features/banners/data/banners_repository.dart';
 import 'package:fidelity_app/features/games/data/games_repository.dart';
 import 'package:fidelity_app/features/games/data/weekly_game_repository.dart';
 import 'package:fidelity_app/features/games/game_invite_screen.dart';
@@ -13,6 +15,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'fake_banners.dart';
 import 'spanish_app.dart';
 
 class _FakeWeekly extends WeeklyGameRepository {
@@ -53,6 +56,11 @@ class _FakeSales extends CardSalesRepository {
   @override
   Future<List<Campaign>> offers() async => const [];
 }
+
+/// El banner ya diseñado (la imagen) de un archivo.
+Finder bannerImage(String asset) => find.byWidgetPredicate(
+      (w) => w is Image && w.image is AssetImage && (w.image as AssetImage).assetName == asset,
+    );
 
 const _a = WeeklyBusiness(id: 'a', name: 'Café Aurora', currentPoints: 3, pointsRequired: 10);
 const _b = WeeklyBusiness(id: 'b', name: 'Pizzería Sol', currentPoints: 7, pointsRequired: 8);
@@ -134,6 +142,7 @@ void main() {
         ProviderScope(
           overrides: [
             weeklyGameRepositoryProvider.overrideWithValue(repo),
+            bannersRepositoryProvider.overrideWithValue(FakeBannersRepository()),
             gamesRepositoryProvider.overrideWithValue(_FakeGames()),
           ],
           child: spanishApp(const WeeklyGameScreen()),
@@ -317,7 +326,7 @@ void main() {
   });
 
   group('banner de Fido del juego semanal', () {
-    Future<void> open(WidgetTester tester, WeeklyStatus status) async {
+    Future<void> open(WidgetTester tester, WeeklyStatus status, {List<Override> overrides = const []}) async {
       tester.view.physicalSize = const Size(900, 1600);
       tester.view.devicePixelRatio = 1;
       addTearDown(tester.view.reset);
@@ -326,8 +335,10 @@ void main() {
         ProviderScope(
           overrides: [
             weeklyGameRepositoryProvider.overrideWithValue(_FakeWeekly(status)),
+            bannersRepositoryProvider.overrideWithValue(FakeBannersRepository()),
             gamesRepositoryProvider.overrideWithValue(_FakeGames()),
             cardSalesRepositoryProvider.overrideWithValue(_FakeSales()),
+            ...overrides,
           ],
           child: spanishApp(const Scaffold(body: FidoBannerCarousel(autoPlay: false))),
         ),
@@ -336,13 +347,29 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
     }
 
-    testWidgets('disponible: invita a elegir un negocio y ganar puntos', (tester) async {
+    testWidgets('disponible con 1 punto: sale el banner diseñado "Juega y gana"', (tester) async {
       await open(tester, _available());
 
+      expect(bannerImage(BannerImages.play), findsOneWidget);
+      expect(find.text('ELEGIR NEGOCIO'), findsNothing);
+    });
+
+    testWidgets('con otros puntos la imagen ya no vale: sale la nube con los puntos correctos', (tester) async {
+      await open(tester, _available(points: 2));
+
+      expect(bannerImage(BannerImages.play), findsNothing);
       expect(find.text('JUEGO DE LA SEMANA'), findsOneWidget);
-      expect(find.text('Elige un negocio, juega y gana 1 punto.'), findsOneWidget);
+      expect(find.text('Elige un negocio, juega y gana 2 puntos.'), findsOneWidget);
       expect(find.text('ELEGIR NEGOCIO'), findsOneWidget);
-      expect(find.byWidgetPredicate((w) => w is Image && w.semanticLabel == FidoPose.laptop.label), findsOneWidget);
+      expect(find.byWidgetPredicate((w) => w is Image && w.semanticLabel == 'Fido'), findsOneWidget);
+    });
+
+    testWidgets('con la app en inglés no sale la imagen (trae el texto en español): sale la nube, que sí se traduce', (tester) async {
+      await open(tester, _available(), overrides: [initialLanguageProvider.overrideWithValue(AppLanguage.en)]);
+
+      expect(bannerImage(BannerImages.play), findsNothing);
+      // (La prueba fija el idioma de los textos en español; lo que se comprueba es que cambia a la nube.)
+      expect(find.text('JUEGO DE LA SEMANA'), findsOneWidget);
     });
 
     testWidgets('con el negocio ya elegido, dice cuál y pide jugar', (tester) async {
@@ -354,21 +381,30 @@ void main() {
         ),
       );
 
+      // Ya eligió negocio: la imagen genérica no dice eso, sale la nube con el negocio.
+      expect(bannerImage(BannerImages.play), findsNothing);
       expect(find.text('Elegiste Café Aurora: ¡a jugar y ganar 1 punto!'), findsOneWidget);
       expect(find.text('JUGAR'), findsOneWidget);
     });
 
-    testWidgets('ya jugó esta semana, está apagado o no tiene negocios: no sale', (tester) async {
+    testWidgets('ya jugó esta semana, está apagado o no tiene negocios: sale el diseño "Juega y gana", sin mensaje del juego', (tester) async {
       for (final state in ['done', 'off', 'empty']) {
         await open(tester, WeeklyStatus(state: state));
         expect(find.text('JUEGO DE LA SEMANA'), findsNothing, reason: state);
+        expect(bannerImage(BannerImages.play), findsOneWidget, reason: state);
       }
+    });
+
+    testWidgets('si no se pudo saber el estado del juego, no sale', (tester) async {
+      await open(tester, WeeklyStatus(state: 'off'), overrides: [weeklyGameProvider.overrideWith((ref) => throw Exception('sin red'))]);
+
+      expect(bannerImage(BannerImages.play), findsNothing);
     });
 
     testWidgets('al tocarlo abre el juego de la semana', (tester) async {
       await open(tester, _available());
 
-      await tester.tap(find.text('ELEGIR NEGOCIO'));
+      await tester.tap(bannerImage(BannerImages.play));
       await tester.pumpAndSettle();
 
       expect(find.byType(WeeklyGameScreen), findsOneWidget);

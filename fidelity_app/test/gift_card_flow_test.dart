@@ -195,7 +195,9 @@ void main() {
           child: spanishApp(child),
         ),
       );
-      await tester.pumpAndSettle();
+      // El inicio del cliente tiene un carrusel que no deja de moverse: no se espera a que "se quede quieto".
+      await tester.pump();
+      await tester.pump(const Duration(seconds: 1));
     }
 
     /// El formulario se abre encima de otra pantalla (como en la app), porque
