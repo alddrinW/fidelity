@@ -591,6 +591,12 @@ const Map<String, String> kEnglishStrings = {
   'Ajustes': "Settings",
   'Ajustes del sistema': "System settings",
   'Ajuste guardado': "Setting saved",
+  '¡COMPLETASTE\nTU TARJETA!': "YOU COMPLETED\nYOUR CARD!",
+  'TU PREMIO': "YOUR PRIZE",
+  'Premio ganado': "Prize won",
+  'Ver mi premio': "See my prize",
+  'Suele tardar unos minutos': "It usually takes a few minutes",
+  'Apunta al código QR del local': "Point at the business's QR code",
   'Mi código': "My code",
   'Escanea y': "Scan and",
   'Cada visita suma puntos': "Every visit earns points",
@@ -1317,6 +1323,10 @@ const Map<String, String> kEnglishStrings = {
 /// Plantillas para textos con datos. Cada `{}` es un valor (se traduce a su
 /// vez); en la traducción, `{1}`, `{2}`... permiten reordenarlos.
 const Map<String, String> kEnglishPatterns = {
+  'Tu escaneo en {} está pendiente. Te avisaremos cuando lo aprueben.': "Your scan at {} is pending. We will let you know when they approve it.",
+  '{} en {}. Pídelo en el local mostrando tu premio.': "{1} at {2}. Ask for it at the business by showing your prize.",
+  'Ganaste un premio en {}. Pídelo en el local mostrando tu premio.': "You won a prize at {}. Ask for it at the business by showing your prize.",
+  '{} de {} puntos': "{1} of {2} points",
   '{} puntos = {}': "{1} points = {2}",
   'Error al preparar el cartel: {}': "Error preparing the poster: {}",
   'Error al compartir: {}': "Error sharing: {}",

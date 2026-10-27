@@ -11,11 +11,16 @@ import '../../core/widgets/fido_mascot.dart';
 import '../../core/widgets/app_responsive_body.dart';
 import '../cards/providers/my_cards_provider.dart';
 import '../feedback/widgets/feedback_sheet.dart';
+import '../cards/card_history_screen.dart';
 import 'data/scanner_repository.dart';
+import 'scan_result_widgets.dart';
 import '../../core/l10n/tr_text.dart';
 
-/// Pantalla de cierre de un escaneo válido: Fido celebra y se informa el
-/// progreso real devuelto por el backend.
+/// Pantalla de cierre de un escaneo, con el diseño de Fido:
+/// - **Punto sumado** (fondo rosa): el local, el avance en puntitos y *VER MI TARJETA*.
+/// - **Tarjeta completa** (fondo rosa): el premio en una caja negra y *VER MI PREMIO*.
+/// - **Esperando al local** (fondo blanco, Fido triste): el escaneo quedó pendiente y *ENTENDIDO*.
+/// Se informa el progreso real que devolvió el backend.
 class ScanSuccessScreen extends ConsumerStatefulWidget {
   final ScanResult result;
 
@@ -45,58 +50,30 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
     super.dispose();
   }
 
+  ScanResult get _r => widget.result;
+
   /// El título grande: lo que pasó con el escaneo.
   String get _title {
-    final r = widget.result;
-    if (r.isPending) return 'ESPERANDO\nAL LOCAL';
-    if (r.rewardCompleted) return '¡PREMIO\nGANADO!';
+    if (_r.isPending) return 'ESPERANDO\nAL LOCAL';
+    if (_r.rewardCompleted) return '¡COMPLETASTE\nTU TARJETA!';
     return '¡PUNTO\nSUMADO!';
   }
 
-  String get _summary {
-    final r = widget.result;
-    if (r.isPending) {
-      return 'Tu escaneo en ${r.businessName} quedó pendiente. '
-          'Cuando el local lo apruebe, sumarás tu punto.';
-    }
-    if (r.rewardCompleted) {
-      final prize = r.rewardDescription;
-      return prize == null || prize.isEmpty
-          ? 'Ganaste un premio en ${r.businessName}. Acércate al local para reclamarlo.'
-          : 'Ganaste $prize en ${r.businessName}. Acércate al local para reclamarlo.';
-    }
-    final points = r.currentPoints;
-    final required = r.pointsRequired;
-    if (points != null && required != null) {
-      return 'Sumaste un punto en ${r.businessName}. Llevas $points de $required.';
-    }
-    return 'Sumaste un punto en ${r.businessName}.';
+  /// El premio que ganó, o `null` si el local no lo describió.
+  String? get _prize {
+    final prize = _r.rewardDescription?.trim();
+    return prize == null || prize.isEmpty ? null : prize;
   }
 
-  /// Los puntitos de avance solo se muestran con un punto ya sumado.
-  bool get _showProgress {
-    final r = widget.result;
-    if (r.isPending || r.pointsRequired == null) return false;
-    return r.rewardCompleted || r.currentPoints != null;
-  }
-
-  /// Frase de ánimo de Fido según cómo terminó el escaneo.
-  String get _cheer {
-    final r = widget.result;
-    if (r.rewardCompleted) return '¡Lo lograste! Fido salta de la emoción';
-    if (r.isPending) return '¡Buen trabajo! Fido ya avisó al local';
-    return '¡Eso es! Cada punto te acerca a tu premio';
-  }
+  /// Los puntitos solo se muestran con un punto ya sumado (no con el premio ni la espera).
+  bool get _showProgress =>
+      !_r.isPending && !_r.rewardCompleted && _r.pointsRequired != null && _r.currentPoints != null;
 
   /// Buzón de Fido: el cliente califica la atención recién recibida.
   Future<void> _openFeedback() async {
-    final businessId = widget.result.businessId;
+    final businessId = _r.businessId;
     if (businessId == null) return;
-    await showFeedbackSheet(
-      context,
-      businessId: businessId,
-      businessName: widget.result.businessName,
-    );
+    await showFeedbackSheet(context, businessId: businessId, businessName: _r.businessName);
   }
 
   void _finish() {
@@ -106,14 +83,41 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
     Navigator.of(context).popUntil((route) => route.isFirst);
   }
 
+  /// Vuelve al inicio y abre la tarjeta de este local (en su pestaña de premios).
+  Future<void> _openCard() async {
+    final navigator = Navigator.of(context);
+    final businessId = _r.businessId;
+    await ref.read(myCardsProvider.notifier).refreshCards(silent: true);
+    final cards = ref.read(myCardsProvider).cards;
+    final card = cards.where((c) => (c['businesses'] as Map?)?['id']?.toString() == businessId).firstOrNull;
+    navigator.popUntil((route) => route.isFirst);
+    if (card == null || businessId == null) return;
+    navigator.push(
+      MaterialPageRoute(
+        builder: (_) => CardHistoryScreen(
+          loyaltyCardId: card['id'].toString(),
+          businessId: businessId,
+          businessName: _r.businessName,
+          initialTabIndex: CardHistoryScreen.rewardsTab,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final pending = _r.isPending;
+    final completed = _r.rewardCompleted;
+    final prize = _prize;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop) _finish();
       },
       child: Scaffold(
+        // Rosa al celebrar; blanco mientras espera.
+        backgroundColor: pending ? AppColors.white : AppColors.pink,
         body: SafeArea(
           child: Stack(
             alignment: Alignment.topCenter,
@@ -125,91 +129,97 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
                       child: SingleChildScrollView(
                         padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
                         child: ConstrainedBox(
-                          constraints: BoxConstraints(
-                            minHeight: MediaQuery.sizeOf(context).height * 0.7,
-                          ),
+                          constraints: BoxConstraints(minHeight: MediaQuery.sizeOf(context).height * 0.6),
                           child: Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Semantics(
-                                header: true,
-                                child: Text(
-                                  _title,
-                                  textAlign: TextAlign.center,
-                                  style: AppTypography.display(size: 64)
-                                      .copyWith(height: 1.05),
-                                ),
-                              ).animate().fadeIn().slideY(begin: -0.2),
-                              const SizedBox(height: 12),
-                              Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 10),
-                                decoration: BoxDecoration(
-                                  color: AppColors.pink,
-                                  borderRadius: BorderRadius.circular(22),
-                                  border: Border.all(color: AppColors.black, width: 1.2),
-                                ),
-                                child: Text(
-                                  _cheer,
-                                  textAlign: TextAlign.center,
-                                  style: AppTypography.body(size: 15, weight: FontWeight.w500),
-                                ),
-                              ).animate(delay: 100.ms).fadeIn(),
-                              const SizedBox(height: 12),
-                              Text(
-                                _summary,
-                                textAlign: TextAlign.center,
-                                style: AppTypography.body(
-                                  size: 17,
-                                  weight: FontWeight.w300,
-                                ),
-                              ).animate(delay: 200.ms).fadeIn(),
-                              if (_showProgress) ...[
-                                const SizedBox(height: 16),
-                                ScanProgressDots(
-                                  done: widget.result.rewardCompleted
-                                      ? widget.result.pointsRequired!
-                                      : widget.result.currentPoints!,
-                                  total: widget.result.pointsRequired!,
-                                ).animate(delay: 300.ms).fadeIn(),
-                              ],
-                              if (widget.result.businessId != null)
-                                AppTextAction(
-                                  label: 'Califica la atención',
-                                  onPressed: _openFeedback,
-                                ).animate(delay: 400.ms).fadeIn(),
-                              const SizedBox(height: 8),
-                              (widget.result.isPending
-                                      ? const FidoCooldownBanner()
-                                      : FidoMascot(
-                                          mood: widget.result.rewardCompleted
-                                              ? FidoMood.euphoric
-                                              : FidoMood.celebrate,
-                                          width: (MediaQuery.sizeOf(context).width * 0.8)
-                                              .clamp(220.0, 340.0),
-                                        ))
-                                  .animate(delay: 150.ms)
+                              FidoMascot(
+                                mood: pending
+                                    ? FidoMood.sad
+                                    : completed
+                                        ? FidoMood.euphoric
+                                        : FidoMood.celebrate,
+                                height: 190,
+                              )
+                                  .animate()
                                   .scale(
                                     begin: const Offset(0.6, 0.6),
                                     duration: 700.ms,
                                     curve: const Cubic(0.34, 1.56, 0.64, 1),
                                   )
                                   .fadeIn(),
+                              const SizedBox(height: 16),
+                              Semantics(
+                                header: true,
+                                child: Text(
+                                  _title,
+                                  textAlign: TextAlign.center,
+                                  style: AppTypography.display(size: 52).copyWith(height: 1.05),
+                                ),
+                              ).animate(delay: 100.ms).fadeIn().slideY(begin: 0.2),
+                              const SizedBox(height: 12),
+                              if (pending) ...[
+                                Text(
+                                  'Tu escaneo en ${_r.businessName} está pendiente. Te avisaremos cuando lo aprueben.',
+                                  textAlign: TextAlign.center,
+                                  style: AppTypography.body(size: 17, weight: FontWeight.w300),
+                                ).animate(delay: 200.ms).fadeIn(),
+                                const SizedBox(height: 16),
+                                const ScanWaitChip().animate(delay: 300.ms).fadeIn(),
+                              ] else if (completed) ...[
+                                Text(
+                                  prize == null
+                                      ? 'Ganaste un premio en ${_r.businessName}. Pídelo en el local mostrando tu premio.'
+                                      : '$prize en ${_r.businessName}. Pídelo en el local mostrando tu premio.',
+                                  textAlign: TextAlign.center,
+                                  style: AppTypography.body(size: 17, weight: FontWeight.w300),
+                                ).animate(delay: 200.ms).fadeIn(),
+                                const SizedBox(height: 18),
+                                ScanPrizeBox(prize: prize ?? 'Premio ganado').animate(delay: 300.ms).fadeIn(),
+                              ] else ...[
+                                Text(
+                                  _r.businessName,
+                                  textAlign: TextAlign.center,
+                                  style: AppTypography.body(size: 20, weight: FontWeight.w500),
+                                ).animate(delay: 200.ms).fadeIn(),
+                                if (_showProgress) ...[
+                                  const SizedBox(height: 16),
+                                  ScanProgressDots(
+                                    done: _r.currentPoints!,
+                                    total: _r.pointsRequired!,
+                                    onPink: true,
+                                  ).animate(delay: 300.ms).fadeIn(),
+                                  const SizedBox(height: 10),
+                                  Text(
+                                    '${_r.currentPoints} de ${_r.pointsRequired} puntos',
+                                    textAlign: TextAlign.center,
+                                    style: AppTypography.body(size: 15, weight: FontWeight.w400),
+                                  ),
+                                ],
+                              ],
                             ],
                           ),
                         ),
                       ),
                     ),
-                    Align(
-                      alignment: Alignment.centerRight,
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(24, 8, 32, 32),
-                        child: AppCircleButton(
-                          dark: true,
-                          tooltip: 'Volver al inicio',
-                          onPressed: _finish,
-                        ),
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(32, 8, 32, 24),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          if (pending)
+                            AppPrimaryButton(label: 'Entendido', onPressed: _finish)
+                          else if (completed)
+                            ScanWhiteButton(label: 'Ver mi premio', onPressed: _openCard)
+                          else
+                            AppPrimaryButton(label: 'Ver mi tarjeta', onPressed: _openCard),
+                          if (_r.businessId != null) ...[
+                            const SizedBox(height: 4),
+                            AppTextAction(label: 'Califica la atención', onPressed: _openFeedback),
+                          ],
+                        ],
                       ),
-                    ),
+                    ).animate(delay: 400.ms).fadeIn(),
                   ],
                 ),
               ),
@@ -221,7 +231,7 @@ class _ScanSuccessScreenState extends ConsumerState<ScanSuccessScreen> {
                 minBlastForce: 6,
                 gravity: 0.25,
                 shouldLoop: false,
-                colors: const [AppColors.pink, AppColors.black],
+                colors: const [AppColors.white, AppColors.black],
               ),
             ],
           ),
@@ -237,7 +247,10 @@ class ScanProgressDots extends StatelessWidget {
   final int done;
   final int total;
 
-  const ScanProgressDots({super.key, required this.done, required this.total});
+  /// Sobre un fondo rosa los puntos ganados van negros (si no, no se verían).
+  final bool onPink;
+
+  const ScanProgressDots({super.key, required this.done, required this.total, this.onPink = false});
 
   static const int maxDots = 12;
 
@@ -253,7 +266,7 @@ class ScanProgressDots extends StatelessWidget {
           value: filled / count,
           minHeight: 14,
           backgroundColor: AppColors.surfaceMuted,
-          color: AppColors.pink,
+          color: onPink ? AppColors.black : AppColors.pink,
         ),
       );
     }
@@ -279,11 +292,11 @@ class ScanProgressDots extends StatelessWidget {
       width: 26,
       height: 26,
       decoration: BoxDecoration(
-        color: on ? AppColors.pink : AppColors.white,
+        color: on ? (onPink ? AppColors.black : AppColors.pink) : AppColors.white,
         shape: BoxShape.circle,
         border: Border.all(color: AppColors.black, width: 1.2),
       ),
-      child: on ? const Icon(Icons.check_rounded, size: 16, color: AppColors.black) : null,
+      child: on ? Icon(Icons.check_rounded, size: 16, color: onPink ? AppColors.white : AppColors.black) : null,
     );
     if (!newest) return dot;
     // El sello recién ganado entra con un salto elástico.

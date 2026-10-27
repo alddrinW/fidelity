@@ -250,7 +250,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
               child: FittedBox(
                 fit: BoxFit.scaleDown,
                 child: Text(
-                  'APUNTA BIEN',
+                  'ESCANEAR',
                   style: AppTypography.display(
                     size: 48,
                     color: AppColors.white,
@@ -291,7 +291,7 @@ class _ScannerScreenState extends ConsumerState<ScannerScreen> {
         _Viewfinder(side: side),
         const SizedBox(height: 32),
         Text(
-          'ESCANEA EL CÓDIGO QR\nY POR FAVOR... APUNTA BIEN',
+          'Apunta al código QR del local',
           textAlign: TextAlign.center,
           style: AppTypography.label(
             size: 15,
