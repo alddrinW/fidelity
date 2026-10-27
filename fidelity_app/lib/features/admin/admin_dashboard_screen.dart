@@ -17,11 +17,13 @@ import 'admin_businesses_screen.dart';
 import 'admin_payments_screen.dart';
 import 'admin_games_screen.dart';
 import 'admin_card_payouts_screen.dart';
+import 'admin_card_reviews_screen.dart';
 import 'admin_referral_locals_screen.dart';
 import 'admin_settings_screen.dart';
 import '../notifications/widgets/notification_bell.dart';
 import '../feedback/data/feedback_repository.dart';
 import '../feedback/feedback_inbox_screen.dart';
+import 'admin_banners_screen.dart';
 import 'admin_categories_screen.dart';
 import 'admin_qr_stats_screen.dart';
 import 'admin_rewards_screen.dart';
@@ -140,7 +142,9 @@ class _AdminDashboardScreenState extends ConsumerState<AdminDashboardScreen> {
       (Icons.payments_rounded, 'Pagos de registro', const AdminPaymentsScreen()),
       (Icons.sports_esports_rounded, 'Minijuegos', const AdminGamesScreen()),
       (Icons.group_add_rounded, 'Invitar amigos', const AdminReferralLocalsScreen()),
+      (Icons.receipt_long_outlined, 'Comprobantes de tarjetas', const AdminCardReviewsScreen()),
       (Icons.payments_outlined, 'Pagos a locales', const AdminCardPayoutsScreen()),
+      (Icons.view_carousel_rounded, 'Banners del inicio', const AdminBannersScreen()),
       (Icons.storefront_rounded, 'Gestión de negocios', const AdminBusinessesScreen()),
       (Icons.category_rounded, 'Gestión de categorías', const AdminCategoriesScreen()),
       (Icons.people_alt_rounded, 'Gestión de usuarios', const AdminUsersScreen()),
