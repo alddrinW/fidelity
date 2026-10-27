@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/services/api_client.dart';
 import '../../campaigns/data/campaigns_repository.dart';
+import '../../payments/data/payments_repository.dart' show BankAccount;
 
 /// Las reglas de la venta de tarjetas que fijó el administrador.
 class CardSalesRules {
@@ -13,18 +14,105 @@ class CardSalesRules {
   final int minPriceCents;
   final int maxPriceCents;
 
+  /// Se puede pagar con tarjeta en PayPhone.
+  final bool cardEnabled;
+
+  /// Se puede pagar por transferencia (con comprobante que revisa el administrador).
+  final bool transferEnabled;
+
+  /// Las cuentas donde transferir.
+  final List<BankAccount> bankAccounts;
+
   const CardSalesRules({
     this.enabled = false,
     this.commissionPercent = 10,
     this.minPriceCents = 25,
     this.maxPriceCents = 2500,
+    this.cardEnabled = true,
+    this.transferEnabled = false,
+    this.bankAccounts = const [],
   });
+
+  /// Hay más de una forma de pagar (el cliente elige).
+  bool get canChoose => cardEnabled && transferEnabled;
 
   factory CardSalesRules.fromJson(Map<String, dynamic> json) => CardSalesRules(
         enabled: json['enabled'] == true,
         commissionPercent: (json['commissionPercent'] as num?)?.toInt() ?? 10,
         minPriceCents: (json['minPriceCents'] as num?)?.toInt() ?? 25,
         maxPriceCents: (json['maxPriceCents'] as num?)?.toInt() ?? 2500,
+        cardEnabled: json['cardEnabled'] != false,
+        transferEnabled: json['transferEnabled'] == true,
+        bankAccounts: ((json['bankAccounts'] as List?) ?? const [])
+            .map((b) => BankAccount.fromJson(Map<String, dynamic>.from(b as Map)))
+            .toList(),
+      );
+}
+
+/// Lo que se necesita para pagar una tarjeta por transferencia: la referencia, el monto y las cuentas.
+class TransferStart {
+  final String purchaseId;
+  final String reference;
+  final int amountCents;
+  final DateTime? reservedUntil;
+  final List<BankAccount> bankAccounts;
+
+  const TransferStart({
+    required this.purchaseId,
+    required this.reference,
+    required this.amountCents,
+    this.reservedUntil,
+    this.bankAccounts = const [],
+  });
+
+  factory TransferStart.fromJson(Map<String, dynamic> json) => TransferStart(
+        purchaseId: json['purchaseId'].toString(),
+        reference: json['reference']?.toString() ?? '',
+        amountCents: (json['amountCents'] as num?)?.toInt() ?? 0,
+        reservedUntil: DateTime.tryParse('${json['reservedUntil'] ?? ''}')?.toLocal(),
+        bankAccounts: ((json['bankAccounts'] as List?) ?? const [])
+            .map((b) => BankAccount.fromJson(Map<String, dynamic>.from(b as Map)))
+            .toList(),
+      );
+}
+
+/// Un comprobante de transferencia por revisar (vista del administrador).
+class CardReview {
+  final String id;
+  final String reference;
+  final int amountCents;
+  final String? title;
+  final String? buyer;
+  final String? buyerEmail;
+  final String? businessName;
+  final String? proofUrl;
+  final String? note;
+  final DateTime? reportedAt;
+
+  const CardReview({
+    required this.id,
+    required this.reference,
+    required this.amountCents,
+    this.title,
+    this.buyer,
+    this.buyerEmail,
+    this.businessName,
+    this.proofUrl,
+    this.note,
+    this.reportedAt,
+  });
+
+  factory CardReview.fromJson(Map<String, dynamic> json) => CardReview(
+        id: json['id'].toString(),
+        reference: json['reference']?.toString() ?? '',
+        amountCents: (json['amountCents'] as num?)?.toInt() ?? 0,
+        title: json['title']?.toString(),
+        buyer: json['buyer']?.toString(),
+        buyerEmail: json['buyerEmail']?.toString(),
+        businessName: json['businessName']?.toString(),
+        proofUrl: json['proofUrl']?.toString(),
+        note: json['note']?.toString(),
+        reportedAt: DateTime.tryParse('${json['reportedAt'] ?? ''}')?.toLocal(),
       );
 }
 
@@ -206,6 +294,35 @@ class CardSalesRepository {
     return uri;
   }
 
+  /// El cliente va a pagar por transferencia: se le guarda la tarjeta y se le dan las cuentas y la referencia.
+  Future<TransferStart> startTransfer(String campaignId) async {
+    final response = await _api.post('card-sales/$campaignId/purchase', body: {'method': 'transfer'});
+    return TransferStart.fromJson(Map<String, dynamic>.from(response as Map));
+  }
+
+  /// Sube la foto del comprobante: el administrador lo revisa y, al aprobarlo, llega la tarjeta.
+  Future<void> submitProof(String purchaseId, String proofDataUri, {String? note}) async {
+    await _api.post('card-sales/purchases/$purchaseId/proof', body: {
+      'proofUrl': proofDataUri,
+      if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+    });
+  }
+
+  /// Los comprobantes por revisar (administrador).
+  Future<List<CardReview>> reviews() async {
+    final response = await _api.get('card-sales/admin/reviews');
+    if (response is! List) return [];
+    return response.map((r) => CardReview.fromJson(Map<String, dynamic>.from(r as Map))).toList();
+  }
+
+  Future<void> approveReview(String purchaseId) async {
+    await _api.post('card-sales/admin/reviews/$purchaseId/approve');
+  }
+
+  Future<void> rejectReview(String purchaseId, String reason) async {
+    await _api.post('card-sales/admin/reviews/$purchaseId/reject', body: {'reason': reason.trim()});
+  }
+
   Future<SalesSummary> mySales() async =>
       SalesSummary.fromJson(Map<String, dynamic>.from(await _api.get('card-sales/mine') as Map));
 
@@ -235,6 +352,11 @@ final cardSalesRulesProvider = FutureProvider.autoDispose<CardSalesRules>(
 /// Las tarjetas en venta del cliente.
 final cardOffersProvider = FutureProvider.autoDispose<List<Campaign>>(
   (ref) => ref.watch(cardSalesRepositoryProvider).offers(),
+);
+
+/// Los comprobantes de transferencia por revisar (administrador).
+final cardReviewsProvider = FutureProvider.autoDispose<List<CardReview>>(
+  (ref) => ref.watch(cardSalesRepositoryProvider).reviews(),
 );
 
 final mySalesProvider = FutureProvider.autoDispose<SalesSummary>(

@@ -17,6 +17,7 @@ import '../../features/campaigns/my_gifts_screen.dart';
 import 'inbox_events.dart';
 import '../../features/games/game_invite_screen.dart';
 import '../../features/admin/admin_card_payouts_screen.dart';
+import '../../features/admin/admin_card_reviews_screen.dart';
 import '../../features/admin/admin_games_screen.dart';
 import '../../features/birthdays/birthday_gift_screen.dart';
 import '../../features/referrals/invite_screen.dart';
@@ -175,6 +176,8 @@ class PushNotificationService {
           builder: (_) => BirthdayGiftScreen(initialUserId: userId, initialBusinessId: businessId),
         ),
       );
+    } else if (route == '/admin_card_reviews') {
+      Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminCardReviewsScreen()));
     } else if (route == '/admin_card_payouts') {
       Navigator.of(context).push(MaterialPageRoute(builder: (_) => const AdminCardPayoutsScreen()));
     } else if (route == '/admin_games') {

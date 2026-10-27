@@ -154,6 +154,45 @@ class CampaignClaim {
   }
 }
 
+/// La compra por transferencia que el cliente tiene en curso en una tarjeta en venta:
+/// esperando el comprobante, en revisión, o la última que se rechazó.
+class TransferPurchase {
+  final String id;
+
+  /// `pending` (falta el comprobante), `in_review` o `rejected`.
+  final String status;
+  final String reference;
+  final int amountCents;
+
+  /// Mientras falta el comprobante: hasta cuándo se le guarda la tarjeta.
+  final DateTime? reservedUntil;
+
+  /// Si se rechazó: por qué, para que lo corrija.
+  final String? reviewNote;
+
+  const TransferPurchase({
+    required this.id,
+    required this.status,
+    required this.reference,
+    required this.amountCents,
+    this.reservedUntil,
+    this.reviewNote,
+  });
+
+  bool get isPending => status == 'pending';
+  bool get isInReview => status == 'in_review';
+  bool get isRejected => status == 'rejected';
+
+  factory TransferPurchase.fromJson(Map<String, dynamic> json) => TransferPurchase(
+        id: json['id'].toString(),
+        status: json['status']?.toString() ?? 'pending',
+        reference: json['reference']?.toString() ?? '',
+        amountCents: (json['amountCents'] as num?)?.toInt() ?? 0,
+        reservedUntil: DateTime.tryParse('${json['reservedUntil'] ?? ''}')?.toLocal(),
+        reviewNote: json['reviewNote']?.toString(),
+      );
+}
+
 class CampaignStats {
   final int claims;
   final int redeemed;
@@ -208,6 +247,9 @@ class Campaign {
   /// Tarjeta ya reclamada por el cliente (vista de cliente).
   final CampaignClaim? claim;
 
+  /// Tarjeta en venta: su compra por transferencia en curso (vista de cliente).
+  final TransferPurchase? purchase;
+
   /// Locales donde el cliente ya tiene su sello (rutas, vista de cliente).
   final List<String> stampedBusinessIds;
   final bool completed;
@@ -238,6 +280,7 @@ class Campaign {
     this.startsAt,
     this.endsAt,
     this.claim,
+    this.purchase,
     this.stampedBusinessIds = const [],
     this.completed = false,
     this.stats,
@@ -262,6 +305,7 @@ class Campaign {
 
   factory Campaign.fromJson(Map<String, dynamic> json) {
     final claim = json['claim'];
+    final purchase = json['purchase'];
     final stats = json['stats'];
     int number(Map m, String k) => (m[k] as num?)?.toInt() ?? 0;
 
@@ -290,6 +334,7 @@ class Campaign {
           .map((b) => CampaignBusinessRef.fromJson(Map<String, dynamic>.from(b as Map)))
           .toList(),
       claim: claim is Map ? CampaignClaim.fromJson(Map<String, dynamic>.from(claim)) : null,
+      purchase: purchase is Map ? TransferPurchase.fromJson(Map<String, dynamic>.from(purchase)) : null,
       stampedBusinessIds:
           ((json['stampedBusinessIds'] as List?) ?? const []).map((e) => e.toString()).toList(),
       completed: json['completed'] == true,

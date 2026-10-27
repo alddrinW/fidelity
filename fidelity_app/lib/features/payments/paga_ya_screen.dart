@@ -525,7 +525,7 @@ class _TransferDetails extends StatelessWidget {
         ),
         const SizedBox(height: 16),
         for (final bank in banks) ...[
-          _BankCard(bank: bank, onCopy: onCopy),
+          BankAccountCard(bank: bank, onCopy: onCopy),
           const SizedBox(height: 12),
         ],
         AppCard(
@@ -555,11 +555,11 @@ class _TransferDetails extends StatelessWidget {
   }
 }
 
-class _BankCard extends StatelessWidget {
+class BankAccountCard extends StatelessWidget {
   final BankAccount bank;
   final Future<void> Function(String text, String message) onCopy;
 
-  const _BankCard({required this.bank, required this.onCopy});
+  const BankAccountCard({super.key, required this.bank, required this.onCopy});
 
   @override
   Widget build(BuildContext context) {
@@ -780,7 +780,7 @@ class _ConfirmStep extends StatelessWidget {
             style: AppTypography.body(size: 14, weight: FontWeight.w300),
           ),
           const SizedBox(height: 12),
-          _ProofPicker(proof: proof, onPick: onPickProof, onRemove: onRemoveProof),
+          ProofPicker(proof: proof, onPick: onPickProof, onRemove: onRemoveProof),
           const SizedBox(height: 24),
           AppTextField(
             controller: noteController,
@@ -794,14 +794,14 @@ class _ConfirmStep extends StatelessWidget {
   }
 }
 
-/// Casilla punteada para elegir la foto del comprobante; muestra la vista
+/// Casilla punteada para elegir la foto del comprobante (también la usan las tarjetas en venta); muestra la vista
 /// previa cuando ya hay una.
-class _ProofPicker extends StatelessWidget {
+class ProofPicker extends StatelessWidget {
   final PickedImage? proof;
   final VoidCallback onPick;
   final VoidCallback onRemove;
 
-  const _ProofPicker({required this.proof, required this.onPick, required this.onRemove});
+  const ProofPicker({super.key, required this.proof, required this.onPick, required this.onRemove});
 
   @override
   Widget build(BuildContext context) {
