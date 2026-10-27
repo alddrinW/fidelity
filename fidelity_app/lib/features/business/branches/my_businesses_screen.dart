@@ -20,10 +20,11 @@ import '../profile/business_profile_screen.dart';
 import '../team/team_screen.dart';
 import 'branches_repository.dart';
 import '../../../core/l10n/tr_text.dart';
+import '../../../core/l10n/translator.dart';
 
-/// "Mis negocios": matriz de control de todos los negocios y sucursales del
-/// dueño. Desde aquí cambia de negocio, paga una sucursal nueva, agrega
-/// sucursales y gestiona el equipo de cada local.
+/// "Mis negocios": todos los negocios y sucursales del dueño. Cada negocio principal
+/// es una tarjeta negra y sus sucursales cuelgan de él con una línea rosa. Desde aquí
+/// cambia de negocio, paga una sucursal nueva, agrega sucursales y gestiona el equipo.
 class MyBusinessesScreen extends ConsumerWidget {
   const MyBusinessesScreen({super.key});
 
@@ -123,6 +124,33 @@ class MyBusinessesScreen extends ConsumerWidget {
     final overview = ref.watch(businessOverviewProvider);
     final currentId = ref.watch(authRepositoryProvider).currentUser?.businessId;
 
+    Widget card(BusinessOverview business, int index, {required bool hero}) {
+      void team() => Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => TeamScreen(businessId: business.id, businessName: business.name),
+            ),
+          );
+      final isCurrent = business.id == currentId;
+      final child = hero
+          ? _PrincipalCard(
+              business: business,
+              isCurrent: isCurrent,
+              onSelect: () => _select(context, ref, business),
+              onPay: () => _pay(context, ref, business),
+              onEdit: () => _edit(context, ref, business),
+              onTeam: team,
+            )
+          : _BranchCard(
+              business: business,
+              isCurrent: isCurrent,
+              onSelect: () => _select(context, ref, business),
+              onPay: () => _pay(context, ref, business),
+              onEdit: () => _edit(context, ref, business),
+              onTeam: team,
+            );
+      return child.animate(delay: (40 * (index % 8)).ms).fadeIn().slideY(begin: 0.06);
+    }
+
     return Scaffold(
       body: SafeArea(
         child: AppResponsiveBody(
@@ -146,32 +174,10 @@ class MyBusinessesScreen extends ConsumerWidget {
                       : RefreshIndicator(
                           color: AppColors.black,
                           onRefresh: () async => ref.invalidate(businessOverviewProvider),
-                          child: ListView.separated(
+                          child: ListView(
                             physics: const AlwaysScrollableScrollPhysics(),
                             padding: const EdgeInsets.fromLTRB(24, 8, 24, 24),
-                            itemCount: list.length,
-                            separatorBuilder: (_, __) => const SizedBox(height: 16),
-                            itemBuilder: (context, index) {
-                              final business = list[index];
-                              return _BranchFrame(
-                                isBranch: business.isBranch,
-                                child: _BusinessCard(
-                                  business: business,
-                                  isCurrent: business.id == currentId,
-                                  onSelect: () => _select(context, ref, business),
-                                  onPay: () => _pay(context, ref, business),
-                                  onEdit: () => _edit(context, ref, business),
-                                  onTeam: () => Navigator.of(context).push(
-                                    MaterialPageRoute(
-                                      builder: (_) => TeamScreen(
-                                        businessId: business.id,
-                                        businessName: business.name,
-                                      ),
-                                    ),
-                                  ),
-                                ).animate(delay: (40 * (index % 8)).ms).fadeIn().slideY(begin: 0.06),
-                              );
-                            },
+                            children: _groups(list, card),
                           ),
                         ),
                 ),
@@ -190,43 +196,195 @@ class MyBusinessesScreen extends ConsumerWidget {
       ),
     );
   }
+
+  /// Cada negocio principal en su tarjeta negra y, debajo, sus sucursales colgando de
+  /// él. Una sucursal cuyo principal no está en la lista sale suelta, al final.
+  List<Widget> _groups(
+    List<BusinessOverview> list,
+    Widget Function(BusinessOverview business, int index, {required bool hero}) card,
+  ) {
+    final principals = list.where((b) => !b.isBranch).toList();
+    final ids = principals.map((b) => b.id).toSet();
+    final orphans = list.where((b) => b.isBranch && !ids.contains(b.parentId)).toList();
+
+    final widgets = <Widget>[];
+    var index = 0;
+    for (final principal in principals) {
+      final branches = list.where((b) => b.parentId == principal.id).toList();
+      if (widgets.isNotEmpty) widgets.add(const SizedBox(height: 28));
+      widgets.add(card(principal, index++, hero: true));
+      if (branches.isNotEmpty) {
+        widgets.add(_BranchesHeader(count: branches.length));
+        for (var i = 0; i < branches.length; i++) {
+          widgets.add(_BranchTreeRow(
+            isLast: i == branches.length - 1,
+            child: card(branches[i], index++, hero: false),
+          ));
+        }
+      }
+    }
+    if (orphans.isNotEmpty) {
+      if (widgets.isNotEmpty) widgets.add(const SizedBox(height: 28));
+      for (final b in orphans) {
+        widgets.add(Padding(padding: const EdgeInsets.only(bottom: 12), child: card(b, index++, hero: false)));
+      }
+    }
+    return widgets;
+  }
 }
 
-/// Una sucursal cuelga de su negocio con una línea rosa a la izquierda, sin
-/// encogerse: así la tarjeta conserva el ancho que necesitan sus datos.
-class _BranchFrame extends StatelessWidget {
-  final bool isBranch;
-  final Widget child;
+/// "SUCURSALES ─────── 2": separa al negocio principal de lo que cuelga de él.
+class _BranchesHeader extends StatelessWidget {
+  final int count;
 
-  const _BranchFrame({required this.isBranch, required this.child});
+  const _BranchesHeader({required this.count});
 
   @override
   Widget build(BuildContext context) {
-    if (!isBranch) return child;
     return Padding(
-      padding: const EdgeInsets.only(left: 6),
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(
-              width: 4,
-              margin: const EdgeInsets.symmetric(vertical: 12),
-              decoration: BoxDecoration(
-                color: AppColors.pink,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(child: child),
-          ],
-        ),
+      padding: const EdgeInsets.fromLTRB(4, 18, 4, 10),
+      child: Row(
+        children: [
+          Text('SUCURSALES', style: AppTypography.label(size: 11, tracking: 3)),
+          const SizedBox(width: 10),
+          Expanded(child: Container(height: 1, color: AppColors.black.withValues(alpha: 0.15))),
+          const SizedBox(width: 10),
+          Text('$count', style: AppTypography.label(size: 11, tracking: 1, color: AppColors.textSecondary)),
+        ],
       ),
     );
   }
 }
 
-class _BusinessCard extends StatelessWidget {
+/// Una sucursal en el árbol: a la izquierda, la línea rosa que viene del negocio
+/// principal y un punto que marca dónde cuelga la tarjeta.
+class _BranchTreeRow extends StatelessWidget {
+  final bool isLast;
+  final Widget child;
+
+  const _BranchTreeRow({required this.isLast, required this.child});
+
+  /// A qué altura de la tarjeta está el punto (junto al nombre).
+  static const double _dotTop = 30;
+
+  @override
+  Widget build(BuildContext context) {
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(
+            width: 26,
+            child: Stack(
+              children: [
+                // La línea baja hasta la última sucursal y ahí se corta en el punto.
+                Positioned(
+                  left: 5,
+                  top: 0,
+                  bottom: isLast ? null : 0,
+                  height: isLast ? _dotTop + 6 : null,
+                  width: 2,
+                  child: const ColoredBox(color: AppColors.pink),
+                ),
+                Positioned(
+                  left: 0,
+                  top: _dotTop,
+                  child: Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: AppColors.pink,
+                      shape: BoxShape.circle,
+                      border: Border.all(color: AppColors.black, width: 1.2),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 12),
+              child: child,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// El logo del local (o una tiendita si no tiene) en un círculo.
+class _Logo extends StatelessWidget {
+  final BusinessOverview business;
+  final double size;
+  final bool onDark;
+
+  const _Logo({required this.business, required this.size, this.onDark = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final logo = imageProviderFromUrl(business.logoUrl);
+    final fallbackBackground = onDark ? AppColors.white : AppColors.black;
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: logo == null ? fallbackBackground : AppColors.white,
+        shape: BoxShape.circle,
+        image: logo == null ? null : DecorationImage(image: logo, fit: BoxFit.cover),
+      ),
+      child: logo == null
+          ? Icon(Icons.storefront_outlined, size: size * 0.5, color: onDark ? AppColors.black : AppColors.white)
+          : null,
+    );
+  }
+}
+
+/// Las etiquetas de un local: "Actual" y "Por activar".
+class _Badges extends StatelessWidget {
+  final BusinessOverview business;
+  final bool isCurrent;
+  final bool onDark;
+
+  const _Badges({required this.business, required this.isCurrent, this.onDark = false});
+
+  @override
+  Widget build(BuildContext context) {
+    if (!isCurrent && business.isActive) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: 6),
+      child: Wrap(
+        spacing: 6,
+        runSpacing: 6,
+        children: [
+          if (isCurrent)
+            onDark ? const _PinkChip(label: 'Actual') : const AppChip(label: 'Actual', style: AppChipStyle.dark),
+          if (!business.isActive) const AppChip(label: 'Por activar'),
+        ],
+      ),
+    );
+  }
+}
+
+/// "Actual" sobre la tarjeta negra: rosa con letra negra.
+class _PinkChip extends StatelessWidget {
+  final String label;
+
+  const _PinkChip({required this.label});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+      decoration: BoxDecoration(color: AppColors.pink, borderRadius: BorderRadius.circular(99)),
+      child: Text(label.toUpperCase(), style: AppTypography.label(size: 10, tracking: 1.5)),
+    );
+  }
+}
+
+/// El negocio principal: una tarjeta negra con sus cifras en rosa.
+class _PrincipalCard extends StatelessWidget {
   final BusinessOverview business;
   final bool isCurrent;
   final VoidCallback onSelect;
@@ -234,7 +392,7 @@ class _BusinessCard extends StatelessWidget {
   final VoidCallback onEdit;
   final VoidCallback onTeam;
 
-  const _BusinessCard({
+  const _PrincipalCard({
     required this.business,
     required this.isCurrent,
     required this.onSelect,
@@ -245,28 +403,16 @@ class _BusinessCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final logo = imageProviderFromUrl(business.logoUrl);
-
-    return AppCard(
+    return Container(
       padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(color: AppColors.black, borderRadius: BorderRadius.circular(32)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.center,
             children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: logo == null ? AppColors.black : AppColors.surfaceMuted,
-                  shape: BoxShape.circle,
-                  image: logo == null ? null : DecorationImage(image: logo, fit: BoxFit.cover),
-                ),
-                child: logo == null
-                    ? const Icon(Icons.storefront_outlined, color: AppColors.white)
-                    : null,
-              ),
+              _Logo(business: business, size: 56, onDark: true),
               const SizedBox(width: 14),
               Expanded(
                 child: Column(
@@ -276,19 +422,9 @@ class _BusinessCard extends StatelessWidget {
                       business.name.toUpperCase(),
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
-                      style: AppTypography.display(size: 24),
+                      style: AppTypography.display(size: 26, color: AppColors.white),
                     ),
-                    const SizedBox(height: 8),
-                    Wrap(
-                      spacing: 6,
-                      runSpacing: 6,
-                      children: [
-                        if (isCurrent) const AppChip(label: 'Actual', style: AppChipStyle.dark),
-                        if (business.isBranch)
-                          const AppChip(label: 'Sucursal', style: AppChipStyle.outline),
-                        if (!business.isActive) const AppChip(label: 'Por activar'),
-                      ],
-                    ),
+                    _Badges(business: business, isCurrent: isCurrent, onDark: true),
                   ],
                 ),
               ),
@@ -296,42 +432,32 @@ class _BusinessCard extends StatelessWidget {
           ),
           const SizedBox(height: 18),
           Container(
-            padding: const EdgeInsets.symmetric(vertical: 14),
+            padding: const EdgeInsets.only(top: 16),
             decoration: BoxDecoration(
-              color: AppColors.surfaceMuted,
-              borderRadius: BorderRadius.circular(22),
+              border: Border(top: BorderSide(color: AppColors.white.withValues(alpha: 0.18))),
             ),
-            child: IntrinsicHeight(
-              child: Row(
-                children: [
-                  _Metric(label: 'Clientes', value: business.customers),
-                  const _MetricDivider(),
-                  _Metric(label: 'Hoy', value: business.scansToday),
-                  const _MetricDivider(),
-                  _Metric(label: 'Pendientes', value: business.pendingScans),
-                  const _MetricDivider(),
-                  _Metric(label: 'Equipo', value: business.approvers),
-                ],
-              ),
+            child: Row(
+              children: [
+                _Metric(label: 'Clientes', value: business.customers, onDark: true),
+                _Metric(label: 'Hoy', value: business.scansToday, onDark: true),
+                _Metric(label: 'Pendientes', value: business.pendingScans, onDark: true),
+                _Metric(label: 'Equipo', value: business.approvers, onDark: true),
+              ],
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: 18),
           if (!business.isActive) ...[
-            AppPrimaryButton(label: 'Paga ya', onPressed: onPay),
+            _Cta(label: 'Paga ya', onTap: onPay, onDark: true),
             const SizedBox(height: 12),
           ] else if (!isCurrent) ...[
-            AppPrimaryButton(label: 'Usar este negocio', onPressed: onSelect),
+            _Cta(label: 'Usar este negocio', onTap: onSelect, onDark: true),
             const SizedBox(height: 12),
           ],
           Row(
             children: [
-              Expanded(
-                child: _ActionPill(icon: Icons.groups_2_outlined, label: 'Mi equipo', onTap: onTeam),
-              ),
+              Expanded(child: _ActionPill(icon: Icons.groups_2_outlined, label: 'Mi equipo', onTap: onTeam, onDark: true)),
               const SizedBox(width: 10),
-              Expanded(
-                child: _ActionPill(icon: Icons.edit_outlined, label: 'Editar', onTap: onEdit),
-              ),
+              Expanded(child: _ActionPill(icon: Icons.edit_outlined, label: 'Editar', onTap: onEdit, onDark: true)),
             ],
           ),
         ],
@@ -340,20 +466,140 @@ class _BusinessCard extends StatelessWidget {
   }
 }
 
-/// Acción secundaria de la tarjeta: píldora con borde, sin competir con el
-/// botón principal.
-class _ActionPill extends StatelessWidget {
-  final IconData icon;
+/// Una sucursal: tarjeta chica con el nombre, las cifras en una línea y sus acciones.
+class _BranchCard extends StatelessWidget {
+  final BusinessOverview business;
+  final bool isCurrent;
+  final VoidCallback onSelect;
+  final VoidCallback onPay;
+  final VoidCallback onEdit;
+  final VoidCallback onTeam;
+
+  const _BranchCard({
+    required this.business,
+    required this.isCurrent,
+    required this.onSelect,
+    required this.onPay,
+    required this.onEdit,
+    required this.onTeam,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AppCard(
+      padding: const EdgeInsets.all(14),
+      radius: 26,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              _Logo(business: business, size: 40),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      business.name.toUpperCase(),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: AppTypography.display(size: 19),
+                    ),
+                    _Badges(business: business, isCurrent: isCurrent),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          // Las cifras, juntas en una sola franja (la letra se achica si no caben).
+          Container(
+            padding: const EdgeInsets.symmetric(vertical: 8),
+            decoration: BoxDecoration(color: AppColors.surfaceMuted, borderRadius: BorderRadius.circular(16)),
+            child: Row(
+              children: [
+                _Metric(label: 'Clientes', value: business.customers, compact: true),
+                _Metric(label: 'Hoy', value: business.scansToday, compact: true),
+                _Metric(label: 'Pendientes', value: business.pendingScans, compact: true),
+                _Metric(label: 'Equipo', value: business.approvers, compact: true),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: !business.isActive
+                    ? _Cta(label: 'Paga ya', onTap: onPay)
+                    : isCurrent
+                        ? const SizedBox.shrink()
+                        : _Cta(label: 'Usar este negocio', onTap: onSelect),
+              ),
+              if (!business.isActive || !isCurrent) const SizedBox(width: 8),
+              _IconAction(icon: Icons.groups_2_outlined, tooltip: 'Mi equipo', onTap: onTeam),
+              const SizedBox(width: 8),
+              _IconAction(icon: Icons.edit_outlined, tooltip: 'Editar', onTap: onEdit),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// El botón principal de un local: rosa sobre la tarjeta negra, negro sobre blanco.
+class _Cta extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
+  final bool onDark;
 
-  const _ActionPill({required this.icon, required this.label, required this.onTap});
+  const _Cta({required this.label, required this.onTap, this.onDark = false});
 
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: AppColors.white,
-      shape: const StadiumBorder(side: BorderSide(color: AppColors.black, width: 1.2)),
+      color: onDark ? AppColors.pink : AppColors.black,
+      shape: const StadiumBorder(),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: SizedBox(
+          height: onDark ? 52 : 44,
+          child: Center(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                child: Text(
+                  label.toUpperCase(),
+                  maxLines: 1,
+                  style: AppTypography.label(size: 12, tracking: 2, color: onDark ? AppColors.black : AppColors.white),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Acción secundaria de la tarjeta negra: píldora con borde blanco.
+class _ActionPill extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+  final bool onDark;
+
+  const _ActionPill({required this.icon, required this.label, required this.onTap, this.onDark = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = onDark ? AppColors.white : AppColors.black;
+    return Material(
+      color: Colors.transparent,
+      shape: StadiumBorder(side: BorderSide(color: color, width: 1.2)),
       child: InkWell(
         customBorder: const StadiumBorder(),
         onTap: onTap,
@@ -367,12 +613,12 @@ class _ActionPill extends StatelessWidget {
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(icon, size: 18, color: AppColors.black),
+                    Icon(icon, size: 18, color: color),
                     const SizedBox(width: 8),
                     Text(
                       label.toUpperCase(),
                       maxLines: 1,
-                      style: AppTypography.label(size: 12, tracking: 2),
+                      style: AppTypography.label(size: 12, tracking: 2, color: color),
                     ),
                   ],
                 ),
@@ -385,22 +631,42 @@ class _ActionPill extends StatelessWidget {
   }
 }
 
-class _MetricDivider extends StatelessWidget {
-  const _MetricDivider();
+/// Acción de una sucursal que solo lleva el ícono (con su nombre para lectores de pantalla).
+class _IconAction extends StatelessWidget {
+  final IconData icon;
+  final String tooltip;
+  final VoidCallback onTap;
+
+  const _IconAction({required this.icon, required this.tooltip, required this.onTap});
 
   @override
-  Widget build(BuildContext context) => Container(
-        width: 1,
-        margin: const EdgeInsets.symmetric(vertical: 6),
-        color: AppColors.black.withValues(alpha: 0.12),
-      );
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: context.tr(tooltip),
+      child: Material(
+        color: AppColors.white,
+        shape: const CircleBorder(side: BorderSide(color: AppColors.black, width: 1.2)),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onTap,
+          child: SizedBox(width: 44, height: 44, child: Icon(icon, size: 20, color: AppColors.black)),
+        ),
+      ),
+    );
+  }
 }
 
 class _Metric extends StatelessWidget {
   final String label;
   final int value;
 
-  const _Metric({required this.label, required this.value});
+  /// Sobre la tarjeta negra: número rosa y etiqueta clara.
+  final bool onDark;
+
+  /// En la franja de una sucursal: números más chicos.
+  final bool compact;
+
+  const _Metric({required this.label, required this.value, this.onDark = false, this.compact = false});
 
   @override
   Widget build(BuildContext context) {
@@ -408,7 +674,10 @@ class _Metric extends StatelessWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text('$value', style: AppTypography.display(size: 28)),
+          Text(
+            '$value',
+            style: AppTypography.display(size: compact ? 22 : 30, color: onDark ? AppColors.pink : AppColors.black),
+          ),
           const SizedBox(height: 2),
           // Una sola línea siempre: si no cabe, la letra se achica en vez de partirse.
           Padding(
@@ -418,7 +687,11 @@ class _Metric extends StatelessWidget {
               child: Text(
                 label.toUpperCase(),
                 maxLines: 1,
-                style: AppTypography.label(size: 10, tracking: 1, color: AppColors.textSecondary),
+                style: AppTypography.label(
+                  size: 10,
+                  tracking: 1,
+                  color: onDark ? AppColors.white.withValues(alpha: 0.7) : AppColors.textSecondary,
+                ),
               ),
             ),
           ),

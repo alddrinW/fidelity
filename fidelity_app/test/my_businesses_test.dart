@@ -1,4 +1,4 @@
-
+import 'package:fidelity_app/core/theme/app_colors.dart';
 import 'package:fidelity_app/features/business/branches/branches_repository.dart';
 import 'package:fidelity_app/features/business/branches/my_businesses_screen.dart';
 import 'package:flutter/material.dart';
@@ -39,10 +39,58 @@ void main() {
 
     expect(find.text('MIS NEGOCIOS'), findsOneWidget);
     expect(find.text('VILCANATU'), findsOneWidget);
-    expect(find.text('SUCURSAL'), findsWidgets);
+    expect(find.text('SUCURSALES'), findsOneWidget);
     expect(find.text('MI EQUIPO'), findsWidgets);
     expect(find.text('EDITAR'), findsWidgets);
     expect(find.text('AGREGAR SUCURSAL'), findsOneWidget);
+  });
+
+  testWidgets('el negocio principal va en una tarjeta negra y sus sucursales cuelgan de él', (tester) async {
+    await open(tester);
+
+    // La tarjeta negra del principal (con las cifras en rosa).
+    final hero = find.ancestor(
+      of: find.text('VILCANATU'),
+      matching: find.byWidgetPredicate(
+        (w) => w is Container && w.decoration is BoxDecoration && (w.decoration as BoxDecoration).color == AppColors.black,
+      ),
+    );
+    expect(hero, findsOneWidget);
+
+    // Las sucursales van debajo del principal, con su contador (2).
+    expect(find.text('2'), findsWidgets);
+    final principalTop = tester.getTopLeft(find.text('VILCANATU')).dy;
+    expect(tester.getTopLeft(find.text('SUCURSALES')).dy, greaterThan(principalTop));
+    expect(tester.getTopLeft(find.text('VILCANATU - CENTRO')).dy, greaterThan(tester.getTopLeft(find.text('SUCURSALES')).dy));
+    expect(find.text('VILCANATU - NORTE'), findsOneWidget);
+  });
+
+  testWidgets('las acciones de una sucursal son íconos con su nombre, y el botón principal sigue siendo "Usar este negocio"', (tester) async {
+    await open(tester);
+
+    expect(find.byTooltip('Mi equipo'), findsNWidgets(2)); // Centro y Norte (el principal lleva el texto)
+    expect(find.byTooltip('Editar'), findsNWidgets(2));
+    expect(find.text('USAR ESTE NEGOCIO'), findsWidgets);
+  });
+
+  testWidgets('una sucursal sin principal en la lista sale suelta, sin el encabezado', (tester) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(
+      ProviderScope(
+        overrides: [
+          businessOverviewProvider.overrideWith(
+            (ref) async => [const BusinessOverview(id: 'x', name: 'Huérfana', isActive: true, parentId: 'no-esta')],
+          ),
+        ],
+        child: spanishApp(const MyBusinessesScreen()),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('HUÉRFANA'), findsOneWidget);
+    expect(find.text('SUCURSALES'), findsNothing);
   });
 
   testWidgets('"Pendientes" se queda en una sola línea aunque la pantalla sea angosta', (tester) async {
