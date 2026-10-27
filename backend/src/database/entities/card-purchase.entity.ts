@@ -20,6 +20,18 @@ export enum CardPurchaseStatus {
   FAILED = 'failed',
   /** PayPhone cobró pero el cliente ya tenía esa tarjeta: hay que devolverle el dinero. */
   REFUND_DUE = 'refund_due',
+  /** Pagó por transferencia y subió el comprobante: el administrador lo está revisando. */
+  IN_REVIEW = 'in_review',
+  /** El administrador no aceptó el comprobante (ver `reviewNote`). */
+  REJECTED = 'rejected',
+}
+
+/** Cómo paga el cliente una tarjeta en venta. */
+export enum CardPurchaseMethod {
+  /** Con tarjeta, en PayPhone (el servidor confirma el cobro). */
+  PAYPHONE = 'payphone',
+  /** Por transferencia a las cuentas de Fidelity, con comprobante que revisa el administrador. */
+  TRANSFER = 'transfer',
 }
 
 /**
@@ -65,6 +77,9 @@ export class CardPurchase {
   @Column({ type: 'varchar', length: 12, default: CardPurchaseStatus.PENDING })
   status: CardPurchaseStatus;
 
+  @Column({ type: 'varchar', length: 10, default: CardPurchaseMethod.PAYPHONE })
+  method: CardPurchaseMethod;
+
   /** Referencia que ve el cliente en su comprobante (p. ej. TJ-7K2M9Q). */
   @Column({ type: 'varchar', length: 12, unique: true })
   reference: string;
@@ -81,6 +96,29 @@ export class CardPurchase {
 
   @Column({ name: 'gateway_auth_code', type: 'varchar', length: 40, nullable: true })
   gatewayAuthCode: string | null;
+
+  /** Con transferencia: la foto del comprobante que subió el cliente. */
+  @Column({ name: 'proof_url', type: 'text', nullable: true })
+  proofUrl: string | null;
+
+  /** Con transferencia: el número de transferencia u otro dato que anotó el cliente. */
+  @Column({ name: 'transfer_note', type: 'varchar', length: 200, nullable: true })
+  transferNote: string | null;
+
+  /** Cuándo el cliente subió el comprobante. */
+  @Column({ name: 'reported_at', type: 'timestamptz', nullable: true })
+  reportedAt: Date | null;
+
+  /** Por qué el administrador no aceptó el comprobante. */
+  @Column({ name: 'review_note', type: 'varchar', length: 300, nullable: true })
+  reviewNote: string | null;
+
+  @Column({ name: 'reviewed_by_id', type: 'uuid', nullable: true })
+  reviewedById: string | null;
+
+  /** Cuándo el administrador tomó la decisión (o empezó a aprobarla). */
+  @Column({ name: 'reviewed_at', type: 'timestamptz', nullable: true })
+  reviewedAt: Date | null;
 
   /** La tarjeta (gift card) que recibió al pagar. */
   @Column({ name: 'claim_id', type: 'uuid', nullable: true })

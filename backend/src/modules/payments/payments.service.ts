@@ -73,6 +73,21 @@ export class PaymentsService {
     return this.configService.get<BankAccountConfig[]>('payments.bankAccounts') ?? [];
   }
 
+  private static toPublicAccount(bank: BankAccountConfig) {
+    return {
+      bank: bank.name || null,
+      accountNumber: bank.accountNumber,
+      accountType: bank.accountType || null,
+      holder: bank.holder || null,
+      taxId: bank.taxId || null,
+    };
+  }
+
+  /** Las cuentas a las que se puede transferir (para quien paga fuera del registro, p. ej. una tarjeta en venta). */
+  async publicBankAccounts() {
+    return (await this.bankAccounts()).map(PaymentsService.toPublicAccount);
+  }
+
   /** El administrador fija las cuentas bancarias (una lista vacía deja solo el pago con tarjeta). */
   async updateBankAccounts(dto: UpdateBankAccountsDto) {
     const accounts: BankAccountConfig[] = [];
@@ -106,13 +121,7 @@ export class PaymentsService {
       currency: this.configService.get<string>('payments.currency') ?? 'USD',
       ...(await this.fees()),
       // Solo se ofrece un método de pago si está configurado.
-      bankAccounts: banks.map((bank) => ({
-        bank: bank.name || null,
-        accountNumber: bank.accountNumber,
-        accountType: bank.accountType || null,
-        holder: bank.holder || null,
-        taxId: bank.taxId || null,
-      })),
+      bankAccounts: banks.map(PaymentsService.toPublicAccount),
       // El pago con tarjeta (PayPhone) solo se ofrece si está configurado.
       cardEnabled: this.payphone.isConfigured(),
     };

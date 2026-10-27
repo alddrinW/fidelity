@@ -8,10 +8,15 @@ import {
   ClaimSource,
   ClaimStatus,
 } from '../../database/entities/campaign-claim.entity';
-import { CardPurchase, CardPurchaseStatus } from '../../database/entities/card-purchase.entity';
+import {
+  CardPurchase,
+  CardPurchaseMethod,
+  CardPurchaseStatus,
+} from '../../database/entities/card-purchase.entity';
 import { UserRole } from '../../database/entities/profile.entity';
 import { CampaignsService } from '../campaigns/campaigns.service';
 import { NotificationsService } from '../notifications/notifications.service';
+import { PaymentsService } from '../payments/payments.service';
 import { PayphoneService } from '../payments/payphone.service';
 import { SETTING_KEYS } from '../settings/settings.definitions';
 import { SettingsService } from '../settings/settings.service';
@@ -36,6 +41,7 @@ describe('CardSalesService', () => {
   let businessRepo: any;
   let campaigns: any;
   let payphone: any;
+  let payments: any;
   let notifications: any;
   let settings: any;
   let manager: any;
@@ -67,6 +73,7 @@ describe('CardSalesService', () => {
     amountCents: 25,
     commissionCents: 3,
     status: CardPurchaseStatus.PENDING,
+    method: CardPurchaseMethod.PAYPHONE,
     reference: 'TJ-ABC234',
     gatewayClientTxId: 'TJ-ABC234-X7K2',
     gatewayPayUrl: 'https://pay.payphonetodoesposible.com/pay/1',
@@ -102,6 +109,9 @@ describe('CardSalesService', () => {
       find: jest.fn().mockResolvedValue([]),
       create: jest.fn((d: any) => d),
       save: jest.fn(async (x: any) => x),
+      update: jest.fn().mockResolvedValue({ affected: 1 }),
+      exists: jest.fn().mockResolvedValue(true),
+      count: jest.fn().mockResolvedValue(0),
       createQueryBuilder: jest.fn(() => qb),
       manager: { transaction: jest.fn(async (cb: any) => cb(manager)) },
     };
@@ -121,6 +131,11 @@ describe('CardSalesService', () => {
       launchUrl: jest.fn((tx: string, area: string) => `https://api.test/${area}/pay/${tx}`),
       confirm: jest.fn(),
     };
+    payments = {
+      publicBankAccounts: jest.fn().mockResolvedValue([
+        { bank: 'Banco Pichincha', accountNumber: '2200112233', accountType: 'Ahorros', holder: 'Fidelity S.A.', taxId: '1790012345001' },
+      ]),
+    };
     notifications = {
       sendToUser: jest.fn().mockResolvedValue(true),
       broadcastToAdmins: jest.fn().mockResolvedValue(undefined),
@@ -136,6 +151,7 @@ describe('CardSalesService', () => {
         { provide: getRepositoryToken(Business), useValue: businessRepo },
         { provide: CampaignsService, useValue: campaigns },
         { provide: PayphoneService, useValue: payphone },
+        { provide: PaymentsService, useValue: payments },
         { provide: SettingsService, useValue: settings },
         { provide: NotificationsService, useValue: notifications },
       ],
@@ -160,7 +176,32 @@ describe('CardSalesService', () => {
         commissionPercent: 12,
         minPriceCents: 25,
         maxPriceCents: 2500,
+        cardEnabled: true,
+        transferEnabled: false,
+        bankAccounts: [],
       });
+    });
+
+    it('dice con qué se puede pagar: PayPhone y/o transferencia (si hay cuentas y está encendida)', async () => {
+      settings.get.mockImplementation(async (key: string) => (key === SETTING_KEYS.paidCardsTransferEnabled ? 1 : 1));
+      expect(await service.rules()).toMatchObject({ cardEnabled: true, transferEnabled: true });
+
+      // Sin cuentas bancarias no hay transferencia.
+      payments.publicBankAccounts.mockResolvedValue([]);
+      expect((await service.rules()).transferEnabled).toBe(false);
+
+      // Con la transferencia apagada, tampoco.
+      payments.publicBankAccounts.mockResolvedValue([{ accountNumber: '1' }]);
+      settings.get.mockImplementation(async (key: string) => (key === SETTING_KEYS.paidCardsTransferEnabled ? 0 : 1));
+      expect((await service.rules()).transferEnabled).toBe(false);
+
+      // Sin PayPhone configurado, solo transferencia.
+      payphone.isConfigured.mockReturnValue(false);
+      settings.get.mockResolvedValue(1);
+      const rules = await service.rules();
+      expect(rules).toMatchObject({ cardEnabled: false, transferEnabled: true });
+      // Y trae las cuentas donde transferir.
+      expect(rules.bankAccounts).toEqual([{ accountNumber: '1' }]);
     });
 
     it('apagada por defecto', async () => {
@@ -320,6 +361,366 @@ describe('CardSalesService', () => {
         expect.objectContaining({ id: 'old', status: CardPurchaseStatus.FAILED }),
       );
       expect(payphone.prepare).toHaveBeenCalled();
+    });
+  });
+
+  describe('pago por transferencia', () => {
+    const open = (extra: any = {}) =>
+      purchase({ method: CardPurchaseMethod.TRANSFER, reservedUntil: new Date(Date.now() + 6 * HOUR), ...extra });
+
+    beforeEach(() => {
+      // La transferencia encendida (por defecto) y con cuentas.
+      settings.get.mockResolvedValue(1);
+    });
+
+    describe('startPurchase con transferencia', () => {
+      it('reserva el cupo por 12 horas y devuelve las cuentas y la referencia, sin tocar PayPhone', async () => {
+        const result: any = await service.startPurchase('u1', 'c1', 'luis@test.com', 'transfer');
+
+        const created = manager.create.mock.calls[0][1];
+        expect(created.method).toBe(CardPurchaseMethod.TRANSFER);
+        expect(created.status).toBe(CardPurchaseStatus.PENDING);
+        const hours = (created.reservedUntil.getTime() - Date.now()) / HOUR;
+        expect(hours).toBeGreaterThan(11.9);
+        expect(hours).toBeLessThan(12.1);
+        expect(payphone.prepare).not.toHaveBeenCalled();
+        expect(result).toMatchObject({ method: 'transfer', amountCents: 25 });
+        expect(result.reference).toMatch(/^TJ-/);
+        expect(result.bankAccounts).toEqual([expect.objectContaining({ accountNumber: '2200112233' })]);
+      });
+
+      it('funciona aunque PayPhone no esté configurado', async () => {
+        payphone.isConfigured.mockReturnValue(false);
+
+        await expect(service.startPurchase('u1', 'c1', null, 'transfer')).resolves.toMatchObject({ method: 'transfer' });
+      });
+
+      it('sin cuentas bancarias o con la transferencia apagada, no se puede', async () => {
+        payments.publicBankAccounts.mockResolvedValue([]);
+        await expect(service.startPurchase('u1', 'c1', null, 'transfer')).rejects.toThrow(/transferencia no está disponible/);
+
+        payments.publicBankAccounts.mockResolvedValue([{ accountNumber: '1' }]);
+        settings.get.mockImplementation(async (key: string) => (key === SETTING_KEYS.paidCardsTransferEnabled ? 0 : 1));
+        await expect(service.startPurchase('u1', 'c1', null, 'transfer')).rejects.toThrow(/transferencia no está disponible/);
+      });
+
+      it('con un comprobante ya en revisión no se empieza otra compra de la misma tarjeta', async () => {
+        manager.exists.mockImplementation(async (entity: any, opts: any) => opts?.where?.status === CardPurchaseStatus.IN_REVIEW);
+
+        await expect(service.startPurchase('u1', 'c1', null, 'transfer')).rejects.toThrow(ConflictException);
+      });
+
+      it('empezar otra vez reemplaza la compra pendiente anterior', async () => {
+        const old = open({ id: 'old' });
+        manager.find.mockResolvedValue([old]);
+
+        await service.startPurchase('u1', 'c1', null, 'transfer');
+
+        expect(old.status).toBe(CardPurchaseStatus.FAILED);
+      });
+    });
+
+    describe('getRedirect', () => {
+      it('una compra por transferencia no tiene página de PayPhone', async () => {
+        purchaseRepo.findOne.mockResolvedValue(open());
+
+        expect(await service.getRedirect('TJ-ABC234-X7K2')).toBeNull();
+      });
+    });
+
+    describe('submitProof (el cliente sube el comprobante)', () => {
+      const proof = { proofUrl: 'data:image/png;base64,AAAA', note: '  Transferencia 123456  ' };
+
+      it('pasa la compra a "en revisión", guarda el comprobante y avisa a los administradores', async () => {
+        purchaseRepo.findOne.mockResolvedValue(open());
+
+        const result = await service.submitProof('u1', 'p1', proof);
+
+        expect(purchaseRepo.update).toHaveBeenCalledWith(
+          { id: 'p1', status: CardPurchaseStatus.PENDING },
+          expect.objectContaining({
+            status: CardPurchaseStatus.IN_REVIEW,
+            proofUrl: proof.proofUrl,
+            transferNote: 'Transferencia 123456',
+            reportedAt: expect.any(Date),
+          }),
+        );
+        expect(result).toEqual({ id: 'p1', status: CardPurchaseStatus.IN_REVIEW, reference: 'TJ-ABC234' });
+        expect(notifications.broadcastToAdmins).toHaveBeenCalledWith(
+          'Comprobante de tarjeta por revisar',
+          expect.stringContaining('TJ-ABC234'),
+          '/admin_card_reviews',
+        );
+      });
+
+      it('solo el comprador puede subirlo, y solo de una compra por transferencia', async () => {
+        purchaseRepo.findOne.mockResolvedValue(open({ userId: 'otro' }));
+        await expect(service.submitProof('u1', 'p1', proof)).rejects.toThrow(NotFoundException);
+
+        purchaseRepo.findOne.mockResolvedValue(purchase()); // PayPhone
+        await expect(service.submitProof('u1', 'p1', proof)).rejects.toThrow(NotFoundException);
+
+        purchaseRepo.findOne.mockResolvedValue(null);
+        await expect(service.submitProof('u1', 'p1', proof)).rejects.toThrow(NotFoundException);
+      });
+
+      it('con la reserva vencida hay que empezar de nuevo', async () => {
+        purchaseRepo.findOne.mockResolvedValue(open({ reservedUntil: new Date(Date.now() - 1000) }));
+
+        await expect(service.submitProof('u1', 'p1', proof)).rejects.toThrow(/reserva .* venció/);
+        expect(purchaseRepo.update).not.toHaveBeenCalled();
+      });
+
+      it('ya en revisión, pagada o rechazada: no admite otro comprobante', async () => {
+        purchaseRepo.findOne.mockResolvedValue(open({ status: CardPurchaseStatus.IN_REVIEW }));
+        await expect(service.submitProof('u1', 'p1', proof)).rejects.toThrow(ConflictException);
+
+        purchaseRepo.findOne.mockResolvedValue(open({ status: CardPurchaseStatus.REJECTED }));
+        await expect(service.submitProof('u1', 'p1', proof)).rejects.toThrow(/Empieza de nuevo/);
+
+        purchaseRepo.findOne.mockResolvedValue(open({ status: CardPurchaseStatus.PAID }));
+        await expect(service.submitProof('u1', 'p1', proof)).rejects.toThrow(BadRequestException);
+      });
+
+      it('dos toques seguidos no lo envían dos veces', async () => {
+        purchaseRepo.findOne.mockResolvedValue(open());
+        purchaseRepo.update.mockResolvedValue({ affected: 0 });
+
+        await expect(service.submitProof('u1', 'p1', proof)).rejects.toThrow(ConflictException);
+        expect(notifications.broadcastToAdmins).not.toHaveBeenCalled();
+      });
+
+      it('sin foto no se envía', async () => {
+        purchaseRepo.findOne.mockResolvedValue(open());
+
+        await expect(service.submitProof('u1', 'p1', { proofUrl: '' })).rejects.toThrow(/comprobante/);
+      });
+
+      it('un aviso que falla no deshace el envío', async () => {
+        purchaseRepo.findOne.mockResolvedValue(open());
+        notifications.broadcastToAdmins.mockRejectedValue(new Error('sin red'));
+
+        await expect(service.submitProof('u1', 'p1', proof)).resolves.toMatchObject({ status: CardPurchaseStatus.IN_REVIEW });
+      });
+    });
+
+    describe('offersFor con una transferencia en curso', () => {
+      beforeEach(() => {
+        campaignRepo.find.mockResolvedValue([offer()]);
+        rawRows = [{ campaignId: 'c1', n: '3' }]; // agotada para los demás
+      });
+
+      it('muestra al cliente su compra en revisión aunque la oferta se haya agotado', async () => {
+        purchaseRepo.find.mockResolvedValue([open({ status: CardPurchaseStatus.IN_REVIEW })]);
+
+        const [first] = await service.offersFor('u1');
+
+        expect(first.stockLeft).toBe(0);
+        expect(first.purchase).toMatchObject({ id: 'p1', status: 'in_review', reference: 'TJ-ABC234', reservedUntil: null });
+      });
+
+      it('esperando el comprobante: trae hasta cuándo se guarda el cupo', async () => {
+        rawRows = [];
+        const pending = open();
+        purchaseRepo.find.mockResolvedValue([pending]);
+
+        const [first] = await service.offersFor('u1');
+
+        expect(first.purchase).toMatchObject({ status: 'pending', reservedUntil: pending.reservedUntil });
+      });
+
+      it('una reserva vencida ya no se muestra', async () => {
+        rawRows = [];
+        purchaseRepo.find.mockResolvedValue([open({ reservedUntil: new Date(Date.now() - 1000) })]);
+
+        const [first] = await service.offersFor('u1');
+
+        expect(first.purchase).toBeNull();
+      });
+
+      it('rechazada: trae el motivo para que el cliente lo corrija', async () => {
+        rawRows = [];
+        purchaseRepo.find.mockResolvedValue([open({ status: CardPurchaseStatus.REJECTED, reviewNote: 'El monto no coincide' })]);
+
+        const [first] = await service.offersFor('u1');
+
+        expect(first.purchase).toMatchObject({ status: 'rejected', reviewNote: 'El monto no coincide' });
+      });
+
+      it('con la tarjeta ya entregada no queda ninguna compra en curso (aunque haya un rechazo antiguo)', async () => {
+        rawRows = [];
+        claimRepo.find.mockResolvedValue([{ id: 'cl1', campaignId: 'c1', code: 'GFT-ABC234', status: 'active', expiresAt: new Date() }]);
+        purchaseRepo.find.mockResolvedValue([open({ status: CardPurchaseStatus.REJECTED, reviewNote: 'antiguo' })]);
+
+        const [first] = await service.offersFor('u1');
+
+        expect(first.claim).toMatchObject({ code: 'GFT-ABC234' });
+        expect(first.purchase).toBeNull();
+      });
+
+      it('la compra en revisión guarda su cupo', async () => {
+        await service.offersFor('u1');
+
+        const sold = qb.andWhere.mock.calls.find((c: any[]) => /IN \(:\.\.\.sold\)/.test(c[0]));
+        expect(sold[1].sold).toEqual(expect.arrayContaining([CardPurchaseStatus.IN_REVIEW]));
+      });
+    });
+
+    describe('administrador: revisar comprobantes', () => {
+      it('lista los comprobantes por revisar, del más antiguo al más nuevo', async () => {
+        purchaseRepo.find.mockResolvedValue([
+          open({
+            status: CardPurchaseStatus.IN_REVIEW,
+            proofUrl: 'data:image/png;base64,AAAA',
+            transferNote: 'Transf. 99',
+            reportedAt: new Date('2026-10-27T10:00:00Z'),
+            user: { fullName: 'Luis Mora', email: 'luis@test.com' },
+            business: { name: 'Café Aurora' },
+          }),
+        ]);
+
+        const list = await service.reviews();
+
+        expect(purchaseRepo.find).toHaveBeenCalledWith(
+          expect.objectContaining({
+            where: { status: CardPurchaseStatus.IN_REVIEW, method: CardPurchaseMethod.TRANSFER },
+            order: { reportedAt: 'ASC' },
+          }),
+        );
+        expect(list).toEqual([
+          expect.objectContaining({
+            id: 'p1',
+            reference: 'TJ-ABC234',
+            amountCents: 25,
+            title: 'Café pequeño',
+            buyer: 'Luis Mora',
+            buyerEmail: 'luis@test.com',
+            businessName: 'Café Aurora',
+            proofUrl: 'data:image/png;base64,AAAA',
+            note: 'Transf. 99',
+          }),
+        ]);
+      });
+
+      describe('approve', () => {
+        const inReview = () =>
+          open({
+            status: CardPurchaseStatus.IN_REVIEW,
+            user: { fullName: 'Luis Mora' },
+          });
+
+        it('entrega la tarjeta con su código y su vencimiento, y avisa a las dos partes', async () => {
+          const p = inReview();
+          purchaseRepo.findOne.mockResolvedValue(p);
+
+          const result = await service.approve('p1', 'admin-1');
+
+          expect(purchaseRepo.update).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'p1', status: CardPurchaseStatus.IN_REVIEW }),
+            expect.objectContaining({ reviewedById: 'admin-1' }),
+          );
+          expect(p.status).toBe(CardPurchaseStatus.PAID);
+          expect(p.claimId).toBe('cl1');
+          expect(p.paidAt).toBeInstanceOf(Date);
+          expect(claimRepo.save).toHaveBeenCalledTimes(1);
+          expect(claimRepo.create.mock.calls[0][0]).toMatchObject({ source: ClaimSource.PURCHASE, userId: 'u1', campaignId: 'c1' });
+          expect(notifications.sendToUser).toHaveBeenCalledWith('u1', 'Compra aprobada', expect.any(String), expect.anything());
+          expect(notifications.sendToUser).toHaveBeenCalledWith('owner-1', 'Vendiste una tarjeta', expect.any(String), expect.anything());
+          expect(result).toMatchObject({ id: 'p1', outcome: 'approved' });
+        });
+
+        it('dos administradores a la vez: solo uno la entrega', async () => {
+          purchaseRepo.update.mockResolvedValue({ affected: 0 });
+          purchaseRepo.exists.mockResolvedValue(true);
+
+          await expect(service.approve('p1', 'admin-2')).rejects.toThrow(/ya fue revisado/);
+          expect(claimRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('una compra que no existe da 404', async () => {
+          purchaseRepo.update.mockResolvedValue({ affected: 0 });
+          purchaseRepo.exists.mockResolvedValue(false);
+
+          await expect(service.approve('nada', 'admin-1')).rejects.toThrow(NotFoundException);
+        });
+
+        it('si algo falla al entregar, se puede volver a intentar', async () => {
+          purchaseRepo.findOne.mockResolvedValue(inReview());
+          claimRepo.save.mockRejectedValue(new Error('base caída'));
+
+          await expect(service.approve('p1', 'admin-1')).rejects.toThrow('base caída');
+
+          expect(purchaseRepo.update).toHaveBeenLastCalledWith({ id: 'p1' }, { reviewedAt: null, reviewedById: null });
+        });
+
+        it('si el cliente ya tenía la tarjeta, queda por devolver y se avisa', async () => {
+          const p = inReview();
+          purchaseRepo.findOne.mockResolvedValue(p);
+          claimRepo.findOne.mockResolvedValue({ id: 'ya' });
+
+          await service.approve('p1', 'admin-1');
+
+          expect(p.status).toBe(CardPurchaseStatus.REFUND_DUE);
+          expect(claimRepo.save).not.toHaveBeenCalled();
+          expect(notifications.broadcastToAdmins).toHaveBeenCalled();
+        });
+      });
+
+      describe('reject', () => {
+        it('libera el cupo, guarda el motivo y se lo dice al cliente', async () => {
+          purchaseRepo.findOne.mockResolvedValue(open({ status: CardPurchaseStatus.IN_REVIEW }));
+
+          const result = await service.reject('p1', 'admin-1', '  El monto no coincide  ');
+
+          expect(purchaseRepo.update).toHaveBeenCalledWith(
+            expect.objectContaining({ id: 'p1', status: CardPurchaseStatus.IN_REVIEW }),
+            expect.objectContaining({
+              status: CardPurchaseStatus.REJECTED,
+              reviewNote: 'El monto no coincide',
+              reviewedById: 'admin-1',
+            }),
+          );
+          expect(notifications.sendToUser).toHaveBeenCalledWith(
+            'u1',
+            'Comprobante no aceptado',
+            expect.stringContaining('El monto no coincide'),
+            expect.objectContaining({ type: 'card_transfer_rejected' }),
+          );
+          expect(result).toEqual({ id: 'p1', status: CardPurchaseStatus.REJECTED });
+          expect(claimRepo.save).not.toHaveBeenCalled();
+        });
+
+        it('pide el motivo', async () => {
+          await expect(service.reject('p1', 'admin-1', '   ')).rejects.toThrow(/motivo/);
+          expect(purchaseRepo.update).not.toHaveBeenCalled();
+        });
+
+        it('si ya se revisó, avisa; si no existe, 404', async () => {
+          purchaseRepo.findOne.mockResolvedValue(open({ status: CardPurchaseStatus.IN_REVIEW }));
+          purchaseRepo.update.mockResolvedValue({ affected: 0 });
+          await expect(service.reject('p1', 'admin-1', 'motivo')).rejects.toThrow(/ya fue revisado/);
+
+          purchaseRepo.findOne.mockResolvedValue(null);
+          await expect(service.reject('nada', 'admin-1', 'motivo')).rejects.toThrow(NotFoundException);
+        });
+      });
+
+      it('cuenta los comprobantes por revisar', async () => {
+        purchaseRepo.count.mockResolvedValue(4);
+
+        expect(await service.countReviews()).toBe(4);
+      });
+    });
+
+    describe('confirm con una compra por transferencia', () => {
+      it('no se confirma con PayPhone', async () => {
+        purchaseRepo.findOne.mockResolvedValue(open());
+
+        const result = await service.confirm(1, 'TJ-ABC234-X7K2');
+
+        expect(result.outcome).toBe('failed');
+        expect(payphone.confirm).not.toHaveBeenCalled();
+      });
     });
   });
 

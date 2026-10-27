@@ -7,7 +7,7 @@ import { RolesGuard } from '../../common/guards/roles.guard';
 import { AuthenticatedUser } from '../../common/interfaces/jwt-payload.interface';
 import { UserRole } from '../../database/entities/profile.entity';
 import { CARD_SALES_AREA, CardSalesService, PurchaseOutcome } from './card-sales.service';
-import { SettlePayoutDto } from './dto/card-sales.dto';
+import { PurchaseDto, RejectProofDto, SettlePayoutDto, SubmitProofDto } from './dto/card-sales.dto';
 
 /** Las tarjetas en venta: el cliente las ve y las compra; el dueño ve lo vendido; el administrador paga a los locales. */
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -31,14 +31,29 @@ export class CardSalesController {
     return this.cardSales.offersFor(user.id);
   }
 
-  /** Empieza la compra: devuelve la página de pago de PayPhone. */
+  /**
+   * Empieza la compra. Con tarjeta (por defecto) devuelve la página de pago de PayPhone;
+   * con `method: "transfer"` devuelve las cuentas donde transferir y la referencia.
+   */
   @Post(':campaignId/purchase')
   @Roles(UserRole.CLIENT)
   purchase(
     @CurrentUser() user: AuthenticatedUser,
     @Param('campaignId', ParseUUIDPipe) campaignId: string,
+    @Body() dto: PurchaseDto,
   ) {
-    return this.cardSales.startPurchase(user.id, campaignId, user.email);
+    return this.cardSales.startPurchase(user.id, campaignId, user.email, dto?.method ?? 'card');
+  }
+
+  /** El cliente sube el comprobante de su transferencia. */
+  @Post('purchases/:purchaseId/proof')
+  @Roles(UserRole.CLIENT)
+  proof(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('purchaseId', ParseUUIDPipe) purchaseId: string,
+    @Body() dto: SubmitProofDto,
+  ) {
+    return this.cardSales.submitProof(user.id, purchaseId, dto);
   }
 
   // --- Dueño ---
@@ -50,6 +65,32 @@ export class CardSalesController {
   }
 
   // --- Administrador ---
+
+  /** Las transferencias con comprobante que esperan revisión. */
+  @Get('admin/reviews')
+  @Roles(UserRole.ADMIN)
+  reviews() {
+    return this.cardSales.reviews();
+  }
+
+  @Post('admin/reviews/:purchaseId/approve')
+  @Roles(UserRole.ADMIN)
+  approve(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('purchaseId', ParseUUIDPipe) purchaseId: string,
+  ) {
+    return this.cardSales.approve(purchaseId, user.id);
+  }
+
+  @Post('admin/reviews/:purchaseId/reject')
+  @Roles(UserRole.ADMIN)
+  rejectProof(
+    @CurrentUser() user: AuthenticatedUser,
+    @Param('purchaseId', ParseUUIDPipe) purchaseId: string,
+    @Body() dto: RejectProofDto,
+  ) {
+    return this.cardSales.reject(purchaseId, user.id, dto.reason);
+  }
 
   @Get('admin/payouts')
   @Roles(UserRole.ADMIN)

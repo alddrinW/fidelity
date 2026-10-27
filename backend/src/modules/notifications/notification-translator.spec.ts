@@ -63,6 +63,16 @@ describe('notificationTranslator', () => {
         'Luis Mora compró «Café pequeño» por $0.25. Te tocan $0.22 cuando la canjee.',
         'Luis Mora bought "Café pequeño" for $0.25. You get $0.22 when they redeem it.',
       ],
+      ['Comprobante de tarjeta por revisar', 'Card payment proof to review'],
+      [
+        'Luis Mora pagó $0.25 por «Café pequeño» (TJ-ABC234). Revisa el comprobante.',
+        'Luis Mora paid $0.25 for "Café pequeño" (TJ-ABC234). Review the proof.',
+      ],
+      ['Comprobante no aceptado', 'Payment proof not accepted'],
+      [
+        'No pudimos validar tu pago de $0.25 (TJ-ABC234): El monto no coincide. Puedes intentarlo de nuevo desde la tarjeta.',
+        "We couldn't validate your $0.25 payment (TJ-ABC234): El monto no coincide. You can try again from the card.",
+      ],
       ['Te pagamos tus tarjetas canjeadas', 'We paid you for your redeemed cards'],
       [
         'Registramos un pago de $0.44 por 2 tarjetas canjeadas.',
