@@ -1,39 +1,45 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart' hide Text;
-import 'package:flutter_animate/flutter_animate.dart';
+import 'package:flutter/rendering.dart';
 import 'package:gal/gal.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:pdf/pdf.dart';
-import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:uuid/uuid.dart';
 
+import '../../../core/l10n/tr_text.dart';
+import '../../../core/l10n/translator.dart';
 import '../../../core/services/api_client.dart';
 import '../../../core/services/realtime_sync_service.dart';
 import '../../../core/theme/app_colors.dart';
 import '../../../core/theme/app_typography.dart';
-import '../../../core/utils/date_utils.dart';
 import '../../../core/utils/file_download.dart';
 import '../../../core/widgets/app_button.dart';
-import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/app_empty_state.dart';
 import '../../../core/widgets/app_message_dialog.dart';
 import '../../../core/widgets/app_page_header.dart';
 import '../../../core/widgets/app_responsive_body.dart';
 import '../dashboard/widgets/dashboard_animated_toast.dart';
-import '../../../core/l10n/tr_text.dart';
+import 'qr_poster.dart';
 
-/// Códigos QR del negocio: ver, descargar como imagen o PDF para imprimir y,
-/// si un código quedó dañado, regenerarlo.
+/// "Mi código": el cartel del código QR del local (logo, nombre, código y lo que se gana)
+/// sobre fondo rosa, con tres acciones: imprimir el cartel, compartirlo y descargarlo.
+/// Si el código quedó dañado, se puede regenerar.
 class QRManagementScreen extends StatefulWidget {
   final String businessId;
-  const QRManagementScreen({super.key, required this.businessId});
+
+  /// Los datos del negocio (nombre, logo, puntos y premio), tal como los devuelve el backend.
+  final Map<String, dynamic>? business;
+
+  /// De dónde salen los códigos (en las pruebas se cambia por unos de mentira).
+  final Future<List<Map<String, dynamic>>> Function()? codesLoader;
+
+  const QRManagementScreen({super.key, required this.businessId, this.business, this.codesLoader});
 
   @override
   State<QRManagementScreen> createState() => _QRManagementScreenState();
@@ -42,6 +48,13 @@ class QRManagementScreen extends StatefulWidget {
 class _QRManagementScreenState extends State<QRManagementScreen> {
   List<Map<String, dynamic>> _qrCodes = [];
   bool _isLoading = true;
+  bool _working = false;
+
+  /// El código que se está viendo cuando el local tiene más de uno.
+  int _selected = 0;
+
+  /// Para sacar la imagen del cartel tal como se ve.
+  final _posterKey = GlobalKey();
 
   StreamSubscription<void>? _qrCodesSub;
 
@@ -60,36 +73,42 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
     super.dispose();
   }
 
+  Map<String, dynamic>? get _business => widget.business;
+  String get _name => (_business?['name'] ?? 'Mi local').toString();
+  String? get _logoUrl => (_business?['logoUrl'] ?? _business?['logo_url'])?.toString();
+
+  Future<List<Map<String, dynamic>>> _fetchCodes() async {
+    final loader = widget.codesLoader;
+    if (loader != null) return loader();
+    final response = await ApiClient().get('qr-codes/business/${widget.businessId}');
+    if (response is! List) return [];
+    return response
+        .map((q) => <String, dynamic>{
+              'id': q['id'],
+              'business_id': q['businessId'] ?? q['business_id'],
+              'qr_code': q['qrCode'] ?? q['qr_code'],
+              'label': q['label'] ?? 'Código QR',
+              'is_active': q['isActive'] ?? q['is_active'] ?? true,
+              'created_at': q['createdAt'] ?? q['created_at'],
+            })
+        .toList();
+  }
+
   Future<void> _loadQRCodes() async {
     if (!mounted) return;
     setState(() => _isLoading = true);
     try {
-      final response = await ApiClient().get('qr-codes/business/${widget.businessId}');
-
+      final codes = await _fetchCodes();
       if (mounted) {
         setState(() {
-          if (response is List) {
-            _qrCodes = response
-                .map((q) => {
-                      'id': q['id'],
-                      'business_id': q['businessId'] ?? q['business_id'],
-                      'qr_code': q['qrCode'] ?? q['qr_code'],
-                      'label': q['label'] ?? 'Código QR',
-                      'is_active': q['isActive'] ?? q['is_active'] ?? true,
-                      'created_at': q['createdAt'] ?? q['created_at'],
-                    })
-                .toList();
-          } else {
-            _qrCodes = [];
-          }
+          _qrCodes = codes;
+          if (_selected >= _qrCodes.length) _selected = 0;
           _isLoading = false;
         });
       }
     } catch (e) {
       debugPrint('Error loading QR codes: $e');
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -103,315 +122,164 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
         'label': 'Código QR Único',
       });
       await _loadQRCodes();
-      if (mounted) {
-        DashboardAnimatedToast.show(context, 'Código QR generado');
-      }
+      if (mounted) DashboardAnimatedToast.show(context, 'Código QR generado');
     } catch (e) {
       if (mounted) {
         DashboardAnimatedToast.show(context, 'Error al generar QR: $e', isError: true);
       }
     } finally {
-      if (mounted) {
-        setState(() => _isLoading = false);
-      }
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  String _cleanLabel(String label) =>
-      label.replaceAll(RegExp(r'[^\w\s]+'), '').replaceAll(' ', '_');
+  String _fileName(String ext) {
+    final clean = _name.replaceAll(RegExp(r'[^\w\s]+'), '').trim().replaceAll(RegExp(r'\s+'), '_');
+    return 'qr_${clean.isEmpty ? 'fidelity' : clean}.$ext';
+  }
 
-  Future<void> _shareQRImage(String code, String label) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Generando y guardando imagen...'),
-        duration: Duration(seconds: 1),
-      ),
-    );
+  /// La imagen del cartel tal como se ve en pantalla (en alta resolución).
+  Future<Uint8List> _posterPng() async {
+    final boundary = _posterKey.currentContext?.findRenderObject() as RenderRepaintBoundary?;
+    if (boundary == null) throw Exception('El cartel todavía no está listo');
+    final image = await boundary.toImage(pixelRatio: 3);
+    final data = await image.toByteData(format: ui.ImageByteFormat.png);
+    return data!.buffer.asUint8List();
+  }
 
+  void _error(String what, Object e) {
+    if (mounted) DashboardAnimatedToast.show(context, '$what: $e', isError: true);
+  }
+
+  /// Imprime el cartel (abre el diálogo de impresión; también sirve para guardarlo como PDF).
+  Future<void> _print() async {
+    if (_working) return;
+    final qr = _current;
+    if (qr == null) return;
+    setState(() => _working = true);
     try {
-      final painter = QrPainter(
-        data: code,
-        version: QrVersions.auto,
-        gapless: true,
-        errorCorrectionLevel: QrErrorCorrectLevel.H,
-        eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
-        dataModuleStyle: const QrDataModuleStyle(
-          dataModuleShape: QrDataModuleShape.square,
-          color: Colors.black,
-        ),
+      final bytes = await buildQrPosterPdf(
+        code: qr,
+        name: _name,
+        logoUrl: _logoUrl,
+        pointsLine: qrPointsLine(_business),
       );
+      await Printing.layoutPdf(onLayout: (_) async => bytes, name: _fileName('pdf'));
+    } catch (e) {
+      _error('Error al preparar el cartel', e);
+    } finally {
+      if (mounted) setState(() => _working = false);
+    }
+  }
 
-      final picRecorder = ui.PictureRecorder();
-      final canvas = Canvas(picRecorder);
-
-      // Fondo blanco (900x900) y el QR con margen en el centro.
-      canvas.drawRect(const Rect.fromLTWH(0, 0, 900, 900), Paint()..color = Colors.white);
-      canvas.translate(50, 50);
-      painter.paint(canvas, const Size(800, 800));
-
-      final image = await picRecorder.endRecording().toImage(900, 900);
-      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
-      final pngBytes = byteData!.buffer.asUint8List();
-      final cleanLabel = _cleanLabel(label);
-
-      // En el navegador no hay galería ni carpeta temporal: se descarga el PNG.
+  /// Comparte la imagen del cartel (WhatsApp, correo...). En el navegador la descarga.
+  Future<void> _share() async {
+    if (_working) return;
+    setState(() => _working = true);
+    try {
+      final bytes = await _posterPng();
       if (kIsWeb) {
-        downloadBytesInBrowser(pngBytes, 'qr_$cleanLabel.png', 'image/png');
+        downloadBytesInBrowser(bytes, _fileName('png'), 'image/png');
         if (mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          DashboardAnimatedToast.show(
-            context,
-            'Imagen descargada. Búscala en tu carpeta de descargas.',
-          );
+          DashboardAnimatedToast.show(context, 'Imagen descargada. Búscala en tu carpeta de descargas.');
         }
         return;
       }
-
-      final tempDir = await getTemporaryDirectory();
-      final file = await File('${tempDir.path}/qr_$cleanLabel.png').create();
-      await file.writeAsBytes(pngBytes);
-
-      // Guardar en la galería primero
-      try {
-        final hasAccess = await Gal.hasAccess(toAlbum: true);
-        if (!hasAccess) {
-          await Gal.requestAccess(toAlbum: true);
-        }
-        await Gal.putImage(file.path, album: 'Fidelity');
-        if (mounted) {
-          ScaffoldMessenger.of(context).hideCurrentSnackBar();
-          showDialog<void>(
-            context: context,
-            builder: (_) => const AppMessageDialog(
-              icon: Icons.check_circle_outline_rounded,
-              title: '¡Código guardado!',
-              message: 'La imagen del código QR se guardó en tu galería de fotos.',
-              primaryLabel: 'Listo',
-            ),
-          );
-        }
-      } catch (e) {
-        debugPrint('Error guardando en galería: $e');
-      }
-
-      if (mounted) {
-        // ignore: deprecated_member_use
-        await Share.shareXFiles(
-          [XFile(file.path)],
-          text: 'Código QR: $label',
-          subject: 'QR Fidelity - $label',
-        );
-      }
+      final dir = await getTemporaryDirectory();
+      final file = await File('${dir.path}/${_fileName('png')}').writeAsBytes(bytes);
+      // ignore: deprecated_member_use
+      await Share.shareXFiles([XFile(file.path)], text: 'Mi código de $_name en Fidelity');
     } catch (e) {
-      if (mounted) {
-        DashboardAnimatedToast.show(context, 'Error al compartir imagen: $e', isError: true);
-      }
+      _error('Error al compartir', e);
+    } finally {
+      if (mounted) setState(() => _working = false);
     }
   }
 
-  Future<void> _shareQRPdf(String code, String label) async {
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Generando PDF...'),
-        duration: Duration(seconds: 1),
-      ),
-    );
-
+  /// Guarda la imagen del cartel: en la galería (teléfono) o en descargas (navegador).
+  Future<void> _download() async {
+    if (_working) return;
+    setState(() => _working = true);
     try {
-      final doc = pw.Document();
-
-      doc.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          build: (pw.Context context) {
-            return pw.Center(
-              child: pw.Column(
-                mainAxisAlignment: pw.MainAxisAlignment.center,
-                children: [
-                  pw.Text(
-                    label,
-                    style: pw.TextStyle(fontSize: 40, fontWeight: pw.FontWeight.bold),
-                  ),
-                  pw.SizedBox(height: 32),
-                  pw.Stack(
-                    alignment: pw.Alignment.center,
-                    children: [
-                      pw.BarcodeWidget(
-                        barcode: pw.Barcode.qrCode(
-                          errorCorrectLevel: pw.BarcodeQRCorrectionLevel.high,
-                        ),
-                        data: code,
-                        width: 300,
-                        height: 300,
-                      ),
-                    ],
-                  ),
-                  pw.SizedBox(height: 16),
-                  pw.Text(
-                    code,
-                    style: const pw.TextStyle(fontSize: 12, color: PdfColors.grey700),
-                  ),
-                  pw.SizedBox(height: 32),
-                  pw.Text(
-                    'Escanea este código para ganar puntos',
-                    style: const pw.TextStyle(fontSize: 20),
-                  ),
-                ],
-              ),
-            );
-          },
-        ),
-      );
-
-      final bytes = await doc.save();
-
+      final bytes = await _posterPng();
+      if (kIsWeb) {
+        downloadBytesInBrowser(bytes, _fileName('png'), 'image/png');
+        if (mounted) {
+          DashboardAnimatedToast.show(context, 'Imagen descargada. Búscala en tu carpeta de descargas.');
+        }
+        return;
+      }
+      final dir = await getTemporaryDirectory();
+      final file = await File('${dir.path}/${_fileName('png')}').writeAsBytes(bytes);
+      if (!await Gal.hasAccess(toAlbum: true)) await Gal.requestAccess(toAlbum: true);
+      await Gal.putImage(file.path, album: 'Fidelity');
       if (mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
-        DashboardAnimatedToast.show(
-          context,
-          'PDF generado. Guárdalo o compártelo para imprimirlo.',
+        await showDialog<void>(
+          context: context,
+          builder: (_) => const AppMessageDialog(
+            icon: Icons.check_circle_outline_rounded,
+            title: '¡Código guardado!',
+            message: 'La imagen del código QR se guardó en tu galería de fotos.',
+            primaryLabel: 'Listo',
+          ),
         );
       }
-
-      // sharePdf abre "Guardar en Archivos" o "Compartir" en el teléfono, y
-      // descarga el archivo en el navegador.
-      await Printing.sharePdf(bytes: bytes, filename: 'qr_${_cleanLabel(label)}.pdf');
     } catch (e) {
-      if (mounted) {
-        DashboardAnimatedToast.show(context, 'Error al generar PDF: $e', isError: true);
-      }
+      _error('Error al descargar', e);
+    } finally {
+      if (mounted) setState(() => _working = false);
     }
   }
 
-  void _showQRDialog(String code, String label) {
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => Dialog(
-        backgroundColor: AppColors.white,
-        insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(32)),
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(28),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                label.toUpperCase(),
-                textAlign: TextAlign.center,
-                style: AppTypography.display(size: 30),
-              ),
-              const SizedBox(height: 16),
-              Container(
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: AppColors.white,
-                  borderRadius: BorderRadius.circular(24),
-                  border: Border.all(color: AppColors.black, width: 1.2),
-                ),
-                child: QrImageView(
-                  data: code,
-                  version: QrVersions.auto,
-                  size: 220,
-                  eyeStyle: const QrEyeStyle(eyeShape: QrEyeShape.square, color: Colors.black),
-                  dataModuleStyle: const QrDataModuleStyle(
-                    dataModuleShape: QrDataModuleShape.square,
-                    color: Colors.black,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 10),
-              SelectableText(
-                code,
-                textAlign: TextAlign.center,
-                style: AppTypography.body(
-                  size: 11,
-                  weight: FontWeight.w400,
-                  color: AppColors.textSecondary,
-                ),
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: _QrActionButton(
-                      icon: Icons.image_outlined,
-                      label: 'Imagen',
-                      onPressed: () {
-                        Navigator.pop(dialogContext);
-                        _shareQRImage(code, label);
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: _QrActionButton(
-                      icon: Icons.picture_as_pdf_outlined,
-                      label: 'PDF',
-                      onPressed: () {
-                        Navigator.pop(dialogContext);
-                        _shareQRPdf(code, label);
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              AppPrimaryButton(label: 'Listo', onPressed: () => Navigator.pop(dialogContext)),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _confirmRegenerateQR(int index, String label) {
+  void _confirmRegenerateQR(int index) {
     showDialog<void>(
       context: context,
       builder: (_) => AppMessageDialog(
         icon: Icons.refresh_rounded,
         title: 'Regenerar QR',
         message: 'El código actual dejará de funcionar. ¿Estás seguro?',
+        hint: 'Tendrás que volver a imprimir tu cartel con el código nuevo.',
         primaryLabel: 'Regenerar',
-        onPrimary: () => _regenerateQR(index, label),
+        onPrimary: () => _regenerateQR(index),
         secondaryLabel: 'Cancelar',
       ),
     );
   }
 
-  Future<void> _regenerateQR(int index, String label) async {
+  Future<void> _regenerateQR(int index) async {
     try {
       final newCode = const Uuid().v4();
       final qrId = _qrCodes[index]['id'];
-
       if (qrId == null) throw Exception('ID de QR no encontrado');
 
       await ApiClient().patch('qr-codes/$qrId', body: {'qrCode': newCode});
-
-      setState(() {
-        _qrCodes[index]['qr_code'] = newCode;
-      });
-
-      if (mounted) {
-        DashboardAnimatedToast.show(context, 'QR regenerado correctamente');
-        _showQRDialog(newCode, label);
-      }
+      setState(() => _qrCodes[index]['qr_code'] = newCode);
+      if (mounted) DashboardAnimatedToast.show(context, 'QR regenerado correctamente');
     } catch (e) {
-      if (mounted) {
-        DashboardAnimatedToast.show(context, 'Error al regenerar: $e', isError: true);
-      }
+      _error('Error al regenerar', e);
     }
+  }
+
+  /// El código que se está viendo (`null` si está dañado o no hay).
+  String? get _current {
+    if (_qrCodes.isEmpty) return null;
+    final code = (_qrCodes[_selected]['qr_code'] ?? '').toString();
+    return code.isEmpty ? null : code;
   }
 
   @override
   Widget build(BuildContext context) {
+    final showPoster = !_isLoading && _current != null;
+
     return Scaffold(
+      // Con el cartel, toda la pantalla es rosa (como en el diseño).
+      backgroundColor: showPoster ? AppColors.pink : null,
       body: SafeArea(
         child: AppResponsiveBody(
           maxWidth: 640,
           adaptive: true,
           child: Column(
             children: [
-              const AppPageHeader(title: 'Mi código QR'),
+              showPoster ? const _PosterHeader() : const AppPageHeader(title: 'Mi código QR'),
               Expanded(child: _content()),
             ],
           ),
@@ -420,11 +288,8 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
     );
   }
 
-  /// Los códigos QR del local.
   Widget _content() {
-    if (_isLoading) {
-      return const Center(child: CircularProgressIndicator());
-    }
+    if (_isLoading) return const Center(child: CircularProgressIndicator(color: AppColors.black));
 
     if (_qrCodes.isEmpty) {
       return Column(
@@ -443,87 +308,139 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
       );
     }
 
-    return ListView.separated(
-      padding: const EdgeInsets.fromLTRB(24, 0, 24, 40),
-      itemCount: _qrCodes.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 14),
-      itemBuilder: (context, index) {
-        final qr = _qrCodes[index];
-        final String safeCode = (qr['qr_code'] ?? '').toString();
-        final String safeLabel = (qr['label'] ?? 'QR').toString();
-        final String displayDate =
-            EcuadorDateUtils.formatEcuadorDate((qr['created_at'] ?? '').toString());
-        final bool isCorrupt = safeCode.isEmpty;
+    final code = _current;
+    if (code == null) {
+      // El código quedó dañado: se ofrece regenerarlo.
+      return Column(
+        children: [
+          const Expanded(
+            child: AppEmptyState(
+              title: 'Código dañado',
+              message: 'Este código no se puede mostrar. Regéneralo para volver a recibir clientes.',
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(48, 8, 48, 32),
+            child: AppPrimaryButton(label: 'Regenerar QR', onPressed: () => _confirmRegenerateQR(_selected)),
+          ),
+        ],
+      );
+    }
 
-        return AppCard(
-          onTap: () => isCorrupt
-              ? _confirmRegenerateQR(index, safeLabel)
-              : _showQRDialog(safeCode, safeLabel),
-          padding: const EdgeInsets.all(16),
-          child: Row(
-            children: [
-              Container(
-                width: 52,
-                height: 52,
-                decoration: BoxDecoration(
-                  color: isCorrupt ? AppColors.pink : AppColors.surfaceMuted,
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  isCorrupt ? Icons.warning_amber_rounded : Icons.qr_code_2_rounded,
-                  size: 28,
-                ),
-              ),
-              const SizedBox(width: 16),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(safeLabel.toUpperCase(), style: AppTypography.display(size: 22)),
-                    Text(
-                      isCorrupt
-                          ? 'Código dañado: toca para regenerarlo'
-                          : 'Creado el $displayDate',
-                      style: AppTypography.body(
-                        size: 14,
-                        weight: FontWeight.w300,
-                        color: AppColors.textSecondary,
-                      ),
+    return SingleChildScrollView(
+      padding: const EdgeInsets.only(bottom: 32),
+      child: Column(
+        children: [
+          // Solo con más de un código: cuál se muestra.
+          if (_qrCodes.length > 1)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
+              child: Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                alignment: WrapAlignment.center,
+                children: [
+                  for (var i = 0; i < _qrCodes.length; i++)
+                    ChoiceChip(
+                      label: Text((_qrCodes[i]['label'] ?? 'QR').toString()),
+                      selected: i == _selected,
+                      onSelected: (_) => setState(() => _selected = i),
                     ),
-                  ],
-                ),
+                ],
               ),
-              const Icon(Icons.chevron_right_rounded, size: 32),
+            ),
+          RepaintBoundary(
+            key: _posterKey,
+            child: QrPosterCard(
+              code: code,
+              name: _name,
+              logoUrl: _logoUrl,
+              pointsLine: qrPointsLine(_business),
+            ),
+          ),
+          const SizedBox(height: 4),
+          Wrap(
+            spacing: 10,
+            runSpacing: 10,
+            alignment: WrapAlignment.center,
+            children: [
+              _PosterAction(icon: Icons.print_outlined, label: 'Imprimir cartel', filled: true, onTap: _working ? null : _print),
+              _PosterAction(icon: Icons.share_outlined, label: 'Compartir', onTap: _working ? null : _share),
+              _PosterAction(icon: Icons.download_rounded, label: 'Descargar', onTap: _working ? null : _download),
             ],
           ),
-        )
-            .animate(delay: (index.clamp(0, 6) * 50).ms)
-            .fadeIn(duration: 350.ms)
-            .slideY(begin: 0.06, curve: Curves.easeOutCubic);
-      },
+          const SizedBox(height: 8),
+          TextButton(
+            onPressed: () => _confirmRegenerateQR(_selected),
+            child: Text(
+              'Regenerar código',
+              style: AppTypography.body(size: 14, weight: FontWeight.w400, color: AppColors.black),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
 
-class _QrActionButton extends StatelessWidget {
-  final IconData icon;
-  final String label;
-  final VoidCallback onPressed;
-
-  const _QrActionButton({required this.icon, required this.label, required this.onPressed});
+/// La flecha de volver y "MI CÓDIGO", sobre el fondo rosa.
+class _PosterHeader extends StatelessWidget {
+  const _PosterHeader();
 
   @override
   Widget build(BuildContext context) {
-    return OutlinedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 20),
-      label: Text(label.toUpperCase()),
-      style: OutlinedButton.styleFrom(
-        foregroundColor: AppColors.black,
-        side: const BorderSide(color: AppColors.black, width: 1.2),
-        shape: const StadiumBorder(),
-        padding: const EdgeInsets.symmetric(vertical: 16),
-        textStyle: AppTypography.label(size: 12, tracking: 2),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+      child: Row(
+        children: [
+          IconButton(
+            tooltip: context.tr('Atrás'),
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 20),
+            onPressed: () => Navigator.of(context).maybePop(),
+          ),
+          Expanded(
+            child: Text(
+              'MI CÓDIGO',
+              textAlign: TextAlign.center,
+              style: AppTypography.label(size: 14, tracking: 5),
+            ),
+          ),
+          const SizedBox(width: 48),
+        ],
+      ),
+    );
+  }
+}
+
+/// Un botón del cartel: el primero relleno de negro, los demás con borde.
+class _PosterAction extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final bool filled;
+  final VoidCallback? onTap;
+
+  const _PosterAction({required this.icon, required this.label, required this.onTap, this.filled = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final foreground = filled ? AppColors.white : AppColors.black;
+    return Material(
+      color: filled ? AppColors.black : AppColors.white,
+      shape: const StadiumBorder(side: BorderSide(color: AppColors.black, width: 1.2)),
+      child: InkWell(
+        customBorder: const StadiumBorder(),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 18, color: foreground),
+              const SizedBox(width: 8),
+              Text(label, style: AppTypography.body(size: 14, weight: FontWeight.w500, color: foreground)),
+            ],
+          ),
+        ),
       ),
     );
   }

@@ -307,7 +307,7 @@ class _BusinessDashboardScreenState extends ConsumerState<BusinessDashboardScree
                 Navigator.of(sheetCtx).pop();
                 Navigator.of(context).push(
                   MaterialPageRoute(
-                    builder: (_) => QRManagementScreen(businessId: businessId),
+                    builder: (_) => QRManagementScreen(businessId: businessId, business: business),
                   ),
                 );
               },
