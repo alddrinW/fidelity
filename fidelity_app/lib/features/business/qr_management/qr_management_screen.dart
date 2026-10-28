@@ -28,7 +28,7 @@ import '../dashboard/widgets/dashboard_animated_toast.dart';
 import 'qr_poster.dart';
 
 /// "Mi código": el cartel del código QR del local (logo, nombre, código y lo que se gana)
-/// sobre fondo rosa, con tres acciones: imprimir el cartel, compartirlo y descargarlo.
+/// sobre fondo blanco, con tres acciones: imprimir el cartel, compartirlo y descargarlo.
 /// Si el código quedó dañado, se puede regenerar.
 class QRManagementScreen extends StatefulWidget {
   final String businessId;
@@ -271,8 +271,6 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
     final showPoster = !_isLoading && _current != null;
 
     return Scaffold(
-      // Con el cartel, toda la pantalla es rosa (como en el diseño).
-      backgroundColor: showPoster ? AppColors.pink : null,
       body: SafeArea(
         child: AppResponsiveBody(
           maxWidth: 640,
@@ -383,7 +381,7 @@ class _QRManagementScreenState extends State<QRManagementScreen> {
   }
 }
 
-/// La flecha de volver y "MI CÓDIGO", sobre el fondo rosa.
+/// La flecha de volver y "MI CÓDIGO".
 class _PosterHeader extends StatelessWidget {
   const _PosterHeader();
 

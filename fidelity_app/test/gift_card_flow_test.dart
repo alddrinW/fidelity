@@ -274,6 +274,12 @@ void main() {
       expect(find.byIcon(Icons.notifications_none_rounded), findsOneWidget);
       expect(find.text('1'), findsOneWidget); // el contador de la campana
 
+      // El botón de escanear es rosa y sin borde negro.
+      final scan = tester.widget<Material>(
+        find.ancestor(of: find.byIcon(Icons.qr_code_scanner_rounded), matching: find.byType(Material)).first,
+      );
+      expect(scan.shape, const CircleBorder());
+
       // 3. La bandeja del cliente lista el aviso.
       await show(tester, const NotificationsScreen());
       expect(find.text('Café Aurora te regaló una gift card'), findsOneWidget);

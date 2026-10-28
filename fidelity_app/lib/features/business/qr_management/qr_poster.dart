@@ -22,7 +22,7 @@ String? qrPointsLine(Map<String, dynamic>? business) {
 }
 
 /// El cartel del código QR del local, como se ve en pantalla (y como se guarda o se
-/// comparte como imagen): fondo rosa, el logo, el nombre, el código en una caja blanca
+/// comparte como imagen): fondo blanco, el logo, el nombre, el código en una caja blanca
 /// y lo que se gana al escanear.
 class QrPosterCard extends StatelessWidget {
   final String code;
@@ -39,7 +39,7 @@ class QrPosterCard extends StatelessWidget {
     final logo = imageProviderFromUrl(logoUrl);
 
     return Container(
-      color: AppColors.pink,
+      color: AppColors.white,
       padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
       child: Column(
         mainAxisSize: MainAxisSize.min,
@@ -125,7 +125,6 @@ Future<Uint8List> buildQrPosterPdf({
   String? pointsLine,
 }) async {
   final logo = await _pdfLogo(logoUrl);
-  const pink = PdfColor.fromInt(0xFFFEBFDC);
   final doc = pw.Document();
 
   doc.addPage(
@@ -135,7 +134,7 @@ Future<Uint8List> buildQrPosterPdf({
       build: (context) => pw.Container(
         width: double.infinity,
         height: double.infinity,
-        color: pink,
+        color: PdfColors.white,
         padding: const pw.EdgeInsets.symmetric(horizontal: 48, vertical: 56),
         child: pw.Column(
           mainAxisAlignment: pw.MainAxisAlignment.center,

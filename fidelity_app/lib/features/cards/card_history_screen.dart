@@ -800,7 +800,7 @@ class _FeedbackButton extends StatelessWidget {
         message: context.tr('Sugerencia o reclamo'),
         child: Material(
           color: AppColors.pink,
-          shape: CircleBorder(side: BorderSide(color: AppColors.black, width: 1.4)),
+          shape: const CircleBorder(),
           elevation: 0,
           child: InkWell(
             customBorder: const CircleBorder(),

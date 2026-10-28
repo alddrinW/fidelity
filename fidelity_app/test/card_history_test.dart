@@ -455,5 +455,15 @@ void main() {
       expect(find.byIcon(Icons.chat_bubble_outline_rounded), findsOneWidget);
       expect(find.byIcon(Icons.chevron_left_rounded), findsOneWidget);
     });
+
+    testWidgets('el botón de sugerencias es rosa y no lleva borde negro', (tester) async {
+      await _open(tester, _FakeHistory());
+
+      final button = tester.widget<Material>(
+        find.ancestor(of: find.byIcon(Icons.chat_bubble_outline_rounded), matching: find.byType(Material)).first,
+      );
+      expect(button.shape, const CircleBorder());
+      expect(button.color, const Color(0xFFFEBFDC));
+    });
   });
 }

@@ -480,7 +480,6 @@ class _OfferTile extends StatelessWidget {
       child: AppCard(
         radius: 28,
         padding: const EdgeInsets.all(18),
-        color: AppColors.pink,
         onTap: onTap,
         child: Row(
           children: [

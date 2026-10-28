@@ -72,7 +72,7 @@ void main() {
   });
 
   group('el cartel del código', () {
-    testWidgets('muestra el logo, el nombre, el código y lo que se gana, sobre fondo rosa', (tester) async {
+    testWidgets('muestra el logo, el nombre, el código y lo que se gana, sobre fondo blanco', (tester) async {
       await open(tester, codes: _codes());
 
       expect(find.text('MI CÓDIGO'), findsOneWidget);
@@ -83,8 +83,12 @@ void main() {
       expect(find.text('10 puntos = café gratis'), findsOneWidget);
       // El código que se dibuja es el del local.
       expect(tester.widget<QrPosterCard>(find.byType(QrPosterCard)).code, 'codigo-0');
-      // Toda la pantalla es rosa.
-      expect(tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor, const Color(0xFFFEBFDC));
+      // Todo blanco: ni la pantalla ni el cartel llevan rosa.
+      expect(tester.widget<Scaffold>(find.byType(Scaffold)).backgroundColor, isNull); // el blanco del tema
+      final card = tester.widget<Container>(
+        find.descendant(of: find.byType(QrPosterCard), matching: find.byType(Container)).first,
+      );
+      expect(card.color, Colors.white);
     });
 
     testWidgets('tiene las tres acciones: imprimir cartel, compartir y descargar', (tester) async {
