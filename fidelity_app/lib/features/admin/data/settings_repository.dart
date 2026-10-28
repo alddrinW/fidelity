@@ -38,6 +38,24 @@ class AppSettingItem {
 
   bool get isMoney => kind == 'money';
 
+  /// Las opciones que explica la unidad ("0 = apagado, 1 = encendido"), por valor.
+  /// Vacío si la unidad es una unidad de verdad ("USD", "días").
+  Map<int, String> get options {
+    final found = <int, String>{};
+    for (final part in unit.split(',')) {
+      final m = RegExp(r'^\s*(\d+)\s*=\s*(.+?)\s*$').firstMatch(part);
+      if (m == null) return const {};
+      found[int.parse(m.group(1)!)] = m.group(2)!;
+    }
+    return found;
+  }
+
+  /// Un interruptor: solo apagado (0) y encendido (1).
+  bool get isSwitch => !isMoney && min == 0 && max == 1 && options[0] == 'apagado' && options[1] == 'encendido';
+
+  /// Lo que se muestra del valor cuando es una opción ("al primer escaneo").
+  String? get optionLabel => options[value.round()];
+
   factory AppSettingItem.fromJson(Map<String, dynamic> json) => AppSettingItem(
         key: json['key'] as String,
         group: json['group'] as String,

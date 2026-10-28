@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart' hide Text;
 import 'package:flutter/services.dart';
-import 'package:flutter_animate/flutter_animate.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/l10n/tr_text.dart';
@@ -18,6 +17,9 @@ import 'widgets/admin_widgets.dart';
 /// Ajustes del sistema: el administrador fija aquí los precios, las reglas de
 /// los minijuegos, los límites de los negocios y cuánto tiempo se guardan los
 /// registros viejos. Lo que no cambia se queda en su valor por defecto.
+///
+/// Para no abrumar, cada grupo se abre y se cierra; las descripciones largas se
+/// muestran en dos líneas ("Ver más") y lo que es encender o apagar es un interruptor.
 class AdminSettingsScreen extends ConsumerWidget {
   const AdminSettingsScreen({super.key});
 
@@ -29,6 +31,17 @@ class AdminSettingsScreen extends ConsumerWidget {
     if (saved == true) {
       ref.invalidate(appSettingsProvider);
       if (context.mounted) DashboardAnimatedToast.show(context, 'Ajuste guardado');
+    }
+  }
+
+  /// Encender o apagar: se guarda al instante.
+  Future<void> _toggle(BuildContext context, WidgetRef ref, AppSettingItem item, bool on) async {
+    try {
+      await ref.read(settingsRepositoryProvider).save(item.key, on ? 1 : 0);
+      ref.invalidate(appSettingsProvider);
+      if (context.mounted) DashboardAnimatedToast.show(context, 'Ajuste guardado');
+    } catch (e) {
+      if (context.mounted) DashboardAnimatedToast.show(context, e.toString(), isError: true);
     }
   }
 
@@ -57,26 +70,13 @@ class AdminSettingsScreen extends ConsumerWidget {
                 padding: const EdgeInsets.fromLTRB(24, 8, 24, 32),
                 sliver: SliverList(
                   delegate: SliverChildListDelegate([
-                    for (final group in data.groups) ...[
-                      const SizedBox(height: 12),
-                      AdminSectionLabel(group.label),
-                      if (group.description.isNotEmpty)
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
-                          child: Text(
-                            group.description,
-                            style: AppTypography.body(size: 14, weight: FontWeight.w300),
-                          ),
-                        ),
-                      for (final (i, item) in data.itemsOf(group.id).indexed)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 12),
-                          child: _SettingCard(item: item, onTap: () => _edit(context, ref, item))
-                              .animate(delay: (40 * (i % 8)).ms)
-                              .fadeIn()
-                              .slideY(begin: 0.06),
-                        ),
-                    ],
+                    for (final group in data.groups)
+                      _SettingGroupSection(
+                        group: group,
+                        items: data.itemsOf(group.id),
+                        onEdit: (item) => _edit(context, ref, item),
+                        onToggle: (item, on) => _toggle(context, ref, item, on),
+                      ),
                   ]),
                 ),
               ),
@@ -87,18 +87,134 @@ class AdminSettingsScreen extends ConsumerWidget {
   }
 }
 
+/// Un grupo de ajustes (Precios, Minijuegos...) que se abre y se cierra. Cerrado muestra
+/// cuántos ajustes tiene y cuántos cambió el administrador.
+class _SettingGroupSection extends StatefulWidget {
+  final AppSettingGroup group;
+  final List<AppSettingItem> items;
+  final ValueChanged<AppSettingItem> onEdit;
+  final void Function(AppSettingItem item, bool on) onToggle;
+
+  const _SettingGroupSection({
+    required this.group,
+    required this.items,
+    required this.onEdit,
+    required this.onToggle,
+  });
+
+  @override
+  State<_SettingGroupSection> createState() => _SettingGroupSectionState();
+}
+
+class _SettingGroupSectionState extends State<_SettingGroupSection> {
+  bool _open = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final group = widget.group;
+    final custom = widget.items.where((i) => i.isCustom).length;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Semantics(
+            button: true,
+            expanded: _open,
+            label: group.label,
+            child: AppCard(
+              radius: 28,
+              padding: const EdgeInsets.fromLTRB(20, 16, 14, 16),
+              color: _open ? AppColors.surfaceMuted : AppColors.white,
+              onTap: () => setState(() => _open = !_open),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(group.label.toUpperCase(), style: AppTypography.display(size: 22)),
+                        if (group.description.isNotEmpty) ...[
+                          const SizedBox(height: 2),
+                          Text(
+                            group.description,
+                            maxLines: _open ? 3 : 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: AppTypography.body(size: 13, weight: FontWeight.w300, color: AppColors.textSecondary),
+                          ),
+                        ],
+                        const SizedBox(height: 8),
+                        // Cuántos ajustes tiene y cuántos se cambiaron (debajo, para que quepa en celulares angostos).
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 6,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            Text(
+                              '${widget.items.length} ${context.tr(widget.items.length == 1 ? 'ajuste' : 'ajustes').toLowerCase()}',
+                              style: AppTypography.label(size: 11, tracking: 1.5, color: AppColors.textSecondary),
+                            ),
+                            if (custom > 0)
+                              AppChip(
+                                label: '$custom ${context.tr(custom == 1 ? 'personalizado' : 'personalizados').toLowerCase()}',
+                                style: AppChipStyle.pink,
+                              ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 6),
+                  Icon(_open ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded, size: 28),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 220),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: _open
+                ? Padding(
+                    padding: const EdgeInsets.only(top: 10),
+                    child: Column(
+                      children: [
+                        for (final item in widget.items)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 10),
+                            child: _SettingCard(
+                              item: item,
+                              onTap: () => widget.onEdit(item),
+                              onToggle: (on) => widget.onToggle(item, on),
+                            ),
+                          ),
+                      ],
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Un ajuste: su nombre, una descripción corta (con "Ver más") y a la derecha su valor,
+/// o un interruptor si es encender/apagar.
 class _SettingCard extends StatelessWidget {
   final AppSettingItem item;
   final VoidCallback onTap;
+  final ValueChanged<bool> onToggle;
 
-  const _SettingCard({required this.item, required this.onTap});
+  const _SettingCard({required this.item, required this.onTap, required this.onToggle});
 
   @override
   Widget build(BuildContext context) {
     return AppCard(
-      radius: 28,
-      padding: const EdgeInsets.all(20),
-      onTap: onTap,
+      radius: 24,
+      padding: const EdgeInsets.all(16),
+      onTap: item.isSwitch ? () => onToggle(item.value.round() != 1) : onTap,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -106,31 +222,129 @@ class _SettingCard extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(item.label, style: AppTypography.body(size: 17, weight: FontWeight.w600)),
-                const SizedBox(height: 4),
-                Text(
-                  item.description,
-                  style: AppTypography.body(size: 14, weight: FontWeight.w300),
-                ),
+                Text(item.label, style: AppTypography.body(size: 16, weight: FontWeight.w600)),
+                if (item.description.isNotEmpty) ...[
+                  const SizedBox(height: 4),
+                  ExpandableText(
+                    item.description,
+                    style: AppTypography.body(size: 13, weight: FontWeight.w300, color: AppColors.textSecondary),
+                  ),
+                ],
               ],
             ),
           ),
           const SizedBox(width: 12),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                item.unit.isEmpty ? item.format(item.value) : '${item.format(item.value)} ${context.tr(item.unit)}',
-                style: AppTypography.display(size: 22),
+          if (item.isSwitch)
+            Semantics(
+              label: item.label,
+              child: Switch(
+                value: item.value.round() == 1,
+                activeTrackColor: AppColors.black,
+                onChanged: onToggle,
               ),
-              if (item.isCustom) ...[
-                const SizedBox(height: 6),
-                const AppChip(label: 'Personalizado', style: AppChipStyle.pink),
-              ],
-            ],
-          ),
+            )
+          else
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 110),
+              child: _ValueBlock(item: item),
+            ),
         ],
       ),
+    );
+  }
+}
+
+/// El valor de un ajuste: el número grande y, debajo, su unidad en chico.
+class _ValueBlock extends StatelessWidget {
+  final AppSettingItem item;
+
+  const _ValueBlock({required this.item});
+
+  @override
+  Widget build(BuildContext context) {
+    final option = item.optionLabel;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        if (option != null)
+          // Una opción ("Al primer escaneo"): se muestra con palabras, no como "1".
+          Text(
+            option[0].toUpperCase() + option.substring(1),
+            textAlign: TextAlign.end,
+            style: AppTypography.body(size: 14, weight: FontWeight.w600),
+          )
+        else ...[
+          Text(item.format(item.value), style: AppTypography.display(size: 24)),
+          if (item.unit.isNotEmpty)
+            Text(
+              item.unit,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: AppTypography.body(size: 12, weight: FontWeight.w300, color: AppColors.textSecondary),
+            ),
+        ],
+        if (item.isCustom) ...[
+          const SizedBox(height: 6),
+          const AppChip(label: 'Personalizado', style: AppChipStyle.pink),
+        ],
+      ],
+    );
+  }
+}
+
+/// Un texto largo en pocas líneas, con "Ver más" / "Ver menos" si no cabe.
+class ExpandableText extends StatefulWidget {
+  final String text;
+  final TextStyle style;
+  final int maxLines;
+
+  const ExpandableText(this.text, {super.key, required this.style, this.maxLines = 2});
+
+  @override
+  State<ExpandableText> createState() => _ExpandableTextState();
+}
+
+class _ExpandableTextState extends State<ExpandableText> {
+  bool _expanded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final translated = context.tr(widget.text);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final painter = TextPainter(
+          text: TextSpan(text: translated, style: widget.style),
+          maxLines: widget.maxLines,
+          textDirection: Directionality.of(context),
+          textScaler: MediaQuery.textScalerOf(context),
+        )..layout(maxWidth: constraints.maxWidth);
+        final overflows = painter.didExceedMaxLines;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.text,
+              maxLines: _expanded ? null : widget.maxLines,
+              overflow: _expanded ? TextOverflow.visible : TextOverflow.ellipsis,
+              style: widget.style,
+            ),
+            if (overflows)
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () => setState(() => _expanded = !_expanded),
+                child: Padding(
+                  padding: const EdgeInsets.only(top: 4, bottom: 2),
+                  child: Text(
+                    _expanded ? 'Ver menos' : 'Ver más',
+                    style: AppTypography.body(size: 13, weight: FontWeight.w600),
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
@@ -227,8 +441,9 @@ class _SettingEditDialogState extends State<SettingEditDialog> {
                 inputFormatters: formatters,
                 textInputAction: TextInputAction.done,
                 onSubmitted: (_) => _save(reset: false),
-                helperText:
-                    'Por defecto: ${_item.format(_item.defaultValue)} · de ${_item.format(_item.min)} a ${_item.format(_item.max)}',
+                helperText: _item.options.isNotEmpty
+                    ? _item.unit
+                    : 'Por defecto: ${_item.format(_item.defaultValue)} · de ${_item.format(_item.min)} a ${_item.format(_item.max)}',
                 validator: _validate,
               ),
               if (_error != null) ...[
