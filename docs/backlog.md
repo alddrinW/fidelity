@@ -54,7 +54,7 @@
 
 ### 🐾 Épica 9: Mascota Guía "Fido" y Micro-interacciones
 - [x] **HU-09:** Integración de Fido como guía en flujos de bienvenida, escaneo y soporte. *(Bienvenida del dueño con accesos directos; consejo en el escáner; asistentes de pago y buzón.)*
-- [x] **HU-09:** Animación de entrada de la app: Fido aparece, escanea un código con su teléfono, lo esconde, guiña y se queda con los brazos cruzados junto a "FIDELITY" (se ve al abrir la app en el celular y en la web; un toque la salta y respeta "reducir movimiento").
+- [x] **HU-09:** Video de entrada de la app: al abrirla se reproduce a pantalla completa un video corto de Fidelity (`assets/videos/intro.mp4`, 2 s, vertical, **sin sonido**) y, al terminar, se desvanece y deja ver el **login** o la **cuenta ya iniciada**. Se ve al abrir la app en el celular y en la web; un toque lo salta, respeta "reducir movimiento" (no se reproduce) y **nunca se queda trabado**: si el video no carga en 4 s o falla, la app sigue sola. En un celular llena la pantalla; en una pantalla ancha se ve entero en el centro. Para cambiarlo, reemplaza `assets/videos/intro.mp4` (conviene que pese pocos MB). Reemplaza a la animación dibujada de Fido escaneando.
 - [x] **HU-09:** Micro-animaciones de celebración con confeti y reacciones dinámicas de estado. *(Salto de victoria con confeti al escanear.)*
 - [x] **HU-09:** Modos reactivos (calma, alerta de cooldown, euforia de canje). *(`FidoMascot`: calma, celebración, pensativo con reloj de arena y euforia; se detienen solos y respetan "reducir movimiento".)*
 
